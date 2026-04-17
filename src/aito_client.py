@@ -88,16 +88,20 @@ class AitoClient:
             client.predict(
                 table="invoices",
                 where={"vendor": "Kesko Oyj", "amount": 4220},
-                predict_field="GLCode",
+                predict_field="gl_code",
             )
 
-        Returns the full Aito response including $p scores.
+        Returns Aito response with hits like:
+            {"$p": 0.91, "feature": "4400", "$why": {...}}
+
+        Note: Aito returns the predicted value in "feature", not in a
+        key named after the field.
         """
         query = {
             "from": table,
             "where": where,
             "predict": predict_field,
-            "select": ["$p", predict_field, "$why"],
+            "select": ["$p", "feature", "$why"],
         }
         return self._request("POST", "/_predict", json=query)
 
@@ -108,17 +112,30 @@ class AitoClient:
             client.relate(
                 table="invoices",
                 where={"routed": False},
-                relate_field="GLCode",
+                relate_field="gl_code",
             )
 
-        Returns features correlated with the target field, with lift
-        and probability scores.
+        Returns hits with rich statistics for each value of the
+        related field:
+            {
+              "related": {"gl_code": {"$has": "4400"}},
+              "condition": {"routed": {"$has": false}},
+              "lift": 6.49,
+              "fs": {"f": 33, "fOnCondition": 18, ...},
+              "ps": {"p": 0.14, "pOnCondition": 0.95, ...}
+            }
+
+        Key fields in each hit:
+        - related: the field value this row is about
+        - lift: how much more likely this value is given the condition
+        - fs.fOnCondition: count matching both condition and related value
+        - fs.f: total count of this related value
+        - ps.pOnCondition: probability of related value given condition
         """
         query = {
             "from": table,
             "where": where,
             "relate": relate_field,
-            "select": ["feature", "$p", "lift"],
         }
         return self._request("POST", "/_relate", json=query)
 

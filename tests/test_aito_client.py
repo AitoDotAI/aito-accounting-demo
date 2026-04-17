@@ -70,25 +70,28 @@ class TestCheckConnectivity:
 
 
 class TestPredict:
-    def test_predict_sends_correct_query(self, httpx_mock):
+    def test_predict_sends_correct_query_and_parses_response(self, httpx_mock):
+        """Aito _predict returns {$p, feature, $why} per hit."""
         httpx_mock.add_response(
             url="https://test.aito.app/db/demo/api/v1/_predict",
             json={
+                "offset": 0,
+                "total": 2,
                 "hits": [
-                    {"$p": 0.94, "GLCode": "4400", "$why": {"vendor": 0.7}},
-                    {"$p": 0.04, "GLCode": "6200", "$why": {"vendor": 0.2}},
-                ]
+                    {"$p": 0.91, "feature": "4400", "$why": {"type": "product"}},
+                    {"$p": 0.03, "feature": "6200", "$why": {"type": "product"}},
+                ],
             },
         )
 
         result = make_client().predict(
             table="invoices",
             where={"vendor": "Kesko Oyj", "amount": 4220},
-            predict_field="GLCode",
+            predict_field="gl_code",
         )
 
-        assert result["hits"][0]["$p"] == 0.94
-        assert result["hits"][0]["GLCode"] == "4400"
+        assert result["hits"][0]["$p"] == 0.91
+        assert result["hits"][0]["feature"] == "4400"
 
         # Verify the query shape sent to Aito
         request = httpx_mock.get_request()
@@ -96,7 +99,8 @@ class TestPredict:
 
         body = json.loads(request.content)
         assert body["from"] == "invoices"
-        assert body["predict"] == "GLCode"
+        assert body["predict"] == "gl_code"
+        assert "feature" in body["select"]
         assert "$p" in body["select"]
 
     def test_predict_raises_on_server_error(self, httpx_mock):
@@ -110,30 +114,47 @@ class TestPredict:
             make_client().predict(
                 table="invoices",
                 where={"vendor": "Test"},
-                predict_field="GLCode",
+                predict_field="gl_code",
             )
 
 
 class TestRelate:
-    def test_relate_sends_correct_query(self, httpx_mock):
+    def test_relate_returns_statistical_relationships(self, httpx_mock):
+        """Aito _relate returns rich stats: related value, lift, counts, probabilities."""
         httpx_mock.add_response(
             url="https://test.aito.app/db/demo/api/v1/_relate",
             json={
+                "offset": 0,
+                "total": 2,
                 "hits": [
-                    {"feature": "vendor_country=FI", "$p": 0.95, "lift": 3.2},
-                    {"feature": "category=telecom", "$p": 0.88, "lift": 2.8},
-                ]
+                    {
+                        "related": {"gl_code": {"$has": "4400"}},
+                        "condition": {"routed": {"$has": False}},
+                        "lift": 6.49,
+                        "fs": {"f": 33, "fOnCondition": 18, "fOnNotCondition": 15, "fCondition": 18, "n": 230},
+                        "ps": {"p": 0.14, "pOnCondition": 0.95, "pOnNotCondition": 0.07, "pCondition": 0.08},
+                    },
+                    {
+                        "related": {"gl_code": {"$has": "6100"}},
+                        "condition": {"routed": {"$has": False}},
+                        "lift": 0.51,
+                        "fs": {"f": 67, "fOnCondition": 0, "fOnNotCondition": 67, "fCondition": 18, "n": 230},
+                        "ps": {"p": 0.29, "pOnCondition": 0.15, "pOnNotCondition": 0.30, "pCondition": 0.08},
+                    },
+                ],
             },
         )
 
         result = make_client().relate(
             table="invoices",
             where={"routed": False},
-            relate_field="GLCode",
+            relate_field="gl_code",
         )
 
         assert len(result["hits"]) == 2
-        assert result["hits"][0]["lift"] == 3.2
+        assert result["hits"][0]["lift"] == 6.49
+        assert result["hits"][0]["related"]["gl_code"]["$has"] == "4400"
+        assert result["hits"][0]["fs"]["fOnCondition"] == 18
 
         # Verify query shape
         request = httpx_mock.get_request()
@@ -141,7 +162,7 @@ class TestRelate:
 
         body = json.loads(request.content)
         assert body["from"] == "invoices"
-        assert body["relate"] == "GLCode"
+        assert body["relate"] == "gl_code"
 
 
 class TestSearch:

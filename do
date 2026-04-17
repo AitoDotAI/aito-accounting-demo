@@ -11,6 +11,8 @@ Commands:
   help          Show this help
   dev           Start the backend API server (port 8000)
   demo          Open the HTML demo in a browser
+  load-data     Upload sample data to Aito
+  reset-data    Drop and reload all Aito tables
   test          Run the test suite
   fmt           Format code
   check         Run all pre-merge checks (test + fmt)
@@ -41,6 +43,16 @@ cmd_demo() {
   fi
 }
 
+cmd_load_data() {
+  cd "$SCRIPT_DIR"
+  python -m src.data_loader
+}
+
+cmd_reset_data() {
+  cd "$SCRIPT_DIR"
+  python -m src.data_loader --reset
+}
+
 cmd_test() {
   cd "$SCRIPT_DIR"
   python -m pytest tests/ -v
@@ -58,8 +70,10 @@ cmd_check() {
 case "${1:-help}" in
   help)   cmd_help ;;
   dev)    cmd_dev ;;
-  demo)   cmd_demo ;;
-  test)   cmd_test ;;
+  demo)       cmd_demo ;;
+  load-data)  cmd_load_data ;;
+  reset-data) cmd_reset_data ;;
+  test)       cmd_test ;;
   fmt)    cmd_fmt ;;
   check)  cmd_check ;;
   *)

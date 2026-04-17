@@ -30,7 +30,11 @@ def load_config(*, use_dotenv: bool = True) -> Config:
     with monkeypatched environment variables.
     """
     if use_dotenv:
-        load_dotenv(_PROJECT_ROOT / ".env", override=False)
+        # override=True so .env values win over shell defaults (e.g.
+        # the fallback AITO_API_URL in shell.nix). Explicit env vars
+        # set before entering the nix shell still work — just set
+        # them after sourcing, or put them in .env.
+        load_dotenv(_PROJECT_ROOT / ".env", override=True)
 
     aito_api_url = os.environ.get("AITO_API_URL", "").rstrip("/")
     aito_api_key = os.environ.get("AITO_API_KEY", "")
