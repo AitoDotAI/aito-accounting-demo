@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.aito_client import AitoClient, AitoError
 from src.config import load_config
+from src.formfill_service import KNOWN_VENDORS, predict_fields
 from src.invoice_service import (
     DEMO_INVOICES,
     compute_metrics,
@@ -66,3 +67,25 @@ def invoices_pending():
         "invoices": [p.to_dict() for p in predictions],
         "metrics": metrics,
     }
+
+
+@app.get("/api/formfill/vendors")
+def formfill_vendors():
+    """Return known vendors for the form fill dropdown."""
+    return {"vendors": KNOWN_VENDORS}
+
+
+@app.post("/api/formfill/predict")
+def formfill_predict(body: dict):
+    """Predict multiple form fields from a vendor name.
+
+    Accepts: {"vendor": "Kesko Oyj", "amount": 4220}
+    Returns predictions for GL code, approver, cost centre, VAT %,
+    payment method, and due terms — each with confidence scores.
+    """
+    vendor = body.get("vendor", "")
+    if not vendor:
+        return {"error": "vendor is required"}
+
+    amount = body.get("amount")
+    return predict_fields(aito, vendor, amount)

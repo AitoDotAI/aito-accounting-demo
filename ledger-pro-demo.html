@@ -425,33 +425,38 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
       <div><div class="topbar-breadcrumb">Payables</div><div class="topbar-title">Smart Form Fill</div></div>
       <div class="topbar-sep"></div>
       <div class="topbar-sub">Fields highlighted in gold are predicted by Aito</div>
-      <div class="topbar-right"><button class="btn btn-outline">Clear</button><button class="btn btn-primary">Save invoice</button></div>
+      <div class="topbar-right"><button class="btn btn-outline" onclick="clearFormFill()">Clear</button><button class="btn btn-primary">Save invoice</button></div>
     </div>
     <div class="content">
-      <div style="background:var(--gold-light);border:1px solid #d8bc70;border-radius:8px;padding:10px 16px;font-size:12.5px;color:var(--gold-dark);display:flex;align-items:center;gap:8px">
+      <div id="ff-banner" style="background:var(--gold-light);border:1px solid #d8bc70;border-radius:8px;padding:10px 16px;font-size:12.5px;color:var(--gold-dark);display:flex;align-items:center;gap:8px">
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6" stroke="currentColor" stroke-width="1.3"/><path d="M7 4v3.5L9 9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-        Aito predicted 6 fields based on vendor history and similar invoices. Review highlighted fields before saving.
+        <span id="ff-banner-text">Select a vendor to see Aito predict multiple fields automatically.</span>
       </div>
       <div class="form-grid">
         <div class="form-section">
           <div class="form-section-title">Invoice details</div>
-          <div class="field-group"><div class="field-label">Vendor name</div><input class="field-input" value="Kesko Oyj" style="border-color:var(--gold-mid);background:var(--gold-light);color:var(--gold-dark)"><div class="field-predicted-label"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>Predicted · 0.98 confidence · 47 prior invoices</div></div>
-          <div class="field-row">
-            <div class="field-group"><div class="field-label">Invoice date</div><input class="field-input" value="2025-04-16"></div>
-            <div class="field-group"><div class="field-label">Due date</div><input class="field-input predicted" value="2025-05-16"><div class="field-predicted-label"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>Predicted net-30 terms</div></div>
+          <div class="field-group">
+            <div class="field-label">Vendor name</div>
+            <select id="ff-vendor" class="field-input" onchange="onVendorChange(this.value)" style="cursor:pointer">
+              <option value="">— Select vendor —</option>
+            </select>
           </div>
-          <div class="field-group"><div class="field-label">Description</div><input class="field-input" value="Grocery Store Products — Retail Q2"></div>
           <div class="field-row">
-            <div class="field-group"><div class="field-label">Amount excl. VAT</div><input class="field-input" value="4220.00"></div>
-            <div class="field-group"><div class="field-label">VAT %</div><input class="field-input predicted" value="24%"><div class="field-predicted-label"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>Predicted · 44/44 history</div></div>
+            <div class="field-group"><div class="field-label">Invoice date</div><input class="field-input" value="2026-04-17"></div>
+            <div class="field-group"><div class="field-label">Due date</div><input id="ff-due_days" class="field-input" value=""><div class="field-predicted-label" id="ff-due_days-hint"></div></div>
+          </div>
+          <div class="field-group"><div class="field-label">Description</div><input id="ff-description" class="field-input" placeholder="Auto-filled on vendor selection"></div>
+          <div class="field-row">
+            <div class="field-group"><div class="field-label">Amount excl. VAT</div><input id="ff-amount" class="field-input" placeholder="Enter amount"></div>
+            <div class="field-group"><div class="field-label">VAT %</div><input id="ff-vat_pct" class="field-input" value=""><div class="field-predicted-label" id="ff-vat_pct-hint"></div></div>
           </div>
         </div>
         <div class="form-section">
           <div class="form-section-title">Routing &amp; classification</div>
-          <div class="field-group"><div class="field-label">GL Account</div><input class="field-input predicted" value="4400 — Supplies &amp; Materials"><div class="field-predicted-label"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>Predicted · 0.94 confidence</div></div>
-          <div class="field-group"><div class="field-label">Cost centre</div><input class="field-input predicted" value="CC-210 — Retail Operations"><div class="field-predicted-label"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>Predicted · 0.88 confidence</div></div>
-          <div class="field-group"><div class="field-label">Approver</div><input class="field-input predicted" value="Sanna Lehtinen (AP Manager)"><div class="field-predicted-label"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>Predicted · 0.97 confidence</div></div>
-          <div class="field-group"><div class="field-label">Payment method</div><input class="field-input predicted" value="SEPA Credit Transfer"><div class="field-predicted-label"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>Predicted · 0.99 confidence</div></div>
+          <div class="field-group"><div class="field-label">GL Account</div><input id="ff-gl_code" class="field-input" value=""><div class="field-predicted-label" id="ff-gl_code-hint"></div></div>
+          <div class="field-group"><div class="field-label">Cost centre</div><input id="ff-cost_centre" class="field-input" value=""><div class="field-predicted-label" id="ff-cost_centre-hint"></div></div>
+          <div class="field-group"><div class="field-label">Approver</div><input id="ff-approver" class="field-input" value=""><div class="field-predicted-label" id="ff-approver-hint"></div></div>
+          <div class="field-group"><div class="field-label">Payment method</div><input id="ff-payment_method" class="field-input" value=""><div class="field-predicted-label" id="ff-payment_method-hint"></div></div>
           <div class="field-group"><div class="field-label">Project code</div><input class="field-input" placeholder="Optional — leave blank"></div>
         </div>
       </div>
@@ -959,8 +964,109 @@ async function loadInvoicePredictions() {
   }
 }
 
+// ── Smart Form Fill ─────��────────────────────────────────────────
+const FF_FIELDS = ['gl_code', 'approver', 'cost_centre', 'vat_pct', 'payment_method', 'due_days'];
+const CHECK_SVG = '<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
+
+function setFieldPredicted(fieldId, value, confidence) {
+  const input = document.getElementById('ff-' + fieldId);
+  const hint = document.getElementById('ff-' + fieldId + '-hint');
+  if (!input) return;
+
+  input.value = value;
+  input.classList.add('predicted');
+  if (hint) {
+    hint.innerHTML = CHECK_SVG + ' Predicted · ' + confidence.toFixed(2) + ' confidence';
+    hint.style.display = 'flex';
+  }
+}
+
+function clearFieldPredicted(fieldId) {
+  const input = document.getElementById('ff-' + fieldId);
+  const hint = document.getElementById('ff-' + fieldId + '-hint');
+  if (!input) return;
+
+  input.value = '';
+  input.classList.remove('predicted');
+  if (hint) { hint.innerHTML = ''; hint.style.display = 'none'; }
+}
+
+function clearFormFill() {
+  document.getElementById('ff-vendor').value = '';
+  document.getElementById('ff-description').value = '';
+  document.getElementById('ff-amount').value = '';
+  FF_FIELDS.forEach(clearFieldPredicted);
+  document.getElementById('ff-banner-text').textContent =
+    'Select a vendor to see Aito predict multiple fields automatically.';
+}
+
+async function onVendorChange(vendor) {
+  if (!vendor) { clearFormFill(); return; }
+
+  // Set loading state
+  FF_FIELDS.forEach(id => {
+    const input = document.getElementById('ff-' + id);
+    if (input) { input.value = 'Loading...'; input.classList.remove('predicted'); }
+    const hint = document.getElementById('ff-' + id + '-hint');
+    if (hint) { hint.innerHTML = ''; hint.style.display = 'none'; }
+  });
+
+  try {
+    const resp = await fetch(API_BASE + '/api/formfill/predict', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({vendor: vendor}),
+    });
+    if (!resp.ok) throw new Error('API error');
+    const data = await resp.json();
+
+    data.fields.forEach(f => {
+      if (f.predicted && f.value) {
+        setFieldPredicted(f.field, f.value, f.confidence);
+      } else {
+        clearFieldPredicted(f.field);
+      }
+    });
+
+    document.getElementById('ff-banner-text').textContent =
+      'Aito predicted ' + data.predicted_count + ' fields for ' + vendor +
+      ' · avg confidence ' + data.avg_confidence.toFixed(2) + '. Review highlighted fields before saving.';
+  } catch (e) {
+    // API not available — show fallback message
+    FF_FIELDS.forEach(clearFieldPredicted);
+    document.getElementById('ff-banner-text').textContent =
+      'Could not reach prediction API. Start the backend with ./do dev';
+  }
+}
+
+async function loadFormFillVendors() {
+  try {
+    const resp = await fetch(API_BASE + '/api/formfill/vendors');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const select = document.getElementById('ff-vendor');
+    if (!select || !data.vendors) return;
+
+    data.vendors.forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v; opt.textContent = v;
+      select.appendChild(opt);
+    });
+  } catch (e) {
+    // API not running — add a few static vendors as fallback
+    const select = document.getElementById('ff-vendor');
+    if (!select) return;
+    ['Kesko Oyj','Telia Finland','Fazer Bakeries','SOK Corporation'].forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v; opt.textContent = v;
+      select.appendChild(opt);
+    });
+  }
+}
+
 // Load live data on page load
 loadInvoicePredictions();
+loadFormFillVendors();
 
 // Draw confidence distribution bars
 (function(){
