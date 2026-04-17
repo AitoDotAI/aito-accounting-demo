@@ -861,6 +861,107 @@ function tab(el, paneId){
   if(t)t.style.display='';
 }
 
+// ── Live API integration ──────────────────────────────────────────
+// Fetches real predictions from the backend (./do dev on port 8000).
+// If the API is unreachable, the static mockup data stays visible.
+const API_BASE = 'http://localhost:8000';
+
+function confClass(p) {
+  if (p >= 0.80) return 'conf-high';
+  if (p >= 0.50) return 'conf-mid';
+  return 'conf-low';
+}
+
+function fmtAmount(n) {
+  return '€' + n.toLocaleString('fi-FI', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+function sourceBadge(source) {
+  if (source === 'rule') return '<span class="badge badge-blue">Rule</span>';
+  if (source === 'aito') return '<span class="badge badge-gold">Aito</span>';
+  return '<span class="badge badge-amber">No match</span>';
+}
+
+function renderInvoiceRow(inv) {
+  const pct = Math.round(inv.confidence * 100);
+
+  const routing = inv.approver
+    ? `<span class="pred-badge">${inv.approver} <span class="arrow">▾</span></span>`
+    : '<span class="badge badge-amber">Review needed</span>';
+
+  const gl = inv.gl_code
+    ? `<span class="pred-badge">${inv.gl_code} – ${inv.gl_label} <span class="arrow">▾</span></span>`
+    : '<span class="badge badge-amber">Review needed</span>';
+
+  return `<tr>
+    <td class="mono link">${inv.invoice_id}</td>
+    <td>${inv.vendor}</td>
+    <td class="mono">${fmtAmount(inv.amount)}</td>
+    <td>${routing}</td>
+    <td>${gl}</td>
+    <td><div class="conf"><div class="conf-bar"><div class="conf-fill ${confClass(inv.confidence)}" style="width:${pct}%"></div></div><span class="conf-val">${inv.confidence.toFixed(2)}</span></div></td>
+    <td>${sourceBadge(inv.source)}</td>
+  </tr>`;
+}
+
+function updateMetrics(metrics) {
+  const els = document.querySelectorAll('#view-invoice .metric-value');
+  if (els.length < 4) return;
+  els[0].textContent = Math.round(metrics.automation_rate * 100) + '%';
+  els[1].textContent = metrics.avg_confidence.toFixed(2);
+  els[2].textContent = metrics.total;
+  els[3].textContent = metrics.review_count;
+
+  // Update subtexts
+  const subs = document.querySelectorAll('#view-invoice .metric-sub');
+  if (subs.length >= 4) {
+    const rulesOnly = Math.round(metrics.rule_count / metrics.total * 100);
+    subs[0].textContent = '↑ ' + (Math.round(metrics.automation_rate * 100) - rulesOnly) + 'pp from rules-only';
+    subs[2].textContent = metrics.rule_count + ' rules · ' + metrics.aito_count + ' Aito';
+    subs[3].textContent = metrics.review_count === 0 ? 'None today' : '↑ vs yesterday';
+  }
+
+  // Update pending tab label
+  const pendingTab = document.querySelector('#view-invoice .tab.active');
+  if (pendingTab) pendingTab.textContent = 'Pending (' + metrics.total + ')';
+
+  // Update topbar subtitle
+  const topSub = document.querySelector('#view-invoice .topbar-sub');
+  if (topSub) topSub.textContent = metrics.total + ' pending · ' + metrics.review_count + ' require review';
+}
+
+async function loadInvoicePredictions() {
+  try {
+    const resp = await fetch(API_BASE + '/api/invoices/pending');
+    if (!resp.ok) return;
+    const data = await resp.json();
+
+    // Update table
+    const tbody = document.querySelector('#inv-pending tbody');
+    if (tbody && data.invoices) {
+      tbody.innerHTML = data.invoices.map(renderInvoiceRow).join('');
+    }
+
+    // Update metrics
+    if (data.metrics) {
+      updateMetrics(data.metrics);
+    }
+
+    // Show live indicator
+    const topbar = document.querySelector('#view-invoice .topbar-right');
+    if (topbar && !topbar.querySelector('.live-dot')) {
+      topbar.insertAdjacentHTML('afterbegin',
+        '<span class="live-dot" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--green);margin-right:8px"><span style="width:6px;height:6px;background:#6ab87a;border-radius:50%;display:inline-block"></span>Live</span>'
+      );
+    }
+  } catch (e) {
+    // API not running — keep static mockup data, no error shown
+  }
+}
+
+// Load live data on page load
+loadInvoicePredictions();
+
 // Draw confidence distribution bars
 (function(){
   const data=[1,2,3,5,8,12,18,28,38,52,68,85,74,61,48];

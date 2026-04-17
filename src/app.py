@@ -9,6 +9,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.aito_client import AitoClient, AitoError
 from src.config import load_config
+from src.invoice_service import (
+    DEMO_INVOICES,
+    compute_metrics,
+    predict_batch,
+)
 
 config = load_config()
 aito = AitoClient(config)
@@ -45,3 +50,19 @@ def schema():
         return aito.get_schema()
     except AitoError as exc:
         return {"error": str(exc), "status_code": exc.status_code}
+
+
+@app.get("/api/invoices/pending")
+def invoices_pending():
+    """Return pending invoices with live Aito predictions.
+
+    Each invoice gets a predicted GL code and approver, with confidence
+    scores and source classification (rule/aito/review).
+    """
+    predictions = predict_batch(aito, DEMO_INVOICES)
+    metrics = compute_metrics(predictions)
+
+    return {
+        "invoices": [p.to_dict() for p in predictions],
+        "metrics": metrics,
+    }
