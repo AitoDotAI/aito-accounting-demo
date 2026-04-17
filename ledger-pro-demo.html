@@ -492,47 +492,8 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
             <div style="font-size:10.5px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;text-align:center">Strength</div>
             <div></div>
           </div>
-          <div class="rule-row">
-            <div style="flex:1;min-width:0"><div class="rule-pattern">vendor_country="FI" AND category="telecom"</div><div class="rule-arrow" style="margin-top:3px;font-size:11px;color:var(--text3)">→ GL 6200, approver: Mikael H.</div></div>
-            <div class="rule-support strong" style="min-width:80px;text-align:right">47/47</div>
-            <div style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--text2);min-width:80px;text-align:right">6.2%</div>
-            <div style="text-align:center"><span class="badge badge-green">Strong</span></div>
-            <div style="min-width:100px;text-align:right"><button class="rule-action rule-promote">Promote →</button></div>
-          </div>
-          <div class="rule-row">
-            <div style="flex:1;min-width:0"><div class="rule-pattern">vendor LIKE "Kesko%" AND amount > 1000</div><div class="rule-arrow" style="margin-top:3px;font-size:11px;color:var(--text3)">→ GL 4400, approver: Sanna L.</div></div>
-            <div class="rule-support strong" style="min-width:80px;text-align:right">38/39</div>
-            <div style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--text2);min-width:80px;text-align:right">5.0%</div>
-            <div style="text-align:center"><span class="badge badge-green">Strong</span></div>
-            <div style="min-width:100px;text-align:right"><button class="rule-action rule-promote">Promote →</button></div>
-          </div>
-          <div class="rule-row">
-            <div style="flex:1;min-width:0"><div class="rule-pattern">vendor="SOK Corporation" AND amount > 5000</div><div class="rule-arrow" style="margin-top:3px;font-size:11px;color:var(--text3)">→ GL 4400, auto-approve</div></div>
-            <div class="rule-support strong" style="min-width:80px;text-align:right">22/22</div>
-            <div style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--text2);min-width:80px;text-align:right">2.9%</div>
-            <div style="text-align:center"><span class="badge badge-green">Strong</span></div>
-            <div style="min-width:100px;text-align:right"><button class="rule-action rule-promote">Promote →</button></div>
-          </div>
-          <div class="rule-row">
-            <div style="flex:1;min-width:0"><div class="rule-pattern">description CONTAINS "office supplies"</div><div class="rule-arrow" style="margin-top:3px;font-size:11px;color:var(--text3)">→ GL 4500, cost_center: HQ</div></div>
-            <div class="rule-support medium" style="min-width:80px;text-align:right">21/24</div>
-            <div style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--text2);min-width:80px;text-align:right">2.8%</div>
-            <div style="text-align:center"><span class="badge badge-amber">Review</span></div>
-            <div style="min-width:100px;text-align:right"><button class="rule-action rule-review">Review →</button></div>
-          </div>
-          <div class="rule-row">
-            <div style="flex:1;min-width:0"><div class="rule-pattern">vendor_country="DE" AND amount BETWEEN 1000 AND 5000</div><div class="rule-arrow" style="margin-top:3px;font-size:11px;color:var(--text3)">→ GL 4400, approver: Sanna L.</div></div>
-            <div class="rule-support medium" style="min-width:80px;text-align:right">8/9</div>
-            <div style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--text2);min-width:80px;text-align:right">1.1%</div>
-            <div style="text-align:center"><span class="badge badge-amber">Review</span></div>
-            <div style="min-width:100px;text-align:right"><button class="rule-action rule-review">Review →</button></div>
-          </div>
-          <div class="rule-row">
-            <div style="flex:1;min-width:0"><div class="rule-pattern">due_days=30 AND vendor_type="SaaS"</div><div class="rule-arrow" style="margin-top:3px;font-size:11px;color:var(--text3)">→ GL 6100, auto-approve under €500</div></div>
-            <div class="rule-support weak" style="min-width:80px;text-align:right">4/11</div>
-            <div style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--text2);min-width:80px;text-align:right">0.5%</div>
-            <div style="text-align:center"><span class="badge badge-red">Weak</span></div>
-            <div style="min-width:100px;text-align:right"><button class="rule-action rule-weak">Dismiss</button></div>
+          <div id="rm-candidates-body">
+            <div style="padding:24px 20px;text-align:center;font-size:13px;color:var(--text3)">Loading rule candidates...</div>
           </div>
         </div>
         <div id="rm-active" style="display:none">
@@ -1064,9 +1025,77 @@ async function loadFormFillVendors() {
   }
 }
 
+// ── Rule Mining ────────────────────────────────────────────────────
+function strengthBadge(s) {
+  if (s === 'strong') return '<span class="badge badge-green">Strong</span>';
+  if (s === 'review') return '<span class="badge badge-amber">Review</span>';
+  return '<span class="badge badge-red">Weak</span>';
+}
+
+function strengthAction(s) {
+  if (s === 'strong') return '<button class="rule-action rule-promote">Promote →</button>';
+  if (s === 'review') return '<button class="rule-action rule-review">Review →</button>';
+  return '<button class="rule-action rule-weak">Dismiss</button>';
+}
+
+function supportClass(ratio) {
+  if (ratio >= 0.95) return 'strong';
+  if (ratio >= 0.75) return 'medium';
+  return 'weak';
+}
+
+function renderRuleRow(c) {
+  return `<div class="rule-row">
+    <div style="flex:1;min-width:0"><div class="rule-pattern">${c.pattern}</div><div class="rule-arrow" style="margin-top:3px;font-size:11px;color:var(--text3)">→ ${c.target}</div></div>
+    <div class="rule-support ${supportClass(c.support_ratio)}" style="min-width:80px;text-align:right">${c.support}</div>
+    <div style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--text2);min-width:80px;text-align:right">${c.coverage}%</div>
+    <div style="text-align:center">${strengthBadge(c.strength)}</div>
+    <div style="min-width:100px;text-align:right">${strengthAction(c.strength)}</div>
+  </div>`;
+}
+
+async function loadRuleCandidates() {
+  try {
+    const resp = await fetch(API_BASE + '/api/rules/candidates');
+    if (!resp.ok) return;
+    const data = await resp.json();
+
+    const body = document.getElementById('rm-candidates-body');
+    if (body && data.candidates && data.candidates.length > 0) {
+      body.innerHTML = data.candidates.map(renderRuleRow).join('');
+    }
+
+    // Update metrics
+    if (data.metrics) {
+      const m = data.metrics;
+      const els = document.querySelectorAll('#view-rulemining .metric-value');
+      if (els.length >= 3) {
+        els[0].textContent = m.total;
+        els[1].textContent = m.strong;
+        els[2].textContent = '+' + m.coverage_gain + '%';
+      }
+      const subs = document.querySelectorAll('#view-rulemining .metric-sub');
+      if (subs.length >= 1) {
+        subs[0].textContent = 'From ' + m.total + ' patterns';
+      }
+
+      // Update tab label
+      const candidateTab = document.querySelector('#view-rulemining .tab.active');
+      if (candidateTab) candidateTab.textContent = 'Candidates (' + m.total + ')';
+
+      // Update topbar
+      const topSub = document.querySelector('#view-rulemining .topbar-sub');
+      if (topSub) topSub.textContent = m.total + ' patterns discovered via Aito _relate';
+    }
+  } catch (e) {
+    // API not running — keep loading message
+  }
+}
+
 // Load live data on page load
 loadInvoicePredictions();
 loadFormFillVendors();
+loadRuleCandidates();
 
 // Draw confidence distribution bars
 (function(){

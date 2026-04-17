@@ -10,11 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.aito_client import AitoClient, AitoError
 from src.config import load_config
 from src.formfill_service import KNOWN_VENDORS, predict_fields
-from src.invoice_service import (
-    DEMO_INVOICES,
-    compute_metrics,
-    predict_batch,
-)
+from src.invoice_service import DEMO_INVOICES, compute_metrics, predict_batch
+from src.rulemining_service import mine_rules
 
 config = load_config()
 aito = AitoClient(config)
@@ -89,3 +86,14 @@ def formfill_predict(body: dict):
 
     amount = body.get("amount")
     return predict_fields(aito, vendor, amount)
+
+
+@app.get("/api/rules/candidates")
+def rules_candidates():
+    """Mine rule candidates from invoice data using Aito _relate.
+
+    Returns patterns with support ratios, coverage, and strength
+    classification. Each candidate represents a potential rule:
+    "when condition X is true, GL code is Y (N/M times)".
+    """
+    return mine_rules(aito)
