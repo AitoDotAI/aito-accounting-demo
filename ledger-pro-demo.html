@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ledger Pro — Aito Demo</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --nav:#0c0f0a;--nav-hover:#1a1a0e;--nav-active:#232010;--nav-border:#1e1c0a;
+  --nav-text:#d0c088;--nav-text-active:#ffffff;--nav-accent:#d4a030;
+  --bg:#f8f6f0;--surface:#ffffff;--surface2:#f4f0e6;--surface3:#ede8d8;
+  --text:#12100a;--text2:#3a3418;--text3:#8a8060;
+  --gold:#6b4f0e;--gold-dark:#6b4f0e;--gold-light:#fdf0c8;--gold-mid:#d4a030;--gold-bright:#e8b830;
+  --amber:#6b5010;--amber-bg:#fef5d8;
+  --red:#7a1818;--red-bg:#fde8e8;
+  --blue:#182858;--blue-bg:#eaf0fc;
+  --green:#185228;--green-bg:#e8f5ea;
+  --border:#dedad0;--border2:#eae6d8;
+  --aito-bg:#0c0f41;--aito-surface:#151a58;--aito-border:#252c80;
+  --aito-accent:#12B5AD;--aito-purple:#5D50FF;--aito-text:#ffffff;--aito-text2:#f0f0f0;--aito-muted:#8090c0;
+}
+body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;display:flex;flex-direction:column}
+
+/* APP SHELL */
+.app{display:flex;height:100vh;overflow:hidden}
+.nav{width:230px;min-width:230px;background:var(--nav);display:flex;flex-direction:column;overflow-y:auto;border-right:1px solid var(--nav-border)}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.aito-panel{width:268px;min-width:268px;background:var(--aito-bg);display:flex;flex-direction:column;overflow-y:auto;border-left:1px solid var(--aito-border)}
+
+/* NAV */
+.nav-logo{padding:22px 18px 18px;border-bottom:1px solid var(--nav-border)}
+.nav-logo-mark{display:flex;align-items:center;gap:8px}
+.nav-logo-icon{width:28px;height:28px;background:var(--gold-mid);border-radius:6px;display:flex;align-items:center;justify-content:center}
+.nav-logo-text{font-size:16px;font-weight:600;color:#f5eecc;letter-spacing:-0.3px}
+.nav-logo-sub{font-size:11px;color:#a89848;margin-top:3px}
+.nav-section{padding:18px 14px 5px;font-size:9.5px;font-weight:600;color:#b8a860;letter-spacing:1.2px;text-transform:uppercase}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 14px;margin:1px 8px;border-radius:6px;cursor:pointer;font-size:13px;color:var(--nav-text);transition:all .15s;user-select:none}
+.nav-item:hover{background:var(--nav-hover);color:#e0cc88}
+.nav-item.active{background:var(--nav-active);color:var(--nav-text-active);border-left:2px solid var(--nav-accent);padding-left:12px}
+.nav-icon{width:15px;height:15px;flex-shrink:0;opacity:.75}
+.nav-item.active .nav-icon{opacity:1}
+.nav-badge{margin-left:auto;background:#2a2208;color:#d4a030;font-size:10px;padding:2px 7px;border-radius:10px;font-weight:500;font-family:'IBM Plex Mono',monospace}
+.nav-badge.red{background:#2a1010;color:#e07070}
+.nav-divider{height:1px;background:var(--nav-border);margin:8px 14px}
+.nav-user{margin-top:auto;padding:12px 8px;border-top:1px solid var(--nav-border)}
+
+/* TOPBAR */
+.topbar{background:var(--surface);border-bottom:1px solid var(--border2);padding:0 24px;height:54px;display:flex;align-items:center;gap:14px;flex-shrink:0}
+.topbar-breadcrumb{font-size:11px;color:var(--text3);font-weight:500}
+.topbar-title{font-size:15px;font-weight:600;color:var(--text)}
+.topbar-sep{width:1px;height:20px;background:var(--border2)}
+.topbar-sub{font-size:12px;color:var(--text3)}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.btn{padding:7px 14px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;border:none;font-family:inherit;transition:all .15s}
+.btn-primary{background:var(--gold-dark);color:#f5e8c0}
+.btn-primary:hover{background:var(--gold)}
+.btn-outline{background:transparent;color:var(--text2);border:1px solid var(--border)}
+.btn-outline:hover{background:var(--surface2)}
+
+/* CONTENT */
+.content{flex:1;overflow-y:auto;padding:22px 26px;display:flex;flex-direction:column;gap:18px}
+
+/* METRICS */
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.metric{background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px 18px;position:relative;overflow:hidden}
+.metric::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--gold-mid);opacity:.3}
+.metric.highlight::before{opacity:1}
+.metric-label{font-size:10.5px;color:var(--text3);font-weight:500;text-transform:uppercase;letter-spacing:.6px}
+.metric-value{font-size:24px;font-weight:600;color:var(--text);margin-top:5px;line-height:1;font-family:'IBM Plex Mono',monospace}
+.metric-sub{font-size:11px;margin-top:5px}
+.metric-up{color:var(--green)}
+.metric-down{color:var(--red)}
+.metric-neutral{color:var(--text3)}
+
+/* CARDS */
+.card{background:var(--surface);border:1px solid var(--border2);border-radius:10px;overflow:hidden}
+.card-header{padding:14px 20px;border-bottom:1px solid var(--border2);display:flex;align-items:center;justify-content:space-between;background:var(--surface)}
+.card-title{font-size:13px;font-weight:600;color:var(--text)}
+.card-hint{font-size:11px;color:var(--text3)}
+.card-body{padding:0}
+
+/* TABS */
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--border2);padding:0 20px;background:var(--surface2)}
+.tab{padding:11px 16px;font-size:12.5px;font-weight:500;cursor:pointer;color:var(--text3);border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s;user-select:none}
+.tab:hover{color:var(--text2)}
+.tab.active{color:var(--gold-dark);border-bottom-color:var(--gold-mid);background:var(--surface)}
+
+/* TABLE */
+.table{width:100%;border-collapse:collapse}
+.table th{padding:10px 16px;text-align:left;font-size:10.5px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid var(--border2);background:var(--surface2);white-space:nowrap}
+.table td{padding:11px 16px;font-size:12.5px;color:var(--text);border-bottom:1px solid var(--border2)}
+.table tr:last-child td{border-bottom:none}
+.table tr:hover td{background:#faf6ec}
+.table td.mono{font-family:'IBM Plex Mono',monospace;font-size:12px}
+.table td.link{color:var(--gold-dark);cursor:pointer}
+.table td.link:hover{text-decoration:underline}
+
+/* BADGES */
+.badge{display:inline-flex;align-items:center;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:500;white-space:nowrap}
+.badge-gold{background:var(--gold-light);color:var(--gold-dark);border:1px solid #e0cc88}
+.badge-amber{background:var(--amber-bg);color:var(--amber);border:1px solid #f0d888}
+.badge-red{background:var(--red-bg);color:var(--red);border:1px solid #f0b8b8}
+.badge-blue{background:var(--blue-bg);color:var(--blue);border:1px solid #b0c8f0}
+.badge-green{background:var(--green-bg);color:var(--green);border:1px solid #a8d8b0}
+.badge-gray{background:var(--surface2);color:var(--text3);border:1px solid var(--border)}
+
+/* PREDICTION BADGE */
+.pred-badge{background:var(--gold-light);color:var(--gold-dark);border:1px solid #d8bc70;display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:5px;font-size:12px;font-weight:500;cursor:pointer;transition:background .15s;white-space:nowrap}
+.pred-badge:hover{background:#f0e0a0}
+.pred-badge .arrow{font-size:9px;opacity:.6}
+
+/* CONFIDENCE BAR */
+.conf{display:flex;align-items:center;gap:7px}
+.conf-bar{width:52px;height:5px;border-radius:3px;background:var(--border2);overflow:hidden;flex-shrink:0}
+.conf-fill{height:100%;border-radius:3px}
+.conf-high{background:#6ab87a}
+.conf-mid{background:#d4a030}
+.conf-low{background:#d06060}
+.conf-val{font-size:11.5px;font-weight:500;color:var(--text2);font-family:'IBM Plex Mono',monospace;min-width:30px}
+
+/* VIEWS */
+.view{display:none;flex-direction:column;height:100%;overflow:hidden}
+.view.active{display:flex}
+
+/* AITO PANEL */
+.aito-header{padding:18px 16px 16px;border-bottom:1px solid var(--aito-border)}
+.aito-logo-row{display:flex;align-items:center;justify-content:space-between}
+.aito-logo{font-size:18px;font-weight:700;letter-spacing:-0.5px}
+.aito-logo .ai{color:#fff}
+.aito-logo .to{color:var(--aito-accent)}
+.aito-tagline{font-size:10px;color:#3a5a7a;margin-top:2px}
+.aito-stats{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--aito-border);border-bottom:1px solid var(--aito-border)}
+.aito-stat{background:var(--aito-bg);padding:11px 14px;text-align:center}
+.aito-stat-val{font-size:17px;font-weight:600;color:#12B5AD;font-family:'IBM Plex Mono',monospace}
+.aito-stat-lbl{font-size:9px;color:#f0f0f0;opacity:.55;text-transform:uppercase;letter-spacing:.7px;margin-top:2px}
+.aito-section{padding:14px 16px;border-bottom:1px solid var(--aito-border)}
+.aito-section-title{font-size:9.5px;font-weight:600;color:#f0f0f0;opacity:.55;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:10px}
+.aito-desc{font-size:12px;color:#ffffff;line-height:1.65}
+.aito-tag{display:inline-flex;background:transparent;color:#f0f0f0;border:1px solid #9B69FF;padding:3px 9px;border-radius:4px;font-size:11px;font-family:'IBM Plex Mono',monospace;margin-bottom:10px;letter-spacing:.3px;background:rgba(155,105,255,.15);color:#f0f0f0}
+.code-block{background:#080b28;border:1px solid #1a1e50;border-radius:6px;padding:11px 13px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#a8b8d8;line-height:1.75;overflow-x:auto}
+.ck{color:#12B5AD}.cs{color:#c0f0e8}.cp{color:#5060a8}.cn{color:#e8c878}
+.aito-links{display:flex;flex-direction:column;gap:5px}
+.aito-link{display:flex;align-items:center;gap:8px;font-size:12px;color:#12B5AD;text-decoration:none;padding:5px 0;transition:color .15s;font-weight:500}
+.aito-link:hover{color:#1ed8ce}
+.aito-link svg{flex-shrink:0;opacity:.6}
+.cta-wrap{padding:16px}
+.cta-btn{width:100%;padding:11px;background:var(--aito-accent);color:#041414;border-radius:7px;font-size:13px;font-weight:600;text-align:center;cursor:pointer;font-family:inherit;border:none;transition:background .15s}
+.cta-btn:hover{background:#1ed8ce}
+
+/* RULE MINING */
+.rule-row{display:flex;align-items:center;gap:10px;padding:10px 20px;border-bottom:1px solid var(--border2);transition:background .1s}
+.rule-row:hover{background:#faf6ec}
+.rule-row:last-child{border-bottom:none}
+.rule-pattern{font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--text);flex:1;min-width:0}
+.rule-arrow{font-size:11px;color:var(--text3);white-space:nowrap}
+.rule-support{font-size:12px;font-family:'IBM Plex Mono',monospace;min-width:44px;text-align:right}
+.rule-support.strong{color:var(--green)}
+.rule-support.medium{color:var(--amber)}
+.rule-support.weak{color:var(--red)}
+.rule-action{padding:4px 10px;border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit;border:none;font-weight:500;transition:all .15s;white-space:nowrap}
+.rule-promote{background:var(--gold-light);color:var(--gold-dark);border:1px solid #d8bc70}
+.rule-promote:hover{background:#f0e0a0}
+.rule-review{background:var(--amber-bg);color:var(--amber);border:1px solid #f0d080}
+.rule-review:hover{background:#fde8a0}
+.rule-weak{background:var(--red-bg);color:var(--red);border:1px solid #f0b8b8}
+
+/* QUALITY PAGE */
+.quality-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.quality-card{background:var(--surface);border:1px solid var(--border2);border-radius:10px;overflow:hidden}
+.qc-header{padding:14px 18px 12px;border-bottom:1px solid var(--border2);display:flex;align-items:center;justify-content:space-between}
+.qc-title{font-size:13px;font-weight:600;color:var(--text)}
+.qc-body{padding:16px 18px}
+.bar-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.bar-label{font-size:12px;color:var(--text2);min-width:130px}
+.bar-track{flex:1;height:7px;background:var(--border2);border-radius:4px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px;transition:width .6s}
+.bar-fill-gold{background:var(--gold-mid)}
+.bar-fill-green{background:#6ab87a}
+.bar-fill-red{background:#d06060}
+.bar-fill-blue{background:#5a9ad8}
+.bar-val{font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--text2);min-width:36px;text-align:right}
+
+/* DISTRIBUTION CHART */
+.dist-bars{display:flex;align-items:flex-end;gap:3px;height:80px;padding:0 2px}
+.dist-bar{flex:1;border-radius:2px 2px 0 0;min-width:0;transition:opacity .2s;cursor:pointer}
+.dist-bar:hover{opacity:.75}
+.dist-labels{display:flex;justify-content:space-between;font-size:9.5px;color:var(--text3);margin-top:4px;padding:0 2px;font-family:'IBM Plex Mono',monospace}
+
+/* FORM FILL VIEW */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.form-section{background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:20px}
+.form-section-title{font-size:12px;font-weight:600;color:var(--text);margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border2)}
+.field-group{margin-bottom:14px}
+.field-label{font-size:11px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
+.field-input{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;color:var(--text);background:var(--surface);outline:none;transition:border .15s}
+.field-input:focus{border-color:var(--gold-mid)}
+.field-input.predicted{border-color:#d8bc70;background:var(--gold-light);color:var(--gold-dark)}
+.field-predicted-label{font-size:10px;color:var(--gold-dark);margin-top:3px;display:flex;align-items:center;gap:4px}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* PAYMENT MATCHING */
+.match-container{display:grid;grid-template-columns:1fr 40px 1fr;gap:0;align-items:start}
+.match-col-title{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;padding:12px 20px;background:var(--surface2);border-bottom:1px solid var(--border2)}
+.match-item{padding:12px 20px;border-bottom:1px solid var(--border2);cursor:pointer;transition:background .1s}
+.match-item:hover{background:#faf6ec}
+.match-item.matched{background:#f5f8f0;border-left:3px solid #6ab87a}
+.match-item.selected{background:var(--gold-light);border-left:3px solid var(--gold-mid)}
+.match-connector{display:flex;align-items:center;justify-content:center;padding-top:48px}
+.match-line{width:40px;height:2px;background:var(--border)}
+.match-line.active{background:var(--gold-mid)}
+.match-name{font-size:13px;font-weight:500;color:var(--text)}
+.match-detail{font-size:11.5px;color:var(--text3);margin-top:2px;font-family:'IBM Plex Mono',monospace}
+
+/* ANOMALY */
+.anomaly-row{padding:12px 20px;border-bottom:1px solid var(--border2);display:flex;align-items:center;gap:14px;transition:background .1s}
+.anomaly-row:hover{background:#faf6ec}
+.anomaly-row:last-child{border-bottom:none}
+.anomaly-icon{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.anomaly-icon.high{background:var(--red-bg)}
+.anomaly-icon.medium{background:var(--amber-bg)}
+.anomaly-icon.low{background:var(--gold-light)}
+.anomaly-body{flex:1;min-width:0}
+.anomaly-title{font-size:13px;font-weight:500;color:var(--text)}
+.anomaly-sub{font-size:11.5px;color:var(--text3);margin-top:2px}
+.anomaly-amount{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:500;color:var(--text);text-align:right}
+
+/* OVERRIDE TABLE */
+.override-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 7px;border-radius:4px}
+
+/* SCROLLBAR */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--text3)}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ═══════════════════ NAV ═══════════════════ -->
+<nav class="nav">
+  <div class="nav-logo">
+    <div class="nav-logo-mark">
+      <div class="nav-logo-icon">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 4h10M3 7h10M3 10h6" stroke="#0d1520" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </div>
+      <span class="nav-logo-text">Ledger Pro</span>
+    </div>
+    <div class="nav-logo-sub">Financial Operations Suite</div>
+  </div>
+
+  <div class="nav-section">Payables</div>
+  <div class="nav-item active" onclick="nav(this,'invoice')">
+    <svg class="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="1" width="12" height="14" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="M5 5h6M5 8h6M5 11h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+    Invoice Processing
+    <span class="nav-badge">12</span>
+  </div>
+  <div class="nav-item" onclick="nav(this,'payment')">
+    <svg class="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="M1 6h14" stroke="currentColor" stroke-width="1.3"/><rect x="3" y="8.5" width="3" height="1.5" rx=".5" fill="currentColor"/></svg>
+    Payment Matching
+    <span class="nav-badge">5</span>
+  </div>
+  <div class="nav-item" onclick="nav(this,'formfill')">
+    <svg class="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="14" height="14" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="M4 5h8M4 8h5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M10 10l2 2 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Smart Form Fill
+  </div>
+
+  <div class="nav-section">Accounting</div>
+  <div class="nav-item" onclick="nav(this,'rulemining')">
+    <svg class="nav-icon" viewBox="0 0 16 16" fill="none"><circle cx="4" cy="4" r="2" stroke="currentColor" stroke-width="1.3"/><circle cx="12" cy="4" r="2" stroke="currentColor" stroke-width="1.3"/><circle cx="4" cy="12" r="2" stroke="currentColor" stroke-width="1.3"/><circle cx="12" cy="12" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M6 4h4M4 6v4M12 6v4M6 12h4" stroke="currentColor" stroke-width="1.3"/></svg>
+    Rule Mining
+  </div>
+  <div class="nav-item" onclick="nav(this,'anomaly')">
+    <svg class="nav-icon" viewBox="0 0 16 16" fill="none"><path d="M8 2L1 13h14L8 2z" stroke="currentColor" stroke-width="1.3"/><path d="M8 7v3M8 11.5v.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+    Anomaly Detection
+    <span class="nav-badge red">3</span>
+  </div>
+
+  <div class="nav-section">Quality</div>
+  <div class="nav-item" onclick="nav(this,'quality-overview')">
+    <svg class="nav-icon" viewBox="0 0 16 16" fill="none"><path d="M2 12l3-4 3 2 3-5 3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    System Overview
+  </div>
+  <div class="nav-item" onclick="nav(this,'quality-rules')">
+    <svg class="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="M4 7h3M4 9.5h3M9 7h3M9 9.5h1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+    Rule Performance
+  </div>
+  <div class="nav-item" onclick="nav(this,'quality-predictions')">
+    <svg class="nav-icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3"/><path d="M5 8l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Prediction Quality
+  </div>
+  <div class="nav-item" onclick="nav(this,'quality-overrides')">
+    <svg class="nav-icon" viewBox="0 0 16 16" fill="none"><path d="M4 8h8M10 5l3 3-3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Human Overrides
+  </div>
+
+  <div class="nav-user">
+    <div class="nav-item">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="3" stroke="currentColor" stroke-width="1.3"/><path d="M2 14c0-3 2.7-4.5 6-4.5s6 1.5 6 4.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+      Tiina Mäkinen
+    </div>
+  </div>
+</nav>
+
+<!-- ═══════════════════ MAIN ═══════════════════ -->
+<div class="main">
+
+  <!-- ── INVOICE PROCESSING ── -->
+  <div class="view active" id="view-invoice">
+    <div class="topbar">
+      <div>
+        <div class="topbar-breadcrumb">Payables</div>
+        <div class="topbar-title">Invoice Processing</div>
+      </div>
+      <div class="topbar-sep"></div>
+      <div class="topbar-sub">12 pending · 3 require review</div>
+      <div class="topbar-right">
+        <button class="btn btn-outline">Export</button>
+        <button class="btn btn-primary">+ New Invoice</button>
+      </div>
+    </div>
+    <div class="content">
+      <div class="metrics">
+        <div class="metric highlight">
+          <div class="metric-label">Automation Rate</div>
+          <div class="metric-value">91%</div>
+          <div class="metric-sub metric-up">↑ 21pp from rules-only</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Avg Confidence</div>
+          <div class="metric-value">0.87</div>
+          <div class="metric-sub metric-up">↑ 0.12 this month</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Processed Today</div>
+          <div class="metric-value">148</div>
+          <div class="metric-sub metric-neutral">34 rules · 114 Aito</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Exceptions</div>
+          <div class="metric-value">13</div>
+          <div class="metric-sub metric-down">↑ 3 vs yesterday</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="tabs">
+          <div class="tab active" onclick="tab(this,'inv-pending')">Pending (12)</div>
+          <div class="tab" onclick="tab(this,'inv-rules')">Rule candidates (8)</div>
+          <div class="tab" onclick="tab(this,'inv-done')">Processed today (148)</div>
+        </div>
+        <div id="inv-pending">
+          <table class="table">
+            <thead><tr><th>Invoice</th><th>Vendor</th><th>Amount</th><th>AI Routing</th><th>GL Code</th><th>Confidence</th><th>Source</th></tr></thead>
+            <tbody>
+              <tr><td class="mono link">INV-2841</td><td>Kesko Oyj</td><td class="mono">€4,220.00</td><td><span class="pred-badge">AP / Sanna L. <span class="arrow">▾</span></span></td><td><span class="pred-badge">4400 – Supplies <span class="arrow">▾</span></span></td><td><div class="conf"><div class="conf-bar"><div class="conf-fill conf-high" style="width:94%"></div></div><span class="conf-val">0.94</span></div></td><td><span class="badge badge-gold">Aito</span></td></tr>
+              <tr><td class="mono link">INV-2842</td><td>Telia Finland</td><td class="mono">€890.50</td><td><span class="pred-badge">AP / Mikael H. <span class="arrow">▾</span></span></td><td><span class="pred-badge">6200 – Telecom <span class="arrow">▾</span></span></td><td><div class="conf"><div class="conf-bar"><div class="conf-fill conf-high" style="width:99%"></div></div><span class="conf-val">0.99</span></div></td><td><span class="badge badge-blue">Rule</span></td></tr>
+              <tr><td class="mono link">INV-2843</td><td>Hartwall Oy</td><td class="mono">€12,400.00</td><td><span class="pred-badge">AP / Sanna L. <span class="arrow">▾</span></span></td><td><span class="pred-badge">4100 – COGS <span class="arrow">▾</span></span></td><td><div class="conf"><div class="conf-bar"><div class="conf-fill conf-mid" style="width:72%"></div></div><span class="conf-val">0.72</span></div></td><td><span class="badge badge-gold">Aito</span></td></tr>
+              <tr><td class="mono link">INV-2844</td><td>Unknown Vendor GmbH</td><td class="mono">€3,100.00</td><td><span class="badge badge-amber">Review needed</span></td><td><span class="badge badge-amber">Review needed</span></td><td><div class="conf"><div class="conf-bar"><div class="conf-fill conf-low" style="width:31%"></div></div><span class="conf-val">0.31</span></div></td><td><span class="badge badge-amber">No match</span></td></tr>
+              <tr><td class="mono link">INV-2845</td><td>SOK Corporation</td><td class="mono">€7,850.00</td><td><span class="pred-badge">AP / Mikael H. <span class="arrow">▾</span></span></td><td><span class="pred-badge">4400 – Supplies <span class="arrow">▾</span></span></td><td><div class="conf"><div class="conf-bar"><div class="conf-fill conf-high" style="width:88%"></div></div><span class="conf-val">0.88</span></div></td><td><span class="badge badge-gold">Aito</span></td></tr>
+              <tr><td class="mono link">INV-2846</td><td>Fazer Bakeries</td><td class="mono">€2,340.00</td><td><span class="pred-badge">AP / Sanna L. <span class="arrow">▾</span></span></td><td><span class="pred-badge">4400 – Supplies <span class="arrow">▾</span></span></td><td><div class="conf"><div class="conf-bar"><div class="conf-fill conf-high" style="width:91%"></div></div><span class="conf-val">0.91</span></div></td><td><span class="badge badge-gold">Aito</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="inv-rules" style="display:none">
+          <div style="padding:12px 20px 8px;font-size:12px;color:var(--text3);border-bottom:1px solid var(--border2)">8 patterns mined from 847 unrouted invoices — promote to rule engine or dismiss</div>
+          <div class="rule-row"><div style="flex:1"><div class="rule-pattern">vendor_country = "FI" AND category = "telecom"</div><div class="rule-arrow" style="margin-top:3px">→ GL 6200, approver: Mikael H.</div></div><div class="rule-support strong">47/47</div><button class="rule-action rule-promote">Promote →</button></div>
+          <div class="rule-row"><div style="flex:1"><div class="rule-pattern">vendor LIKE "Kesko%" AND amount > 1000</div><div class="rule-arrow" style="margin-top:3px">→ GL 4400, approver: Sanna L.</div></div><div class="rule-support strong">38/39</div><button class="rule-action rule-promote">Promote →</button></div>
+          <div class="rule-row"><div style="flex:1"><div class="rule-pattern">description CONTAINS "office supplies"</div><div class="rule-arrow" style="margin-top:3px">→ GL 4500, cost_center: HQ</div></div><div class="rule-support medium">21/24</div><button class="rule-action rule-review">Review →</button></div>
+          <div class="rule-row"><div style="flex:1"><div class="rule-pattern">vendor_country = "DE" AND amount BETWEEN 1000 AND 5000</div><div class="rule-arrow" style="margin-top:3px">→ GL 4400, approver: Sanna L.</div></div><div class="rule-support medium">8/9</div><button class="rule-action rule-review">Review →</button></div>
+          <div class="rule-row"><div style="flex:1"><div class="rule-pattern">due_days = 30 AND vendor_type = "SaaS"</div><div class="rule-arrow" style="margin-top:3px">→ GL 6100, auto-approve under €500</div></div><div class="rule-support weak">4/11</div><button class="rule-action rule-weak">Weak</button></div>
+        </div>
+        <div id="inv-done" style="display:none;padding:24px 20px;text-align:center;font-size:13px;color:var(--text3)">148 invoices processed today · avg latency 27ms · 0 errors · 12 human reviews</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PAYMENT MATCHING ── -->
+  <div class="view" id="view-payment">
+    <div class="topbar">
+      <div><div class="topbar-breadcrumb">Payables</div><div class="topbar-title">Payment Matching</div></div>
+      <div class="topbar-sep"></div>
+      <div class="topbar-sub">5 unmatched · 3 suggested · 2 need review</div>
+      <div class="topbar-right"><button class="btn btn-outline">Run matching</button><button class="btn btn-primary">Auto-match all</button></div>
+    </div>
+    <div class="content">
+      <div class="metrics">
+        <div class="metric highlight"><div class="metric-label">Match Rate</div><div class="metric-value">96%</div><div class="metric-sub metric-up">↑ 8pp this month</div></div>
+        <div class="metric"><div class="metric-label">Avg Confidence</div><div class="metric-value">0.91</div><div class="metric-sub metric-neutral">On suggested matches</div></div>
+        <div class="metric"><div class="metric-label">Matched Today</div><div class="metric-value">62</div><div class="metric-sub metric-neutral">58 auto · 4 manual</div></div>
+        <div class="metric"><div class="metric-label">Pending</div><div class="metric-value">5</div><div class="metric-sub metric-neutral">2 need review</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Invoice ↔ Bank transaction matching</span><span class="card-hint">Aito matches on vendor, amount pattern, timing and historical pairing</span></div>
+        <div style="display:grid;grid-template-columns:1fr auto 1fr">
+          <div>
+            <div style="padding:10px 20px;font-size:10.5px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;background:var(--surface2);border-bottom:1px solid var(--border2)">Open invoices</div>
+            <div class="match-item matched"><div class="match-name">Telia Finland · INV-2838</div><div class="match-detail">€890.50 · due 12 Apr</div></div>
+            <div class="match-item selected"><div class="match-name">Kesko Oyj · INV-2835</div><div class="match-detail">€4,220.00 · due 14 Apr</div></div>
+            <div class="match-item"><div class="match-name">SOK Corporation · INV-2839</div><div class="match-detail">€7,850.00 · due 18 Apr</div></div>
+            <div class="match-item"><div class="match-name">Unknown Vendor GmbH · INV-2844</div><div class="match-detail">€3,100.00 · due 22 Apr</div></div>
+          </div>
+          <div style="width:80px;display:flex;flex-direction:column;align-items:center;padding-top:46px;gap:56px;border-left:1px solid var(--border2);border-right:1px solid var(--border2)">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><div style="height:1px;width:44px;background:#6ab87a"></div><span class="badge badge-green" style="font-size:10px">0.99</span></div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><div style="height:1px;width:44px;background:var(--gold-mid)"></div><span class="badge badge-gold" style="font-size:10px">0.87</span></div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><div style="height:1px;width:44px;background:var(--border)"></div><span style="font-size:10px;color:var(--text3)">—</span></div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><div style="height:1px;width:44px;background:var(--border)"></div><span style="font-size:10px;color:var(--text3)">—</span></div>
+          </div>
+          <div>
+            <div style="padding:10px 20px;font-size:10.5px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;background:var(--surface2);border-bottom:1px solid var(--border2)">Bank transactions</div>
+            <div class="match-item matched"><div class="match-name">TELIA FINLAND OY</div><div class="match-detail">€890.50 · 11 Apr · OP Bank</div></div>
+            <div class="match-item selected"><div class="match-name">KESKO OYJ HELSINKI</div><div class="match-detail">€4,220.00 · 13 Apr · OP Bank</div></div>
+            <div class="match-item"><div class="match-name">SOK CORPORATION</div><div class="match-detail">€7,852.00 · 15 Apr · Nordea</div></div>
+            <div class="match-item"><div class="match-name">VENDOR GMBH BERLIN</div><div class="match-detail">€3,099.00 · 16 Apr · SEPA</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SMART FORM FILL ── -->
+  <div class="view" id="view-formfill">
+    <div class="topbar">
+      <div><div class="topbar-breadcrumb">Payables</div><div class="topbar-title">Smart Form Fill</div></div>
+      <div class="topbar-sep"></div>
+      <div class="topbar-sub">Fields highlighted in gold are predicted by Aito</div>
+      <div class="topbar-right"><button class="btn btn-outline">Clear</button><button class="btn btn-primary">Save invoice</button></div>
+    </div>
+    <div class="content">
+      <div style="background:var(--gold-light);border:1px solid #d8bc70;border-radius:8px;padding:10px 16px;font-size:12.5px;color:var(--gold-dark);display:flex;align-items:center;gap:8px">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6" stroke="currentColor" stroke-width="1.3"/><path d="M7 4v3.5L9 9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        Aito predicted 6 fields based on vendor history and similar invoices. Review highlighted fields before saving.
+      </div>
+      <div class="form-grid">
+        <div class="form-section">
+          <div class="form-section-title">Invoice details</div>
+          <div class="field-group"><div class="field-label">Vendor name</div><input class="field-input" value="Kesko Oyj" style="border-color:var(--gold-mid);background:var(--gold-light);color:var(--gold-dark)"><div class="field-predicted-label"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>Predicted · 0.98 confidence · 47 prior invoices</div></div>
+          <div class="field-row">
+            <div class="field-group"><div class="field-label">Invoice date</div><input class="field-input" value="2025-04-16"></div>
+            <div class="field-group"><div class="field-label">Due date</div><input class="field-input predicted" value="2025-05-16"><div class="field-predicted-label"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>Predicted net-30 terms</div></div>
+          </div>
+          <div class="field-group"><div class="field-label">Description</div><input class="field-input" value="Grocery Store Products — Retail Q2"></div>
+          <div class="field-row">
+            <div class="field-group"><div class="field-label">Amount excl. VAT</div><input class="field-input" value="4220.00"></div>
+            <div class="field-group"><div class="field-label">VAT %</div><input class="field-input predicted" value="24%"><div class="field-predicted-label"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>Predicted · 44/44 history</div></div>
+          </div>
+        </div>
+        <div class="form-section">
+          <div class="form-section-title">Routing &amp; classification</div>
+          <div class="field-group"><div class="field-label">GL Account</div><input class="field-input predicted" value="4400 — Supplies &amp; Materials"><div class="field-predicted-label"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>Predicted · 0.94 confidence</div></div>
+          <div class="field-group"><div class="field-label">Cost centre</div><input class="field-input predicted" value="CC-210 — Retail Operations"><div class="field-predicted-label"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>Predicted · 0.88 confidence</div></div>
+          <div class="field-group"><div class="field-label">Approver</div><input class="field-input predicted" value="Sanna Lehtinen (AP Manager)"><div class="field-predicted-label"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>Predicted · 0.97 confidence</div></div>
+          <div class="field-group"><div class="field-label">Payment method</div><input class="field-input predicted" value="SEPA Credit Transfer"><div class="field-predicted-label"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>Predicted · 0.99 confidence</div></div>
+          <div class="field-group"><div class="field-label">Project code</div><input class="field-input" placeholder="Optional — leave blank"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── RULE MINING ── -->
+  <div class="view" id="view-rulemining">
+    <div class="topbar">
+      <div><div class="topbar-breadcrumb">Accounting</div><div class="topbar-title">Rule Mining</div></div>
+      <div class="topbar-sep"></div>
+      <div class="topbar-sub">Patterns discovered from 847 unrouted invoices</div>
+      <div class="topbar-right"><button class="btn btn-outline">Re-mine</button><button class="btn btn-primary">Promote all strong →</button></div>
+    </div>
+    <div class="content">
+      <div class="metrics">
+        <div class="metric highlight"><div class="metric-label">Candidate rules</div><div class="metric-value">8</div><div class="metric-sub metric-neutral">From 847 unrouted</div></div>
+        <div class="metric"><div class="metric-label">Strong (≥95%)</div><div class="metric-value">3</div><div class="metric-sub metric-up">Ready to promote</div></div>
+        <div class="metric"><div class="metric-label">Coverage gain</div><div class="metric-value">+14%</div><div class="metric-sub metric-up">If all promoted</div></div>
+        <div class="metric"><div class="metric-label">Last mined</div><div class="metric-value" style="font-size:16px">2h ago</div><div class="metric-sub metric-neutral">Auto-runs nightly</div></div>
+      </div>
+      <div class="card">
+        <div class="tabs">
+          <div class="tab active" onclick="tab(this,'rm-candidates')">Candidates (8)</div>
+          <div class="tab" onclick="tab(this,'rm-active')">Active rules (34)</div>
+          <div class="tab" onclick="tab(this,'rm-dismissed')">Dismissed (12)</div>
+        </div>
+        <div id="rm-candidates">
+          <div style="display:grid;grid-template-columns:1fr 80px 80px 80px 100px;padding:10px 20px;background:var(--surface2);border-bottom:1px solid var(--border2)">
+            <div style="font-size:10.5px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px">Pattern</div>
+            <div style="font-size:10.5px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;text-align:right">Support</div>
+            <div style="font-size:10.5px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;text-align:right">Coverage</div>
+            <div style="font-size:10.5px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;text-align:center">Strength</div>
+            <div></div>
+          </div>
+          <div class="rule-row">
+            <div style="flex:1;min-width:0"><div class="rule-pattern">vendor_country="FI" AND category="telecom"</div><div class="rule-arrow" style="margin-top:3px;font-size:11px;color:var(--text3)">→ GL 6200, approver: Mikael H.</div></div>
+            <div class="rule-support strong" style="min-width:80px;text-align:right">47/47</div>
+            <div style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--text2);min-width:80px;text-align:right">6.2%</div>
+            <div style="text-align:center"><span class="badge badge-green">Strong</span></div>
+            <div style="min-width:100px;text-align:right"><button class="rule-action rule-promote">Promote →</button></div>
+          </div>
+          <div class="rule-row">
+            <div style="flex:1;min-width:0"><div class="rule-pattern">vendor LIKE "Kesko%" AND amount > 1000</div><div class="rule-arrow" style="margin-top:3px;font-size:11px;color:var(--text3)">→ GL 4400, approver: Sanna L.</div></div>
+            <div class="rule-support strong" style="min-width:80px;text-align:right">38/39</div>
+            <div style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--text2);min-width:80px;text-align:right">5.0%</div>
+            <div style="text-align:center"><span class="badge badge-green">Strong</span></div>
+            <div style="min-width:100px;text-align:right"><button class="rule-action rule-promote">Promote →</button></div>
+          </div>
+          <div class="rule-row">
+            <div style="flex:1;min-width:0"><div class="rule-pattern">vendor="SOK Corporation" AND amount > 5000</div><div class="rule-arrow" style="margin-top:3px;font-size:11px;color:var(--text3)">→ GL 4400, auto-approve</div></div>
+            <div class="rule-support strong" style="min-width:80px;text-align:right">22/22</div>
+            <div style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--text2);min-width:80px;text-align:right">2.9%</div>
+            <div style="text-align:center"><span class="badge badge-green">Strong</span></div>
+            <div style="min-width:100px;text-align:right"><button class="rule-action rule-promote">Promote →</button></div>
+          </div>
+          <div class="rule-row">
+            <div style="flex:1;min-width:0"><div class="rule-pattern">description CONTAINS "office supplies"</div><div class="rule-arrow" style="margin-top:3px;font-size:11px;color:var(--text3)">→ GL 4500, cost_center: HQ</div></div>
+            <div class="rule-support medium" style="min-width:80px;text-align:right">21/24</div>
+            <div style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--text2);min-width:80px;text-align:right">2.8%</div>
+            <div style="text-align:center"><span class="badge badge-amber">Review</span></div>
+            <div style="min-width:100px;text-align:right"><button class="rule-action rule-review">Review →</button></div>
+          </div>
+          <div class="rule-row">
+            <div style="flex:1;min-width:0"><div class="rule-pattern">vendor_country="DE" AND amount BETWEEN 1000 AND 5000</div><div class="rule-arrow" style="margin-top:3px;font-size:11px;color:var(--text3)">→ GL 4400, approver: Sanna L.</div></div>
+            <div class="rule-support medium" style="min-width:80px;text-align:right">8/9</div>
+            <div style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--text2);min-width:80px;text-align:right">1.1%</div>
+            <div style="text-align:center"><span class="badge badge-amber">Review</span></div>
+            <div style="min-width:100px;text-align:right"><button class="rule-action rule-review">Review →</button></div>
+          </div>
+          <div class="rule-row">
+            <div style="flex:1;min-width:0"><div class="rule-pattern">due_days=30 AND vendor_type="SaaS"</div><div class="rule-arrow" style="margin-top:3px;font-size:11px;color:var(--text3)">→ GL 6100, auto-approve under €500</div></div>
+            <div class="rule-support weak" style="min-width:80px;text-align:right">4/11</div>
+            <div style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--text2);min-width:80px;text-align:right">0.5%</div>
+            <div style="text-align:center"><span class="badge badge-red">Weak</span></div>
+            <div style="min-width:100px;text-align:right"><button class="rule-action rule-weak">Dismiss</button></div>
+          </div>
+        </div>
+        <div id="rm-active" style="display:none">
+          <table class="table">
+            <thead><tr><th>Rule</th><th>Fires on</th><th>Precision</th><th>Last fired</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td class="mono" style="font-size:11px">vendor="Telia Finland"</td><td>GL 6200, Mikael H.</td><td><div class="conf"><div class="conf-bar"><div class="conf-fill conf-high" style="width:100%"></div></div><span class="conf-val">1.00</span></div></td><td style="font-size:12px;color:var(--text3)">2h ago</td><td><span class="badge badge-green">Active</span></td></tr>
+              <tr><td class="mono" style="font-size:11px">amount &lt; 50</td><td>GL 4500, auto-approve</td><td><div class="conf"><div class="conf-bar"><div class="conf-fill conf-high" style="width:97%"></div></div><span class="conf-val">0.97</span></div></td><td style="font-size:12px;color:var(--text3)">4h ago</td><td><span class="badge badge-green">Active</span></td></tr>
+              <tr><td class="mono" style="font-size:11px">vendor_country="FI" AND category="utilities"</td><td>GL 5100, Mikael H.</td><td><div class="conf"><div class="conf-bar"><div class="conf-fill conf-mid" style="width:82%"></div></div><span class="conf-val">0.82</span></div></td><td style="font-size:12px;color:var(--text3)">1d ago</td><td><span class="badge badge-amber">Drifting</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="rm-dismissed" style="display:none;padding:24px 20px;text-align:center;font-size:13px;color:var(--text3)">12 dismissed patterns · click to restore any</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── ANOMALY DETECTION ── -->
+  <div class="view" id="view-anomaly">
+    <div class="topbar">
+      <div><div class="topbar-breadcrumb">Accounting</div><div class="topbar-title">Anomaly Detection</div></div>
+      <div class="topbar-sep"></div>
+      <div class="topbar-sub">3 high-priority · 5 medium · 12 low this week</div>
+      <div class="topbar-right"><button class="btn btn-outline">Mark all reviewed</button><button class="btn btn-primary">Run scan</button></div>
+    </div>
+    <div class="content">
+      <div class="metrics">
+        <div class="metric highlight"><div class="metric-label">Anomalies this week</div><div class="metric-value">20</div><div class="metric-sub metric-down">↑ 5 vs last week</div></div>
+        <div class="metric"><div class="metric-label">High priority</div><div class="metric-value" style="color:var(--red)">3</div><div class="metric-sub metric-down">Require action</div></div>
+        <div class="metric"><div class="metric-label">False positive rate</div><div class="metric-value">4%</div><div class="metric-sub metric-up">↓ 2pp this month</div></div>
+        <div class="metric"><div class="metric-label">Avg detection time</div><div class="metric-value" style="font-size:16px">14 min</div><div class="metric-sub metric-up">↓ 3 min vs last month</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Flagged transactions</span><span class="card-hint">Ranked by anomaly score</span></div>
+        <div class="anomaly-row"><div class="anomaly-icon high"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2L1 12h12L7 2z" stroke="#8b1a1a" stroke-width="1.3"/><path d="M7 6v3M7 10.5v.5" stroke="#8b1a1a" stroke-width="1.3" stroke-linecap="round"/></svg></div><div class="anomaly-body"><div class="anomaly-title">Duplicate invoice detected — INV-2801 &amp; INV-2844</div><div class="anomaly-sub">Same vendor, amount within 1%, issued 3 days apart · anomaly score 0.97</div></div><div><span class="badge badge-red">High</span></div><div class="anomaly-amount" style="margin-left:16px">€3,100</div></div>
+        <div class="anomaly-row"><div class="anomaly-icon high"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2L1 12h12L7 2z" stroke="#8b1a1a" stroke-width="1.3"/><path d="M7 6v3M7 10.5v.5" stroke="#8b1a1a" stroke-width="1.3" stroke-linecap="round"/></svg></div><div class="anomaly-body"><div class="anomaly-title">Unusual amount — Fazer Bakeries far above historical avg</div><div class="anomaly-sub">€22,400 vs avg €2,100 for this vendor · anomaly score 0.93</div></div><div><span class="badge badge-red">High</span></div><div class="anomaly-amount" style="margin-left:16px">€22,400</div></div>
+        <div class="anomaly-row"><div class="anomaly-icon high"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2L1 12h12L7 2z" stroke="#8b1a1a" stroke-width="1.3"/><path d="M7 6v3M7 10.5v.5" stroke="#8b1a1a" stroke-width="1.3" stroke-linecap="round"/></svg></div><div class="anomaly-body"><div class="anomaly-title">New vendor, high amount, routed to personal account</div><div class="anomaly-sub">First invoice from this vendor · anomaly score 0.91</div></div><div><span class="badge badge-red">High</span></div><div class="anomaly-amount" style="margin-left:16px">€8,750</div></div>
+        <div class="anomaly-row"><div class="anomaly-icon medium"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="#92610a" stroke-width="1.3"/><path d="M7 4.5v3M7 9v.5" stroke="#92610a" stroke-width="1.3" stroke-linecap="round"/></svg></div><div class="anomaly-body"><div class="anomaly-title">GL code mismatch — predicted 4400 but invoiced as 5100</div><div class="anomaly-sub">Kesko Oyj · always used 4400 in 47 prior invoices · score 0.78</div></div><div><span class="badge badge-amber">Medium</span></div><div class="anomaly-amount" style="margin-left:16px">€4,220</div></div>
+        <div class="anomaly-row"><div class="anomaly-icon medium"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="#92610a" stroke-width="1.3"/><path d="M7 4.5v3M7 9v.5" stroke="#92610a" stroke-width="1.3" stroke-linecap="round"/></svg></div><div class="anomaly-body"><div class="anomaly-title">Weekend submission — invoice created Saturday 23:44</div><div class="anomaly-sub">SOK Corporation · unusual submission time · score 0.71</div></div><div><span class="badge badge-amber">Medium</span></div><div class="anomaly-amount" style="margin-left:16px">€7,850</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── QUALITY: SYSTEM OVERVIEW ── -->
+  <div class="view" id="view-quality-overview">
+    <div class="topbar">
+      <div><div class="topbar-breadcrumb">Quality</div><div class="topbar-title">System Overview</div></div>
+      <div class="topbar-sep"></div>
+      <div class="topbar-sub">Last 30 days · all automation types</div>
+      <div class="topbar-right"><button class="btn btn-outline">Export report</button></div>
+    </div>
+    <div class="content">
+      <div class="metrics">
+        <div class="metric highlight"><div class="metric-label">Overall automation</div><div class="metric-value">91%</div><div class="metric-sub metric-up">↑ from 70% rules-only</div></div>
+        <div class="metric"><div class="metric-label">Rules coverage</div><div class="metric-value">23%</div><div class="metric-sub metric-neutral">34 active rules</div></div>
+        <div class="metric"><div class="metric-label">Aito coverage</div><div class="metric-value">68%</div><div class="metric-sub metric-up">↑ 21pp this quarter</div></div>
+        <div class="metric"><div class="metric-label">Human review</div><div class="metric-value">9%</div><div class="metric-sub metric-down">↓ 21pp this quarter</div></div>
+      </div>
+      <div class="quality-grid">
+        <div class="quality-card">
+          <div class="qc-header"><span class="qc-title">Automation by type</span></div>
+          <div class="qc-body">
+            <div class="bar-row"><div class="bar-label">Invoice routing</div><div class="bar-track"><div class="bar-fill bar-fill-gold" style="width:91%"></div></div><div class="bar-val">91%</div></div>
+            <div class="bar-row"><div class="bar-label">GL classification</div><div class="bar-track"><div class="bar-fill bar-fill-gold" style="width:88%"></div></div><div class="bar-val">88%</div></div>
+            <div class="bar-row"><div class="bar-label">Payment matching</div><div class="bar-track"><div class="bar-fill bar-fill-gold" style="width:96%"></div></div><div class="bar-val">96%</div></div>
+            <div class="bar-row"><div class="bar-label">Form fill (VAT)</div><div class="bar-track"><div class="bar-fill bar-fill-gold" style="width:99%"></div></div><div class="bar-val">99%</div></div>
+            <div class="bar-row"><div class="bar-label">Form fill (GL code)</div><div class="bar-track"><div class="bar-fill bar-fill-gold" style="width:87%"></div></div><div class="bar-val">87%</div></div>
+            <div class="bar-row"><div class="bar-label">Approver routing</div><div class="bar-track"><div class="bar-fill bar-fill-gold" style="width:94%"></div></div><div class="bar-val">94%</div></div>
+          </div>
+        </div>
+        <div class="quality-card">
+          <div class="qc-header"><span class="qc-title">Prediction accuracy vs human decision</span></div>
+          <div class="qc-body">
+            <div class="bar-row"><div class="bar-label">Invoice routing</div><div class="bar-track"><div class="bar-fill bar-fill-green" style="width:94%"></div></div><div class="bar-val">94%</div></div>
+            <div class="bar-row"><div class="bar-label">GL classification</div><div class="bar-track"><div class="bar-fill bar-fill-green" style="width:91%"></div></div><div class="bar-val">91%</div></div>
+            <div class="bar-row"><div class="bar-label">Payment matching</div><div class="bar-track"><div class="bar-fill bar-fill-green" style="width:97%"></div></div><div class="bar-val">97%</div></div>
+            <div class="bar-row"><div class="bar-label">Form fill (VAT)</div><div class="bar-track"><div class="bar-fill bar-fill-green" style="width:99%"></div></div><div class="bar-val">99%</div></div>
+            <div class="bar-row"><div class="bar-label">Form fill (GL code)</div><div class="bar-track"><div class="bar-fill bar-fill-green" style="width:89%"></div></div><div class="bar-val">89%</div></div>
+            <div class="bar-row"><div class="bar-label">Approver routing</div><div class="bar-track"><div class="bar-fill bar-fill-green" style="width:96%"></div></div><div class="bar-val">96%</div></div>
+          </div>
+        </div>
+        <div class="quality-card">
+          <div class="qc-header"><span class="qc-title">Confidence distribution — all predictions</span><span class="qc-title" style="font-weight:400;font-size:12px;color:var(--text3)">last 30d</span></div>
+          <div class="qc-body">
+            <div class="dist-bars" id="conf-dist"></div>
+            <div class="dist-labels"><span>0.0</span><span>0.2</span><span>0.4</span><span>0.6</span><span>0.8</span><span>1.0</span></div>
+            <div style="display:flex;gap:16px;margin-top:12px;font-size:11.5px;color:var(--text3)">
+              <span style="color:var(--green)">■</span> High (&gt;0.8): 74%
+              <span style="color:var(--amber)">■</span> Mid: 17%
+              <span style="color:var(--red)">■</span> Low (&lt;0.5): 9%
+            </div>
+          </div>
+        </div>
+        <div class="quality-card">
+          <div class="qc-header"><span class="qc-title">Rules vs Aito — coverage split</span></div>
+          <div class="qc-body">
+            <div style="margin-bottom:16px">
+              <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Processing source breakdown (148 today)</div>
+              <div style="display:flex;height:20px;border-radius:4px;overflow:hidden;gap:1px">
+                <div style="width:23%;background:var(--blue);display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:500">Rules 23%</div>
+                <div style="width:68%;background:var(--gold-mid);display:flex;align-items:center;justify-content:center;font-size:10px;color:#0d1520;font-weight:500">Aito 68%</div>
+                <div style="width:9%;background:var(--border2);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text3);font-weight:500">9%</div>
+              </div>
+              <div style="display:flex;justify-content:flex-end;font-size:10px;color:var(--text3);margin-top:3px">Human review</div>
+            </div>
+            <div class="bar-row" style="margin-bottom:6px"><div class="bar-label" style="font-size:11.5px">Rules precision</div><div class="bar-track"><div class="bar-fill bar-fill-blue" style="width:96%"></div></div><div class="bar-val">96%</div></div>
+            <div class="bar-row"><div class="bar-label" style="font-size:11.5px">Aito precision</div><div class="bar-track"><div class="bar-fill bar-fill-gold" style="width:91%"></div></div><div class="bar-val">91%</div></div>
+            <div style="margin-top:12px;font-size:11.5px;color:var(--text3);line-height:1.6">Rules are precise but cover only 23% of cases. Aito extends coverage to 91% total with acceptable precision trade-off.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── QUALITY: RULE PERFORMANCE ── -->
+  <div class="view" id="view-quality-rules">
+    <div class="topbar">
+      <div><div class="topbar-breadcrumb">Quality</div><div class="topbar-title">Rule Performance</div></div>
+      <div class="topbar-sep"></div>
+      <div class="topbar-sub">34 active rules · 2 drifting · 1 stale</div>
+      <div class="topbar-right"><button class="btn btn-outline">Re-evaluate all</button></div>
+    </div>
+    <div class="content">
+      <div class="card">
+        <div class="card-header"><span class="card-title">All active rules</span><span class="card-hint">Precision measured against human-reviewed decisions</span></div>
+        <table class="table">
+          <thead><tr><th>Rule</th><th>Fires on</th><th>Coverage</th><th>Precision</th><th>Last fired</th><th>Trend</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td class="mono" style="font-size:11px">vendor="Telia Finland"</td><td style="font-size:12px">GL 6200, Mikael H.</td><td class="mono">6.2%</td><td><div class="conf"><div class="conf-bar"><div class="conf-fill conf-high" style="width:100%"></div></div><span class="conf-val">1.00</span></div></td><td style="font-size:12px;color:var(--text3)">2h ago</td><td style="font-size:12px;color:var(--green)">→ stable</td><td><span class="badge badge-green">Active</span></td></tr>
+            <tr><td class="mono" style="font-size:11px">amount &lt; 50</td><td style="font-size:12px">GL 4500, auto</td><td class="mono">5.1%</td><td><div class="conf"><div class="conf-bar"><div class="conf-fill conf-high" style="width:97%"></div></div><span class="conf-val">0.97</span></div></td><td style="font-size:12px;color:var(--text3)">4h ago</td><td style="font-size:12px;color:var(--green)">→ stable</td><td><span class="badge badge-green">Active</span></td></tr>
+            <tr><td class="mono" style="font-size:11px">vendor_country="FI" AND cat="utilities"</td><td style="font-size:12px">GL 5100, Mikael H.</td><td class="mono">3.8%</td><td><div class="conf"><div class="conf-bar"><div class="conf-fill conf-mid" style="width:82%"></div></div><span class="conf-val">0.82</span></div></td><td style="font-size:12px;color:var(--text3)">1d ago</td><td style="font-size:12px;color:var(--amber)">↓ drifting</td><td><span class="badge badge-amber">Drifting</span></td></tr>
+            <tr><td class="mono" style="font-size:11px">vendor="Elisa Oyj"</td><td style="font-size:12px">GL 6200, auto</td><td class="mono">2.1%</td><td><div class="conf"><div class="conf-bar"><div class="conf-fill conf-high" style="width:100%"></div></div><span class="conf-val">1.00</span></div></td><td style="font-size:12px;color:var(--text3)">6h ago</td><td style="font-size:12px;color:var(--green)">→ stable</td><td><span class="badge badge-green">Active</span></td></tr>
+            <tr><td class="mono" style="font-size:11px">due_days=14 AND vendor_type="supplier"</td><td style="font-size:12px">GL 4400, Sanna L.</td><td class="mono">1.4%</td><td><div class="conf"><div class="conf-bar"><div class="conf-fill conf-low" style="width:61%"></div></div><span class="conf-val">0.61</span></div></td><td style="font-size:12px;color:var(--text3)">8d ago</td><td style="font-size:12px;color:var(--red)">↓ degrading</td><td><span class="badge badge-red">Stale</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── QUALITY: PREDICTION QUALITY ── -->
+  <div class="view" id="view-quality-predictions">
+    <div class="topbar">
+      <div><div class="topbar-breadcrumb">Quality</div><div class="topbar-title">Prediction Quality</div></div>
+      <div class="topbar-sep"></div>
+      <div class="topbar-sub">Measured against verified human decisions · last 30 days</div>
+      <div class="topbar-right"><button class="btn btn-outline">Download report</button></div>
+    </div>
+    <div class="content">
+      <div class="metrics">
+        <div class="metric highlight"><div class="metric-label">Overall accuracy</div><div class="metric-value">94%</div><div class="metric-sub metric-up">vs 67% RF baseline</div></div>
+        <div class="metric"><div class="metric-label">High-conf accuracy</div><div class="metric-value">98%</div><div class="metric-sub metric-neutral">p &gt; 0.85 · 74% of cases</div></div>
+        <div class="metric"><div class="metric-label">Override rate</div><div class="metric-value">6%</div><div class="metric-sub metric-up">↓ 4pp this month</div></div>
+        <div class="metric"><div class="metric-label">Dangerous errors</div><div class="metric-value">0.4%</div><div class="metric-sub metric-neutral">High-conf wrong pred.</div></div>
+      </div>
+      <div class="quality-grid">
+        <div class="quality-card">
+          <div class="qc-header"><span class="qc-title">Accuracy by prediction type</span></div>
+          <div class="qc-body">
+            <div class="bar-row"><div class="bar-label">GL code</div><div class="bar-track"><div class="bar-fill bar-fill-green" style="width:91%"></div></div><div class="bar-val">91%</div></div>
+            <div class="bar-row"><div class="bar-label">Approver routing</div><div class="bar-track"><div class="bar-fill bar-fill-green" style="width:96%"></div></div><div class="bar-val">96%</div></div>
+            <div class="bar-row"><div class="bar-label">VAT rate</div><div class="bar-track"><div class="bar-fill bar-fill-green" style="width:99%"></div></div><div class="bar-val">99%</div></div>
+            <div class="bar-row"><div class="bar-label">Due date</div><div class="bar-track"><div class="bar-fill bar-fill-green" style="width:94%"></div></div><div class="bar-val">94%</div></div>
+            <div class="bar-row"><div class="bar-label">Cost centre</div><div class="bar-track"><div class="bar-fill bar-fill-green" style="width:88%"></div></div><div class="bar-val">88%</div></div>
+            <div class="bar-row"><div class="bar-label">Payment method</div><div class="bar-track"><div class="bar-fill bar-fill-green" style="width:97%"></div></div><div class="bar-val">97%</div></div>
+          </div>
+        </div>
+        <div class="quality-card">
+          <div class="qc-header"><span class="qc-title">Accuracy vs confidence threshold</span></div>
+          <div class="qc-body" style="font-size:12.5px">
+            <table style="width:100%;border-collapse:collapse">
+              <thead><tr style="font-size:10.5px;color:var(--text3)"><th style="text-align:left;padding:4px 0;font-weight:600;text-transform:uppercase;letter-spacing:.6px">Confidence range</th><th style="text-align:right;padding:4px 8px;font-weight:600;text-transform:uppercase;letter-spacing:.6px">Volume</th><th style="text-align:right;padding:4px 0;font-weight:600;text-transform:uppercase;letter-spacing:.6px">Accuracy</th></tr></thead>
+              <tbody>
+                <tr style="border-top:1px solid var(--border2)"><td style="padding:9px 0;font-family:'IBM Plex Mono',monospace;font-size:12px">0.95 – 1.00</td><td style="text-align:right;padding:9px 8px;color:var(--text3)">38%</td><td style="text-align:right;padding:9px 0"><span class="badge badge-green">99.1%</span></td></tr>
+                <tr style="border-top:1px solid var(--border2)"><td style="padding:9px 0;font-family:'IBM Plex Mono',monospace;font-size:12px">0.85 – 0.95</td><td style="text-align:right;padding:9px 8px;color:var(--text3)">36%</td><td style="text-align:right;padding:9px 0"><span class="badge badge-green">96.4%</span></td></tr>
+                <tr style="border-top:1px solid var(--border2)"><td style="padding:9px 0;font-family:'IBM Plex Mono',monospace;font-size:12px">0.70 – 0.85</td><td style="text-align:right;padding:9px 8px;color:var(--text3)">17%</td><td style="text-align:right;padding:9px 0"><span class="badge badge-amber">84.2%</span></td></tr>
+                <tr style="border-top:1px solid var(--border2)"><td style="padding:9px 0;font-family:'IBM Plex Mono',monospace;font-size:12px">0.50 – 0.70</td><td style="text-align:right;padding:9px 8px;color:var(--text3)">6%</td><td style="text-align:right;padding:9px 0"><span class="badge badge-amber">71.8%</span></td></tr>
+                <tr style="border-top:1px solid var(--border2)"><td style="padding:9px 0;font-family:'IBM Plex Mono',monospace;font-size:12px">&lt; 0.50</td><td style="text-align:right;padding:9px 8px;color:var(--text3)">3%</td><td style="text-align:right;padding:9px 0"><span class="badge badge-red">48.3%</span></td></tr>
+              </tbody>
+            </table>
+            <div style="margin-top:12px;font-size:11.5px;color:var(--text3);line-height:1.6">Setting auto-approve threshold at 0.85 captures 74% of cases at 97%+ accuracy — safe for full automation.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── QUALITY: HUMAN OVERRIDES ── -->
+  <div class="view" id="view-quality-overrides">
+    <div class="topbar">
+      <div><div class="topbar-breadcrumb">Quality</div><div class="topbar-title">Human Overrides</div></div>
+      <div class="topbar-sep"></div>
+      <div class="topbar-sub">Every correction is a learning signal — patterns surface as rule candidates</div>
+      <div class="topbar-right"><button class="btn btn-outline">Mine from overrides</button></div>
+    </div>
+    <div class="content">
+      <div class="metrics">
+        <div class="metric highlight"><div class="metric-label">Overrides this month</div><div class="metric-value">47</div><div class="metric-sub metric-down">↑ 6 from last month</div></div>
+        <div class="metric"><div class="metric-label">Patterns found</div><div class="metric-value">3</div><div class="metric-sub metric-up">New rule candidates</div></div>
+        <div class="metric"><div class="metric-label">Top override type</div><div class="metric-value" style="font-size:15px">GL code</div><div class="metric-sub metric-neutral">62% of overrides</div></div>
+        <div class="metric"><div class="metric-label">Override rate</div><div class="metric-value">6%</div><div class="metric-sub metric-up">↓ 4pp this month</div></div>
+      </div>
+      <div class="quality-grid">
+        <div class="quality-card" style="grid-column:1/-1">
+          <div class="qc-header"><span class="qc-title">Recent overrides</span><span class="card-hint">Prediction → Human correction</span></div>
+          <table class="table">
+            <thead><tr><th>Invoice</th><th>Field</th><th>Predicted</th><th>Corrected to</th><th>Confidence was</th><th>Corrected by</th><th>Pattern</th></tr></thead>
+            <tbody>
+              <tr><td class="mono link">INV-2821</td><td>GL Code</td><td><span class="badge badge-gray">4400</span></td><td><span class="badge badge-gold">5100</span></td><td><div class="conf"><div class="conf-bar"><div class="conf-fill conf-mid" style="width:72%"></div></div><span class="conf-val">0.72</span></div></td><td style="font-size:12px">Mikael H.</td><td><span class="badge badge-amber">3 similar</span></td></tr>
+              <tr><td class="mono link">INV-2818</td><td>GL Code</td><td><span class="badge badge-gray">4400</span></td><td><span class="badge badge-gold">5100</span></td><td><div class="conf"><div class="conf-bar"><div class="conf-fill conf-mid" style="width:68%"></div></div><span class="conf-val">0.68</span></div></td><td style="font-size:12px">Mikael H.</td><td><span class="badge badge-amber">3 similar</span></td></tr>
+              <tr><td class="mono link">INV-2809</td><td>Approver</td><td><span class="badge badge-gray">Sanna L.</span></td><td><span class="badge badge-gold">Mikael H.</span></td><td><div class="conf"><div class="conf-bar"><div class="conf-fill conf-high" style="width:88%"></div></div><span class="conf-val">0.88</span></div></td><td style="font-size:12px">Tiina M.</td><td><span class="badge badge-red">High-conf error</span></td></tr>
+              <tr><td class="mono link">INV-2802</td><td>GL Code</td><td><span class="badge badge-gray">4500</span></td><td><span class="badge badge-gold">6100</span></td><td><div class="conf"><div class="conf-bar"><div class="conf-fill conf-mid" style="width:74%"></div></div><span class="conf-val">0.74</span></div></td><td style="font-size:12px">Sanna L.</td><td><span class="badge badge-gray">Isolated</span></td></tr>
+              <tr><td class="mono link">INV-2798</td><td>Cost centre</td><td><span class="badge badge-gray">CC-210</span></td><td><span class="badge badge-gold">CC-310</span></td><td><div class="conf"><div class="conf-bar"><div class="conf-fill conf-mid" style="width:81%"></div></div><span class="conf-val">0.81</span></div></td><td style="font-size:12px">Mikael H.</td><td><span class="badge badge-amber">2 similar</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="quality-card">
+          <div class="qc-header"><span class="qc-title">Emerging patterns from overrides</span></div>
+          <div class="qc-body">
+            <div class="rule-row" style="padding:10px 0"><div style="flex:1"><div class="rule-pattern">vendor_type="utilities" AND region="South"</div><div class="rule-arrow" style="margin-top:3px;font-size:11px;color:var(--text3)">→ GL 5100 (3 overrides all agree)</div></div><button class="rule-action rule-promote" style="margin-left:10px">Add rule →</button></div>
+            <div class="rule-row" style="padding:10px 0"><div style="flex:1"><div class="rule-pattern">amount > 10000 AND first_invoice=true</div><div class="rule-arrow" style="margin-top:3px;font-size:11px;color:var(--text3)">→ Always route to Tiina M. for review</div></div><button class="rule-action rule-review" style="margin-left:10px">Review →</button></div>
+            <div class="rule-row" style="padding:10px 0;border-bottom:none"><div style="flex:1"><div class="rule-pattern">cost_centre change · vendor=Hartwall</div><div class="rule-arrow" style="margin-top:3px;font-size:11px;color:var(--text3)">→ 2 overrides: CC-210 → CC-310</div></div><button class="rule-action rule-weak" style="margin-left:10px">Weak</button></div>
+          </div>
+        </div>
+        <div class="quality-card">
+          <div class="qc-header"><span class="qc-title">Overrides by field type</span></div>
+          <div class="qc-body">
+            <div class="bar-row"><div class="bar-label">GL Code</div><div class="bar-track"><div class="bar-fill bar-fill-red" style="width:62%"></div></div><div class="bar-val">29</div></div>
+            <div class="bar-row"><div class="bar-label">Approver routing</div><div class="bar-track"><div class="bar-fill bar-fill-red" style="width:19%"></div></div><div class="bar-val">9</div></div>
+            <div class="bar-row"><div class="bar-label">Cost centre</div><div class="bar-track"><div class="bar-fill bar-fill-red" style="width:13%"></div></div><div class="bar-val">6</div></div>
+            <div class="bar-row"><div class="bar-label">Due date</div><div class="bar-track"><div class="bar-fill bar-fill-red" style="width:6%"></div></div><div class="bar-val">3</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end main -->
+
+<!-- ═══════════════════ AITO PANEL ═══════════════════ -->
+<aside class="aito-panel" id="aito-panel">
+  <div class="aito-header">
+    <div class="aito-logo-row">
+      <div class="aito-logo"><span class="ai">ai</span><span class="to">to..</span></div>
+      <span style="font-size:10px;color:#f0f0f0;padding:3px 8px;border:1px solid #2e3480;border-radius:4px;opacity:.8">The Predictive DB</span>
+    </div>
+  </div>
+  <div class="aito-stats" id="aito-stats">
+    <div class="aito-stat"><div class="aito-stat-val" id="stat-1">0.94</div><div class="aito-stat-lbl" id="stat-1-l">Confidence</div></div>
+    <div class="aito-stat"><div class="aito-stat-val" id="stat-2">27ms</div><div class="aito-stat-lbl" id="stat-2-l">Response</div></div>
+    <div class="aito-stat"><div class="aito-stat-val" id="stat-3">90K+</div><div class="aito-stat-lbl" id="stat-3-l">Records</div></div>
+    <div class="aito-stat"><div class="aito-stat-val" id="stat-4">Zero</div><div class="aito-stat-lbl" id="stat-4-l">Training</div></div>
+  </div>
+  <div class="aito-section">
+    <div class="aito-section-title">This view</div>
+    <div class="aito-tag" id="aito-op">_predict · _relate</div>
+    <div class="aito-desc" id="aito-desc">GL code assignment and approver routing via <code style="font-size:11px;color:var(--aito-accent)">_predict</code>. Rule candidates mined from unrouted invoices with <code style="font-size:11px;color:var(--aito-accent)">_relate</code>. Feature-level support ratios (47/47) come directly from Aito statistics.</div>
+  </div>
+  <div class="aito-section">
+    <div class="aito-section-title">Example query</div>
+    <div class="code-block" id="aito-code">
+<span class="cp">{</span><br>
+&nbsp;&nbsp;<span class="ck">"from"</span><span class="cp">:</span> <span class="cs">"invoices"</span><span class="cp">,</span><br>
+&nbsp;&nbsp;<span class="ck">"where"</span><span class="cp">: {</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="ck">"vendor"</span><span class="cp">:</span> <span class="cs">"Kesko Oyj"</span><span class="cp">,</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="ck">"amount"</span><span class="cp">:</span> <span class="cn">4220</span><br>
+&nbsp;&nbsp;<span class="cp">},</span><br>
+&nbsp;&nbsp;<span class="ck">"predict"</span><span class="cp">:</span> <span class="cs">"GLCode"</span><span class="cp">,</span><br>
+&nbsp;&nbsp;<span class="ck">"select"</span><span class="cp">: [</span><span class="cs">"$p"</span><span class="cp">,</span> <span class="cs">"GLCode"</span><span class="cp">,</span> <span class="cs">"$why"</span><span class="cp">]</span><br>
+<span class="cp">}</span>
+    </div>
+  </div>
+  <div class="aito-section">
+    <div class="aito-section-title">Learn more</div>
+    <div class="aito-links" id="aito-links">
+      <a class="aito-link" href="https://aito.ai/docs" target="_blank"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1" y="1" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M3 4h6M3 6h6M3 8h4" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>Invoice Processing docs</a>
+      <a class="aito-link" href="https://aito.ai" target="_blank"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M9 1H3a1 1 0 00-1 1v8a1 1 0 001 1h6a1 1 0 001-1V2a1 1 0 00-1-1z" stroke="currentColor" stroke-width="1.2"/><path d="M4 4h4M4 6h4M4 8h2" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>Workbook: invoice routing</a>
+      <a class="aito-link" href="https://aito.ai/blog" target="_blank"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.2"/><path d="M4 6l1.5 1.5L8 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Benchmark: 45.6% vs 33.4%</a>
+      <a class="aito-link" href="https://github.com/AitoDotAI" target="_blank"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1C3.24 1 1 3.24 1 6c0 2.21 1.43 4.09 3.42 4.75.25.05.34-.11.34-.24v-.85c-1.39.3-1.68-.67-1.68-.67-.23-.58-.56-.73-.56-.73-.46-.31.03-.31.03-.31.5.04.77.52.77.52.45.77 1.18.55 1.47.42.04-.33.18-.55.32-.67-1.11-.13-2.28-.56-2.28-2.48 0-.55.2-1 .52-1.35-.05-.13-.23-.64.05-1.33 0 0 .42-.13 1.38.52A4.8 4.8 0 016 4.52c.43 0 .86.06 1.26.17.96-.65 1.38-.52 1.38-.52.28.69.1 1.2.05 1.33.32.35.52.8.52 1.35 0 1.93-1.17 2.35-2.29 2.48.18.15.34.46.34.93v1.38c0 .13.09.29.34.24C9.57 10.09 11 8.21 11 6c0-2.76-2.24-5-5-5z" fill="currentColor"/></svg>predict-invoice.js on GitHub</a>
+      <a class="aito-link" href="https://aito.ai/docs" target="_blank"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v5M6 6l2-2M6 6L4 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 9v1a1 1 0 001 1h6a1 1 0 001-1V9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>API reference: _predict</a>
+    </div>
+  </div>
+  <div style="flex:1"></div>
+  <div class="cta-wrap"><button class="cta-btn" onclick="window.open('https://aito.ai','_blank')">Start free trial →</button></div>
+</aside>
+
+</div><!-- end app -->
+
+<script>
+const panels = {
+  invoice:{op:'_predict · _relate',stats:['0.94','27ms','90K+','Zero'],statL:['Confidence','Response','Records','Training'],desc:'GL code assignment and approver routing via <code style="font-size:11px;color:var(--aito-accent)">_predict</code>. Rule candidates mined from unrouted invoices with <code style="font-size:11px;color:var(--aito-accent)">_relate</code>. Feature support ratios (47/47) come directly from Aito statistics.',code:`<span class="cp">{</span><br>&nbsp;&nbsp;<span class="ck">"from"</span><span class="cp">:</span> <span class="cs">"invoices"</span><span class="cp">,</span><br>&nbsp;&nbsp;<span class="ck">"where"</span><span class="cp">: {</span><br>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ck">"vendor"</span><span class="cp">:</span> <span class="cs">"Kesko Oyj"</span><span class="cp">,</span><br>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ck">"amount"</span><span class="cp">:</span> <span class="cn">4220</span><br>&nbsp;&nbsp;<span class="cp">},</span><br>&nbsp;&nbsp;<span class="ck">"predict"</span><span class="cp">:</span> <span class="cs">"GLCode"</span><span class="cp">,</span><br>&nbsp;&nbsp;<span class="ck">"select"</span><span class="cp">: [</span><span class="cs">"$p"</span><span class="cp">,</span><span class="cs">"GLCode"</span><span class="cp">,</span><span class="cs">"$why"</span><span class="cp">]</span><br><span class="cp">}</span>`,links:[['Invoice Processing docs','https://aito.ai/docs'],['Workbook: invoice routing','https://aito.ai'],['Benchmark: 45.6% vs 33.4%','https://aito.ai/blog'],['predict-invoice.js on GitHub','https://github.com/AitoDotAI'],['API reference: _predict','https://aito.ai/docs']]},
+  payment:{op:'_predict · _match',stats:['0.91','18ms','62K+','Zero'],statL:['Confidence','Response','Records','Training'],desc:'Invoice-to-bank-transaction matching uses <code style="font-size:11px;color:var(--aito-accent)">_predict</code> on vendor name, amount proximity, timing patterns, and historical pairing. Confidence score shown on each candidate match.',code:`<span class="cp">{</span><br>&nbsp;&nbsp;<span class="ck">"from"</span><span class="cp">:</span> <span class="cs">"bank_txns"</span><span class="cp">,</span><br>&nbsp;&nbsp;<span class="ck">"where"</span><span class="cp">: {</span><br>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ck">"amount"</span><span class="cp">:</span> <span class="cn">4220</span><span class="cp">,</span><br>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ck">"description"</span><span class="cp">:</span> <span class="cs">"KESKO OYJ"</span><br>&nbsp;&nbsp;<span class="cp">},</span><br>&nbsp;&nbsp;<span class="ck">"predict"</span><span class="cp">:</span> <span class="cs">"invoice_id"</span><span class="cp">,</span><br>&nbsp;&nbsp;<span class="ck">"select"</span><span class="cp">: [</span><span class="cs">"$p"</span><span class="cp">,</span><span class="cs">"invoice_id"</span><span class="cp">]</span><br><span class="cp">}</span>`,links:[['Payment matching docs','https://aito.ai/docs'],['Workbook: payment matching','https://aito.ai'],['API reference: _predict','https://aito.ai/docs']]},
+  formfill:{op:'_predict (multi-field)',stats:['0.97','12ms','90K+','Zero'],statL:['Confidence','Response','Records','Training'],desc:'Each golden field is a separate <code style="font-size:11px;color:var(--aito-accent)">_predict</code> call triggered on vendor name entry. Multiple fields predicted in parallel. Empty fields are skipped. User can override any prediction.',code:`<span class="cp">{</span><br>&nbsp;&nbsp;<span class="ck">"from"</span><span class="cp">:</span> <span class="cs">"invoices"</span><span class="cp">,</span><br>&nbsp;&nbsp;<span class="ck">"where"</span><span class="cp">: {</span><br>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ck">"vendor"</span><span class="cp">:</span> <span class="cs">"Kesko Oyj"</span><br>&nbsp;&nbsp;<span class="cp">},</span><br>&nbsp;&nbsp;<span class="ck">"predict"</span><span class="cp">:</span> <span class="cs">"GLCode"</span><span class="cp">,</span><br>&nbsp;&nbsp;<span class="ck">"select"</span><span class="cp">: [</span><span class="cs">"$p"</span><span class="cp">,</span><span class="cs">"GLCode"</span><span class="cp">]</span><br><span class="cp">}</span>`,links:[['Smart form fill docs','https://aito.ai/docs'],['Workbook: form automation','https://aito.ai'],['API reference: _predict','https://aito.ai/docs']]},
+  rulemining:{op:'_relate · _statistics',stats:['47/47','8/9','+14%','Zero'],statL:['Best pattern','Weak pattern','Coverage gain','Training'],desc:'Rule candidates come from <code style="font-size:11px;color:var(--aito-accent)">_relate</code> on the unrouted invoice set. Support ratios (47/47) are direct historical counts — not ML estimates. Exact fractions let accountants verify rules before promoting.',code:`<span class="cp">{</span><br>&nbsp;&nbsp;<span class="ck">"from"</span><span class="cp">:</span> <span class="cs">"invoices"</span><span class="cp">,</span><br>&nbsp;&nbsp;<span class="ck">"where"</span><span class="cp">: {</span><br>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ck">"routed"</span><span class="cp">:</span> <span class="cn">false</span><br>&nbsp;&nbsp;<span class="cp">},</span><br>&nbsp;&nbsp;<span class="ck">"relate"</span><span class="cp">:</span> <span class="cs">"GLCode"</span><span class="cp">,</span><br>&nbsp;&nbsp;<span class="ck">"select"</span><span class="cp">: [</span><span class="cs">"feature"</span><span class="cp">,</span><span class="cs">"$p"</span><span class="cp">,</span><span class="cs">"lift"</span><span class="cp">]</span><br><span class="cp">}</span>`,links:[['Rule mining docs','https://aito.ai/docs'],['Workbook: rule mining','https://aito.ai'],['Blog: how Aito mines rules','https://aito.ai/blog']]},
+  anomaly:{op:'_predict (inverse)',stats:['0.93','31ms','90K+','Zero'],statL:['Anomaly score','Response','Records','Training'],desc:'Anomaly detection uses inverse prediction: given a transaction, how surprised is Aito? Low <code style="font-size:11px;color:var(--aito-accent)">$p</code> on predicted fields signals an anomaly. No separate anomaly model needed.',code:`<span class="cp">{</span><br>&nbsp;&nbsp;<span class="ck">"from"</span><span class="cp">:</span> <span class="cs">"invoices"</span><span class="cp">,</span><br>&nbsp;&nbsp;<span class="ck">"where"</span><span class="cp">: {</span><br>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ck">"vendor"</span><span class="cp">:</span> <span class="cs">"Fazer Bakeries"</span><span class="cp">,</span><br>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ck">"amount"</span><span class="cp">:</span> <span class="cn">22400</span><br>&nbsp;&nbsp;<span class="cp">},</span><br>&nbsp;&nbsp;<span class="ck">"predict"</span><span class="cp">:</span> <span class="cs">"amount_range"</span><span class="cp">,</span><br>&nbsp;&nbsp;<span class="ck">"select"</span><span class="cp">: [</span><span class="cs">"$p"</span><span class="cp">,</span><span class="cs">"$why"</span><span class="cp">]</span><br><span class="cp">}</span>`,links:[['Anomaly detection docs','https://aito.ai/docs'],['Workbook: anomaly detection','https://aito.ai'],['Blog: inverse prediction','https://aito.ai/blog']]},
+  'quality-overview':{op:'_statistics · _evaluate',stats:['91%','94%','6%','Zero'],statL:['Automation','Accuracy','Override rate','Training'],desc:'Quality overview aggregates <code style="font-size:11px;color:var(--aito-accent)">$p</code> confidence distributions across all predictions. No separate evaluation model — accuracy measured directly by comparing predictions to human decisions logged in the system.',code:`<span class="cp">{</span><br>&nbsp;&nbsp;<span class="ck">"from"</span><span class="cp">:</span> <span class="cs">"predictions"</span><span class="cp">,</span><br>&nbsp;&nbsp;<span class="ck">"where"</span><span class="cp">: {</span><br>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ck">"period"</span><span class="cp">:</span> <span class="cs">"30d"</span><br>&nbsp;&nbsp;<span class="cp">},</span><br>&nbsp;&nbsp;<span class="ck">"aggregate"</span><span class="cp">:</span> <span class="cs">"accuracy"</span><span class="cp">,</span><br>&nbsp;&nbsp;<span class="ck">"groupBy"</span><span class="cp">:</span> <span class="cs">"prediction_type"</span><br><span class="cp">}</span>`,links:[['Quality monitoring docs','https://aito.ai/docs'],['Workbook: quality dashboard','https://aito.ai']]},
+  'quality-rules':{op:'_relate · _statistics',stats:['34','96%','2','Zero'],statL:['Active rules','Avg precision','Drifting','Training'],desc:'Rule precision is measured by replaying each rule against recent human-verified decisions. Drift is detected when precision drops below threshold. <code style="font-size:11px;color:var(--aito-accent)">_relate</code> used for pattern re-evaluation.',code:`<span class="cp">{</span><br>&nbsp;&nbsp;<span class="ck">"from"</span><span class="cp">:</span> <span class="cs">"invoices"</span><span class="cp">,</span><br>&nbsp;&nbsp;<span class="ck">"where"</span><span class="cp">: {</span><br>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ck">"rule_fired"</span><span class="cp">:</span> <span class="cs">"telecom_fi"</span><br>&nbsp;&nbsp;<span class="cp">},</span><br>&nbsp;&nbsp;<span class="ck">"relate"</span><span class="cp">:</span> <span class="cs">"GLCode"</span><span class="cp">,</span><br>&nbsp;&nbsp;<span class="ck">"select"</span><span class="cp">: [</span><span class="cs">"$p"</span><span class="cp">,</span><span class="cs">"support"</span><span class="cp">]</span><br><span class="cp">}</span>`,links:[['Rule evaluation docs','https://aito.ai/docs'],['Workbook: rule health','https://aito.ai']]},
+  'quality-predictions':{op:'_predict · $p · $why',stats:['94%','98%','0.4%','Zero'],statL:['Accuracy','High-conf acc.','Dangerous errors','Training'],desc:'Prediction quality breaks down <code style="font-size:11px;color:var(--aito-accent)">$p</code> by confidence band. The confidence-accuracy table shows where to set the auto-approve threshold. <code style="font-size:11px;color:var(--aito-accent)">$why</code> explains any prediction.',code:`<span class="cp">{</span><br>&nbsp;&nbsp;<span class="ck">"from"</span><span class="cp">:</span> <span class="cs">"predictions"</span><span class="cp">,</span><br>&nbsp;&nbsp;<span class="ck">"where"</span><span class="cp">: {</span><br>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ck">"$p"</span><span class="cp">: {</span><span class="ck">"$gte"</span><span class="cp">:</span> <span class="cn">0.85</span><span class="cp">}</span><br>&nbsp;&nbsp;<span class="cp">},</span><br>&nbsp;&nbsp;<span class="ck">"select"</span><span class="cp">: [</span><span class="cs">"$p"</span><span class="cp">,</span><span class="cs">"predicted"</span><span class="cp">,</span><span class="cs">"actual"</span><span class="cp">,</span><span class="cs">"$why"</span><span class="cp">]</span><br><span class="cp">}</span>`,links:[['Prediction accuracy docs','https://aito.ai/docs'],['Blog: confidence thresholds','https://aito.ai/blog']]},
+  'quality-overrides':{op:'_relate (override mining)',stats:['47','3','6%','Zero'],statL:['Overrides/mo','New candidates','Override rate','Training'],desc:'Every human override is stored and fed back through <code style="font-size:11px;color:var(--aito-accent)">_relate</code> to discover emerging patterns. Overrides are the primary signal for rule improvement — closing the loop between humans and the prediction engine.',code:`<span class="cp">{</span><br>&nbsp;&nbsp;<span class="ck">"from"</span><span class="cp">:</span> <span class="cs">"overrides"</span><span class="cp">,</span><br>&nbsp;&nbsp;<span class="ck">"where"</span><span class="cp">: {</span><br>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ck">"field"</span><span class="cp">:</span> <span class="cs">"GLCode"</span><br>&nbsp;&nbsp;<span class="cp">},</span><br>&nbsp;&nbsp;<span class="ck">"relate"</span><span class="cp">:</span> <span class="cs">"corrected_value"</span><span class="cp">,</span><br>&nbsp;&nbsp;<span class="ck">"select"</span><span class="cp">: [</span><span class="cs">"feature"</span><span class="cp">,</span><span class="cs">"$p"</span><span class="cp">,</span><span class="cs">"support"</span><span class="cp">]</span><br><span class="cp">}</span>`,links:[['Override analysis docs','https://aito.ai/docs'],['Workbook: learning from overrides','https://aito.ai']]},
+};
+
+function nav(el, viewId){
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+viewId).classList.add('active');
+  const p = panels[viewId];
+  if(p){
+    document.getElementById('stat-1').textContent=p.stats[0];
+    document.getElementById('stat-2').textContent=p.stats[1];
+    document.getElementById('stat-3').textContent=p.stats[2];
+    document.getElementById('stat-4').textContent=p.stats[3];
+    document.getElementById('stat-1-l').textContent=p.statL[0];
+    document.getElementById('stat-2-l').textContent=p.statL[1];
+    document.getElementById('stat-3-l').textContent=p.statL[2];
+    document.getElementById('stat-4-l').textContent=p.statL[3];
+    document.getElementById('aito-op').textContent=p.op;
+    document.getElementById('aito-desc').innerHTML=p.desc;
+    document.getElementById('aito-code').innerHTML=p.code;
+    const ll=document.getElementById('aito-links');
+    ll.innerHTML=p.links.map(([t,u])=>`<a class="aito-link" href="${u}" target="_blank"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1" y="1" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M3 4h6M3 6h6M3 8h4" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>${t}</a>`).join('');
+  }
+}
+
+function tab(el, paneId){
+  const parent=el.closest('.card, .view');
+  parent.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  const allPanes=['inv-pending','inv-rules','inv-done','rm-candidates','rm-active','rm-dismissed'];
+  allPanes.forEach(id=>{const p=document.getElementById(id);if(p)p.style.display='none';});
+  const t=document.getElementById(paneId);
+  if(t)t.style.display='';
+}
+
+// Draw confidence distribution bars
+(function(){
+  const data=[1,2,3,5,8,12,18,28,38,52,68,85,74,61,48];
+  const colors=data.map((_,i)=>i<4?'#d06060':i<7?'#d4a030':'#6ab87a');
+  const max=Math.max(...data);
+  const c=document.getElementById('conf-dist');
+  if(!c)return;
+  c.innerHTML=data.map((v,i)=>`<div class="dist-bar" style="height:${Math.round(v/max*100)}%;background:${colors[i]}" title="${(i/data.length).toFixed(1)}–${((i+1)/data.length).toFixed(1)}: ${v} predictions"></div>`).join('');
+})();
+</script>
+</body>
+</html>
