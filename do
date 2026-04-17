@@ -9,12 +9,19 @@ Usage: ./do <command>
 
 Commands:
   help          Show this help
-  demo          Open the demo in a browser
-  fmt           Format code
+  dev           Start the backend API server (port 8000)
+  demo          Open the HTML demo in a browser
   test          Run the test suite
+  fmt           Format code
   check         Run all pre-merge checks (test + fmt)
 
 EOF
+}
+
+cmd_dev() {
+  echo "Starting Ledger Pro API on http://localhost:8000"
+  cd "$SCRIPT_DIR"
+  python -m uvicorn src.app:app --reload --port 8000
 }
 
 cmd_demo() {
@@ -34,12 +41,13 @@ cmd_demo() {
   fi
 }
 
-cmd_fmt() {
-  echo "No source code to format yet."
+cmd_test() {
+  cd "$SCRIPT_DIR"
+  python -m pytest tests/ -v
 }
 
-cmd_test() {
-  echo "No tests yet."
+cmd_fmt() {
+  echo "No formatter configured yet."
 }
 
 cmd_check() {
@@ -49,9 +57,10 @@ cmd_check() {
 
 case "${1:-help}" in
   help)   cmd_help ;;
+  dev)    cmd_dev ;;
   demo)   cmd_demo ;;
-  fmt)    cmd_fmt ;;
   test)   cmd_test ;;
+  fmt)    cmd_fmt ;;
   check)  cmd_check ;;
   *)
     echo "Unknown command: $1" >&2
