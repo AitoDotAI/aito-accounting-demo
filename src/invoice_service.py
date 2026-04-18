@@ -5,19 +5,17 @@ Orchestrates the hybrid rules + Aito architecture:
   2. If no rule, ask Aito to predict GL code and approver
   3. If Aito confidence is below threshold, flag for human review
 
-This simulates what a real accounting SaaS would do. The rules here
-are intentionally simple — the point is to show that Aito fills the
-gap where rules can't reach.
+Returns top-3 alternatives with $why explanations for each prediction,
+so the UI can show dropdown alternatives and explain why Aito chose
+each value.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from src.aito_client import AitoClient, AitoError
 
-# Confidence threshold below which invoices go to human review
 REVIEW_THRESHOLD = 0.50
 
-# GL code labels for display (a real system would have a chart of accounts)
 GL_LABELS = {
     "4100": "COGS",
     "4400": "Supplies",
@@ -27,6 +25,66 @@ GL_LABELS = {
     "6100": "IT & Software",
     "6200": "Telecom",
 }
+
+
+def _extract_alternatives(hits: list[dict], label_map: dict | None = None, prefix: str = "") -> list[dict]:
+    """Extract top-3 alternatives from Aito _predict hits.
+
+    Each alternative includes the value, display label, confidence,
+    and $why explanation factors.
+    """
+    alts = []
+    for hit in hits[:3]:
+        value = hit.get("feature", "")
+        display = value
+        if label_map and value in label_map:
+            display = f"{value} \u2013 {label_map[value]}"
+        if prefix:
+            display = f"{prefix}{display}"
+
+        why_factors = _extract_why_factors(hit.get("$why"))
+
+        alts.append({
+            "value": value,
+            "display": display,
+            "confidence": round(hit.get("$p", 0), 4),
+            "why": why_factors,
+        })
+    return alts
+
+
+def _extract_why_factors(why: dict | None) -> list[dict]:
+    """Extract human-readable factors from Aito $why structure.
+
+    Aito $why is nested: {type: "product", factors: [...]} where each
+    factor may be a lift on a proposition like {vendor: {$has: "Kesko"}}.
+    We flatten this into a simple list of {field, value, lift} entries.
+    """
+    if not why or not isinstance(why, dict):
+        return []
+
+    factors = []
+    _walk_why(why, factors)
+    # Sort by lift descending, take top 5
+    factors.sort(key=lambda f: abs(f.get("lift", 0)), reverse=True)
+    return factors[:5]
+
+
+def _walk_why(node: dict, factors: list[dict]) -> None:
+    """Recursively walk the $why tree to find proposition lifts."""
+    if node.get("type") == "relatedPropositionLift":
+        prop = node.get("proposition", {})
+        lift = node.get("value", 0)
+        for field_name, condition in prop.items():
+            if isinstance(condition, dict) and "$has" in condition:
+                factors.append({
+                    "field": field_name,
+                    "value": str(condition["$has"]),
+                    "lift": round(lift, 2),
+                })
+    for child in node.get("factors", []):
+        if isinstance(child, dict):
+            _walk_why(child, factors)
 
 
 @dataclass
@@ -39,8 +97,10 @@ class InvoicePrediction:
     gl_code: str | None
     gl_label: str | None
     gl_confidence: float
-    source: str  # "rule", "aito", or "review"
-    confidence: float  # overall confidence (min of GL and approver)
+    source: str
+    confidence: float
+    gl_alternatives: list[dict] = field(default_factory=list)
+    approver_alternatives: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -54,22 +114,22 @@ class InvoicePrediction:
             "gl_confidence": round(self.gl_confidence, 2),
             "source": self.source,
             "confidence": round(self.confidence, 2),
+            "gl_alternatives": self.gl_alternatives,
+            "approver_alternatives": self.approver_alternatives,
         }
 
 
 # ── Simple rules engine ────────────────────────────────────────────
-# Each rule returns (gl_code, approver) or None if it doesn't match.
-# In production this would be a configurable rules table.
 
 RULES = [
     {
-        "name": "Telia → Telecom",
+        "name": "Telia \u2192 Telecom",
         "match": lambda inv: inv["vendor"] == "Telia Finland",
         "gl_code": "6200",
         "approver": "Mikael H.",
     },
     {
-        "name": "Elisa → Telecom",
+        "name": "Elisa \u2192 Telecom",
         "match": lambda inv: inv["vendor"] == "Elisa Oyj",
         "gl_code": "6200",
         "approver": "Mikael H.",
@@ -84,10 +144,7 @@ RULES = [
 
 
 def check_rules(invoice: dict) -> tuple[str, str] | None:
-    """Check if any rule matches the invoice.
-
-    Returns (gl_code, approver) if a rule matches, None otherwise.
-    """
+    """Check if any rule matches the invoice."""
     for rule in RULES:
         if rule["match"](invoice):
             return rule["gl_code"], rule["approver"]
@@ -95,16 +152,11 @@ def check_rules(invoice: dict) -> tuple[str, str] | None:
 
 
 def predict_invoice(client: AitoClient, invoice: dict) -> InvoicePrediction:
-    """Predict GL code and approver for a single invoice.
-
-    Tries rules first, falls back to Aito, flags for review if
-    confidence is too low.
-    """
+    """Predict GL code and approver for a single invoice."""
     invoice_id = invoice["invoice_id"]
     vendor = invoice["vendor"]
     amount = invoice["amount"]
 
-    # Step 1: Check rules
     rule_match = check_rules(invoice)
     if rule_match:
         gl_code, approver = rule_match
@@ -121,7 +173,6 @@ def predict_invoice(client: AitoClient, invoice: dict) -> InvoicePrediction:
             confidence=0.99,
         )
 
-    # Step 2: Ask Aito
     where = {"vendor": vendor, "amount": amount}
     if "category" in invoice:
         where["category"] = invoice["category"]
@@ -130,7 +181,6 @@ def predict_invoice(client: AitoClient, invoice: dict) -> InvoicePrediction:
         gl_result = client.predict("invoices", where, "gl_code")
         approver_result = client.predict("invoices", where, "approver")
     except AitoError:
-        # Aito unavailable — flag for review
         return InvoicePrediction(
             invoice_id=invoice_id,
             vendor=vendor,
@@ -144,8 +194,11 @@ def predict_invoice(client: AitoClient, invoice: dict) -> InvoicePrediction:
             confidence=0.0,
         )
 
-    gl_top = gl_result["hits"][0] if gl_result.get("hits") else None
-    approver_top = approver_result["hits"][0] if approver_result.get("hits") else None
+    gl_hits = gl_result.get("hits", [])
+    approver_hits = approver_result.get("hits", [])
+
+    gl_top = gl_hits[0] if gl_hits else None
+    approver_top = approver_hits[0] if approver_hits else None
 
     gl_code = gl_top["feature"] if gl_top else None
     gl_conf = gl_top["$p"] if gl_top else 0.0
@@ -153,12 +206,7 @@ def predict_invoice(client: AitoClient, invoice: dict) -> InvoicePrediction:
     approver_conf = approver_top["$p"] if approver_top else 0.0
 
     overall_conf = min(gl_conf, approver_conf)
-
-    # Step 3: Classify source
-    if overall_conf < REVIEW_THRESHOLD:
-        source = "review"
-    else:
-        source = "aito"
+    source = "review" if overall_conf < REVIEW_THRESHOLD else "aito"
 
     return InvoicePrediction(
         invoice_id=invoice_id,
@@ -171,6 +219,8 @@ def predict_invoice(client: AitoClient, invoice: dict) -> InvoicePrediction:
         gl_confidence=gl_conf,
         source=source,
         confidence=overall_conf,
+        gl_alternatives=_extract_alternatives(gl_hits, GL_LABELS),
+        approver_alternatives=_extract_alternatives(approver_hits, prefix="AP / "),
     )
 
 
@@ -203,8 +253,6 @@ def compute_metrics(predictions: list[InvoicePrediction]) -> dict:
     }
 
 
-# Demo invoices — a curated set that showcases different scenarios.
-# These would come from a queue in a real system.
 DEMO_INVOICES = [
     {"invoice_id": "INV-2841", "vendor": "Kesko Oyj", "amount": 4220.00, "category": "supplies"},
     {"invoice_id": "INV-2842", "vendor": "Telia Finland", "amount": 890.50, "category": "telecom"},
@@ -217,5 +265,5 @@ DEMO_INVOICES = [
     {"invoice_id": "INV-2849", "vendor": "Elisa Oyj", "amount": 445.00, "category": "telecom"},
     {"invoice_id": "INV-2850", "vendor": "Kone Oyj", "amount": 18500.00, "category": "maintenance"},
     {"invoice_id": "INV-2851", "vendor": "Lyreco Oy", "amount": 35.00, "category": "office"},
-    {"invoice_id": "INV-2852", "vendor": "Wärtsilä Oyj", "amount": 28000.00, "category": "maintenance"},
+    {"invoice_id": "INV-2852", "vendor": "W\u00e4rtsil\u00e4 Oyj", "amount": 28000.00, "category": "maintenance"},
 ]

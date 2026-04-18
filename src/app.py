@@ -2,13 +2,19 @@
 
 Thin API layer that delegates to the Aito client. Each endpoint is
 a direct window into an Aito capability, not an abstraction over it.
+
+Serves the Next.js static export from frontend/out/ when available.
 """
+
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from src.aito_client import AitoClient, AitoError
 from src.anomaly_service import scan_all
+from src import cache
 from src.config import load_config
 from src.quality_service import get_quality_overview
 from src.formfill_service import KNOWN_VENDORS, predict_fields
@@ -60,13 +66,19 @@ def invoices_pending():
     Each invoice gets a predicted GL code and approver, with confidence
     scores and source classification (rule/aito/review).
     """
+    cached = cache.get("invoices_pending")
+    if cached:
+        return cached
+
     predictions = predict_batch(aito, DEMO_INVOICES)
     metrics = compute_metrics(predictions)
 
-    return {
+    result = {
         "invoices": [p.to_dict() for p in predictions],
         "metrics": metrics,
     }
+    cache.set("invoices_pending", result)
+    return result
 
 
 @app.get("/api/formfill/vendors")
@@ -131,3 +143,9 @@ def quality_overview():
     patterns from override data — closing the feedback loop.
     """
     return get_quality_overview(aito)
+
+
+# Serve Next.js static export — must come after all API routes
+_frontend_dir = Path(__file__).resolve().parent.parent / "frontend" / "out"
+if _frontend_dir.exists():
+    app.mount("/", StaticFiles(directory=str(_frontend_dir), html=True), name="frontend")
