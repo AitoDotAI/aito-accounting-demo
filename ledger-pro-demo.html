@@ -1187,11 +1187,77 @@ async function loadRuleCandidates() {
 }
 
 // Load live data on page load
+// ── Quality Dashboard ─────────────────────────────────────────────
+async function loadQualityOverview() {
+  try {
+    const resp = await fetch(API_BASE + '/api/quality/overview');
+    if (!resp.ok) return;
+    const data = await resp.json();
+
+    // System Overview — automation metrics
+    if (data.automation) {
+      const a = data.automation;
+      const els = document.querySelectorAll('#view-quality-overview .metric-value');
+      if (els.length >= 4) {
+        els[0].textContent = a.automation_rate + '%';
+        els[1].textContent = a.rule_pct + '%';
+        els[2].textContent = a.aito_pct + '%';
+        els[3].textContent = a.human_pct + '%';
+      }
+      const subs = document.querySelectorAll('#view-quality-overview .metric-sub');
+      if (subs.length >= 2) {
+        subs[1].textContent = a.rule + ' active rules';
+      }
+
+      // Update the coverage split bar
+      const splitBars = document.querySelectorAll('#view-quality-overview .qc-body div[style*="display:flex;height:20px"] div');
+      if (splitBars.length >= 3) {
+        splitBars[0].style.width = a.rule_pct + '%';
+        splitBars[0].textContent = 'Rules ' + a.rule_pct + '%';
+        splitBars[1].style.width = a.aito_pct + '%';
+        splitBars[1].textContent = 'Aito ' + a.aito_pct + '%';
+        splitBars[2].style.width = a.human_pct + '%';
+        splitBars[2].textContent = a.human_pct + '%';
+      }
+    }
+
+    // Human Overrides — override counts
+    if (data.overrides) {
+      const o = data.overrides;
+      const els = document.querySelectorAll('#view-quality-overrides .metric-value');
+      if (els.length >= 1) {
+        els[0].textContent = o.total;
+      }
+
+      // Update override-by-field bars
+      const bars = document.querySelectorAll('#view-quality-overrides .bar-val');
+      const fields = ['gl_code', 'approver', 'cost_centre'];
+      fields.forEach((f, i) => {
+        if (bars[i] && o.by_field[f] !== undefined) {
+          bars[i].textContent = o.by_field[f];
+        }
+      });
+    }
+
+    // Override patterns
+    if (data.override_patterns && data.override_patterns.length > 0) {
+      const pats = data.override_patterns;
+      const els = document.querySelectorAll('#view-quality-overrides .metric-value');
+      if (els.length >= 2) {
+        els[1].textContent = pats.length;
+      }
+    }
+  } catch (e) {
+    // API not running
+  }
+}
+
 loadInvoicePredictions();
 loadFormFillVendors();
 loadPaymentMatching();
 loadAnomalies();
 loadRuleCandidates();
+loadQualityOverview();
 
 // Draw confidence distribution bars
 (function(){

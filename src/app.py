@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.aito_client import AitoClient, AitoError
 from src.anomaly_service import scan_all
 from src.config import load_config
+from src.quality_service import get_quality_overview
 from src.formfill_service import KNOWN_VENDORS, predict_fields
 from src.invoice_service import DEMO_INVOICES, compute_metrics, predict_batch
 from src.matching_service import match_all
@@ -120,3 +121,13 @@ def anomalies_scan():
     anomaly signal. No separate anomaly model needed.
     """
     return scan_all(aito)
+
+
+@app.get("/api/quality/overview")
+def quality_overview():
+    """Aggregate quality metrics for the dashboard.
+
+    Returns automation breakdown, override statistics, and emerging
+    patterns from override data — closing the feedback loop.
+    """
+    return get_quality_overview(aito)
