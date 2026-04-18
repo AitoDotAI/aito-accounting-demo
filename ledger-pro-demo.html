@@ -517,12 +517,10 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
         <div class="metric"><div class="metric-label">Avg detection time</div><div class="metric-value" style="font-size:16px">14 min</div><div class="metric-sub metric-up">↓ 3 min vs last month</div></div>
       </div>
       <div class="card">
-        <div class="card-header"><span class="card-title">Flagged transactions</span><span class="card-hint">Ranked by anomaly score</span></div>
-        <div class="anomaly-row"><div class="anomaly-icon high"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2L1 12h12L7 2z" stroke="#8b1a1a" stroke-width="1.3"/><path d="M7 6v3M7 10.5v.5" stroke="#8b1a1a" stroke-width="1.3" stroke-linecap="round"/></svg></div><div class="anomaly-body"><div class="anomaly-title">Duplicate invoice detected — INV-2801 &amp; INV-2844</div><div class="anomaly-sub">Same vendor, amount within 1%, issued 3 days apart · anomaly score 0.97</div></div><div><span class="badge badge-red">High</span></div><div class="anomaly-amount" style="margin-left:16px">€3,100</div></div>
-        <div class="anomaly-row"><div class="anomaly-icon high"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2L1 12h12L7 2z" stroke="#8b1a1a" stroke-width="1.3"/><path d="M7 6v3M7 10.5v.5" stroke="#8b1a1a" stroke-width="1.3" stroke-linecap="round"/></svg></div><div class="anomaly-body"><div class="anomaly-title">Unusual amount — Fazer Bakeries far above historical avg</div><div class="anomaly-sub">€22,400 vs avg €2,100 for this vendor · anomaly score 0.93</div></div><div><span class="badge badge-red">High</span></div><div class="anomaly-amount" style="margin-left:16px">€22,400</div></div>
-        <div class="anomaly-row"><div class="anomaly-icon high"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2L1 12h12L7 2z" stroke="#8b1a1a" stroke-width="1.3"/><path d="M7 6v3M7 10.5v.5" stroke="#8b1a1a" stroke-width="1.3" stroke-linecap="round"/></svg></div><div class="anomaly-body"><div class="anomaly-title">New vendor, high amount, routed to personal account</div><div class="anomaly-sub">First invoice from this vendor · anomaly score 0.91</div></div><div><span class="badge badge-red">High</span></div><div class="anomaly-amount" style="margin-left:16px">€8,750</div></div>
-        <div class="anomaly-row"><div class="anomaly-icon medium"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="#92610a" stroke-width="1.3"/><path d="M7 4.5v3M7 9v.5" stroke="#92610a" stroke-width="1.3" stroke-linecap="round"/></svg></div><div class="anomaly-body"><div class="anomaly-title">GL code mismatch — predicted 4400 but invoiced as 5100</div><div class="anomaly-sub">Kesko Oyj · always used 4400 in 47 prior invoices · score 0.78</div></div><div><span class="badge badge-amber">Medium</span></div><div class="anomaly-amount" style="margin-left:16px">€4,220</div></div>
-        <div class="anomaly-row"><div class="anomaly-icon medium"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="#92610a" stroke-width="1.3"/><path d="M7 4.5v3M7 9v.5" stroke="#92610a" stroke-width="1.3" stroke-linecap="round"/></svg></div><div class="anomaly-body"><div class="anomaly-title">Weekend submission — invoice created Saturday 23:44</div><div class="anomaly-sub">SOK Corporation · unusual submission time · score 0.71</div></div><div><span class="badge badge-amber">Medium</span></div><div class="anomaly-amount" style="margin-left:16px">€7,850</div></div>
+        <div class="card-header"><span class="card-title">Flagged transactions</span><span class="card-hint">Ranked by anomaly score · powered by inverse _predict</span></div>
+        <div id="anomaly-list">
+          <div style="padding:24px 20px;text-align:center;font-size:13px;color:var(--text3)">Loading anomaly scan...</div>
+        </div>
       </div>
     </div>
   </div>
@@ -1072,6 +1070,55 @@ async function loadPaymentMatching() {
   }
 }
 
+// ── Anomaly Detection ─────────────────────────────────────────────
+const SEVERITY_ICONS = {
+  high: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2L1 12h12L7 2z" stroke="#8b1a1a" stroke-width="1.3"/><path d="M7 6v3M7 10.5v.5" stroke="#8b1a1a" stroke-width="1.3" stroke-linecap="round"/></svg>',
+  medium: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="#92610a" stroke-width="1.3"/><path d="M7 4.5v3M7 9v.5" stroke="#92610a" stroke-width="1.3" stroke-linecap="round"/></svg>',
+  low: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="#6b4f0e" stroke-width="1.3"/><path d="M7 5v3" stroke="#6b4f0e" stroke-width="1.3" stroke-linecap="round"/></svg>',
+};
+const SEVERITY_BADGE = {
+  high: '<span class="badge badge-red">High</span>',
+  medium: '<span class="badge badge-amber">Medium</span>',
+  low: '<span class="badge badge-gold">Low</span>',
+};
+
+function renderAnomalyRow(f) {
+  return `<div class="anomaly-row">
+    <div class="anomaly-icon ${f.severity}">${SEVERITY_ICONS[f.severity]}</div>
+    <div class="anomaly-body"><div class="anomaly-title">${f.title}</div><div class="anomaly-sub">${f.description}</div></div>
+    <div>${SEVERITY_BADGE[f.severity]}</div>
+    <div class="anomaly-amount" style="margin-left:16px">${fmtAmount(f.amount)}</div>
+  </div>`;
+}
+
+async function loadAnomalies() {
+  try {
+    const resp = await fetch(API_BASE + '/api/anomalies/scan');
+    if (!resp.ok) return;
+    const data = await resp.json();
+
+    const list = document.getElementById('anomaly-list');
+    if (list && data.flags && data.flags.length > 0) {
+      list.innerHTML = data.flags.map(renderAnomalyRow).join('');
+    } else if (list) {
+      list.innerHTML = '<div style="padding:24px 20px;text-align:center;font-size:13px;color:var(--text3)">No anomalies detected</div>';
+    }
+
+    if (data.metrics) {
+      const m = data.metrics;
+      const els = document.querySelectorAll('#view-anomaly .metric-value');
+      if (els.length >= 2) {
+        els[0].textContent = m.total;
+        els[1].textContent = m.high;
+      }
+      const topSub = document.querySelector('#view-anomaly .topbar-sub');
+      if (topSub) topSub.textContent = m.high + ' high · ' + m.medium + ' medium · ' + m.low + ' low · scanned ' + m.scanned + ' invoices';
+    }
+  } catch (e) {
+    // API not running
+  }
+}
+
 // ── Rule Mining ────────────────────────────────────────────────────
 function strengthBadge(s) {
   if (s === 'strong') return '<span class="badge badge-green">Strong</span>';
@@ -1143,6 +1190,7 @@ async function loadRuleCandidates() {
 loadInvoicePredictions();
 loadFormFillVendors();
 loadPaymentMatching();
+loadAnomalies();
 loadRuleCandidates();
 
 // Draw confidence distribution bars

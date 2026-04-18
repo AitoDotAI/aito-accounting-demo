@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.aito_client import AitoClient, AitoError
+from src.anomaly_service import scan_all
 from src.config import load_config
 from src.formfill_service import KNOWN_VENDORS, predict_fields
 from src.invoice_service import DEMO_INVOICES, compute_metrics, predict_batch
@@ -108,3 +109,14 @@ def rules_candidates():
     "when condition X is true, GL code is Y (N/M times)".
     """
     return mine_rules(aito)
+
+
+@app.get("/api/anomalies/scan")
+def anomalies_scan():
+    """Scan invoices for anomalies using inverse prediction.
+
+    Predicts GL code and approver for each invoice. Low confidence
+    means the invoice doesn't fit known patterns — that's the
+    anomaly signal. No separate anomaly model needed.
+    """
+    return scan_all(aito)
