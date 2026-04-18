@@ -1,16 +1,17 @@
-"""Smart form fill service — multi-field prediction from vendor name.
+"""Smart form fill service — multi-field prediction.
 
-Given a vendor name, predicts GL code, approver, cost centre, VAT %,
-payment method, and due terms. Each prediction is an independent Aito
-_predict call. In a production system these would run in parallel;
-here they're sequential for simplicity and readability.
+Given any combination of known fields, predicts the remaining fields.
+Type a vendor → GL code, approver, VAT fill in. Type an amount →
+predictions refine. Each field returns top-3 alternatives with $why
+explanations so the UI can show dropdowns and factor breakdowns.
 """
 
 from src.aito_client import AitoClient, AitoError
-from src.invoice_service import GL_LABELS
+from src.invoice_service import GL_LABELS, _extract_alternatives, _extract_why_factors
 
-# Fields to predict, with display labels and formatting
+# Fields that can be predicted, with display labels and formatting
 PREDICT_FIELDS = [
+    {"field": "vendor", "label": "Vendor", "format": "text"},
     {"field": "gl_code", "label": "GL Account", "format": "gl"},
     {"field": "approver", "label": "Approver", "format": "text"},
     {"field": "cost_centre", "label": "Cost centre", "format": "text"},
@@ -19,7 +20,10 @@ PREDICT_FIELDS = [
     {"field": "due_days", "label": "Due terms", "format": "days"},
 ]
 
-# Cost centre labels for display
+# All field names that can be used as input context
+INPUT_FIELDS = {"vendor", "amount", "gl_code", "approver", "cost_centre",
+                "vat_pct", "payment_method", "due_days", "category"}
+
 COST_CENTRE_LABELS = {
     "CC-100": "General & Admin",
     "CC-210": "Retail Operations",
@@ -28,67 +32,70 @@ COST_CENTRE_LABELS = {
 }
 
 
+def _label_map_for_field(field_name: str) -> dict | None:
+    if field_name == "gl_code":
+        return GL_LABELS
+    if field_name == "cost_centre":
+        return COST_CENTRE_LABELS
+    return None
+
+
 def format_value(value: str, fmt: str) -> str:
     """Format a predicted value for display."""
     if fmt == "gl":
         label = GL_LABELS.get(value, value)
-        return f"{value} — {label}"
+        return f"{value} \u2014 {label}"
     if fmt == "pct":
         return f"{value}%"
     if fmt == "days":
         return f"Net {value} days"
     if fmt == "text":
         if value in COST_CENTRE_LABELS:
-            return f"{value} — {COST_CENTRE_LABELS[value]}"
+            return f"{value} \u2014 {COST_CENTRE_LABELS[value]}"
         return value
     return value
 
 
-def predict_fields(client: AitoClient, vendor: str, amount: float | None = None) -> dict:
-    """Predict all form fields for a given vendor.
+def predict_fields(client: AitoClient, where: dict) -> dict:
+    """Predict form fields not already provided in `where`.
 
-    Returns a dict with field predictions and metadata:
-    {
-        "vendor": "Kesko Oyj",
-        "fields": [
-            {
-                "field": "gl_code",
-                "label": "GL Account",
-                "value": "4400 — Supplies",
-                "raw_value": "4400",
-                "confidence": 0.91,
-                "predicted": true
-            },
-            ...
-        ],
-        "predicted_count": 6,
-        "avg_confidence": 0.89
-    }
+    Accepts any combination of known fields as input context.
+    Returns predictions for the remaining fields, each with top-3
+    alternatives and $why explanations.
     """
-    where = {"vendor": vendor}
-    if amount is not None:
-        where["amount"] = amount
+    # Determine which fields to predict (skip fields already provided)
+    provided = set(where.keys())
+    fields_to_predict = [
+        fd for fd in PREDICT_FIELDS
+        if fd["field"] not in provided
+    ]
 
     fields = []
     confidences = []
 
-    for field_def in PREDICT_FIELDS:
+    for field_def in fields_to_predict:
         field_name = field_def["field"]
         try:
             result = client.predict("invoices", where, field_name)
-            top = result["hits"][0] if result.get("hits") else None
+            hits = result.get("hits", [])
+            top = hits[0] if hits else None
 
             if top and top["$p"] > 0.10:
                 raw_value = str(top["feature"])
                 display_value = format_value(raw_value, field_def["format"])
-                confidence = round(top["$p"], 2)
+                confidence = round(top["$p"], 4)
+
+                label_map = _label_map_for_field(field_name)
+                alternatives = _extract_alternatives(hits, label_map)
+
                 fields.append({
                     "field": field_name,
                     "label": field_def["label"],
                     "value": display_value,
                     "raw_value": raw_value,
-                    "confidence": confidence,
+                    "confidence": round(confidence, 2),
                     "predicted": True,
+                    "alternatives": alternatives,
                 })
                 confidences.append(confidence)
             else:
@@ -99,6 +106,7 @@ def predict_fields(client: AitoClient, vendor: str, amount: float | None = None)
                     "raw_value": None,
                     "confidence": 0.0,
                     "predicted": False,
+                    "alternatives": [],
                 })
         except AitoError:
             fields.append({
@@ -108,20 +116,20 @@ def predict_fields(client: AitoClient, vendor: str, amount: float | None = None)
                 "raw_value": None,
                 "confidence": 0.0,
                 "predicted": False,
+                "alternatives": [],
             })
 
     predicted_count = sum(1 for f in fields if f["predicted"])
     avg_confidence = round(sum(confidences) / len(confidences), 2) if confidences else 0.0
 
     return {
-        "vendor": vendor,
+        "where": where,
         "fields": fields,
         "predicted_count": predicted_count,
         "avg_confidence": avg_confidence,
     }
 
 
-# Known vendors for the dropdown — curated for demo variety
 KNOWN_VENDORS = [
     "Kesko Oyj",
     "Telia Finland",
@@ -134,5 +142,5 @@ KNOWN_VENDORS = [
     "Microsoft Ireland",
     "Hartwall Oy",
     "Elisa Oyj",
-    "Wärtsilä Oyj",
+    "W\u00e4rtsil\u00e4 Oyj",
 ]

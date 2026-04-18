@@ -89,18 +89,20 @@ def formfill_vendors():
 
 @app.post("/api/formfill/predict")
 def formfill_predict(body: dict):
-    """Predict multiple form fields from a vendor name.
+    """Predict form fields from any combination of known fields.
 
-    Accepts: {"vendor": "Kesko Oyj", "amount": 4220}
-    Returns predictions for GL code, approver, cost centre, VAT %,
-    payment method, and due terms — each with confidence scores.
+    Accepts any subset: {"vendor": "Kesko Oyj"} or {"amount": 4220}
+    or {"vendor": "Kesko Oyj", "gl_code": "4400"}.
+
+    Returns predictions for fields NOT provided in the request,
+    each with top-3 alternatives and $why explanations.
     """
-    vendor = body.get("vendor", "")
-    if not vendor:
-        return {"error": "vendor is required"}
+    from src.formfill_service import INPUT_FIELDS
+    where = {k: v for k, v in body.items() if k in INPUT_FIELDS and v}
+    if not where:
+        return {"error": "at least one field is required"}
 
-    amount = body.get("amount")
-    return predict_fields(aito, vendor, amount)
+    return predict_fields(aito, where)
 
 
 @app.get("/api/matching/pairs")

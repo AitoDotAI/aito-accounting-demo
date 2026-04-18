@@ -21,7 +21,7 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 .app{display:flex;height:100vh;overflow:hidden}
 .nav{width:230px;min-width:230px;background:var(--nav);display:flex;flex-direction:column;overflow-y:auto;border-right:1px solid var(--nav-border)}
 .main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
-.aito-panel{width:268px;min-width:268px;background:var(--aito-bg);display:flex;flex-direction:column;overflow-y:auto;border-left:1px solid var(--aito-border)}
+.aito-panel{width:268px;min-width:268px;background:var(--aito-bg);display:flex;flex-direction:column;overflow-y:auto;border-left:1px solid var(--aito-border);z-index:1}
 
 /* NAV */
 .nav-logo{padding:22px 18px 18px;border-bottom:1px solid var(--nav-border)}
@@ -102,12 +102,15 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 /* WHY TOOLTIP */
 .why-btn{width:18px;height:18px;border-radius:50%;background:var(--gold-mid);color:#fff;border:none;font-size:10px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;margin-left:4px;flex-shrink:0;transition:background .15s}
 .why-btn:hover{background:var(--gold-bright)}
-.why-panel{background:var(--surface);border:1px solid var(--gold-mid);border-radius:8px;padding:12px 16px;margin-top:8px;font-size:12px;line-height:1.6}
-.why-title{font-weight:600;color:var(--gold-dark);margin-bottom:8px;font-size:13px}
-.why-factor{display:flex;align-items:center;gap:8px;padding:3px 0;color:var(--text2);font-size:12px}
-.why-factor-field{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--gold-dark);font-weight:500;min-width:80px}
-.why-factor-value{font-family:'IBM Plex Mono',monospace;font-size:11px}
-.why-factor-lift{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text3);margin-left:auto}
+.why-popup{position:absolute;bottom:calc(100% + 10px);left:50%;transform:translateX(-50%);width:320px;background:var(--surface);border:1px solid var(--gold-mid);border-radius:10px;padding:14px 18px;font-size:12px;line-height:1.6;box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:1000}
+.why-popup::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:6px solid transparent;border-top-color:var(--gold-mid)}
+.why-title{font-weight:600;color:var(--gold-dark);margin-bottom:2px;font-size:13px}
+.why-subtitle{font-size:10px;color:var(--text3);margin-bottom:10px}
+.why-factor{display:flex;align-items:center;gap:8px;padding:5px 8px;color:var(--text2);font-size:12px;background:var(--surface2);border-radius:4px;margin-bottom:4px}
+.why-factor-field{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--gold-dark);font-weight:500;min-width:90px}
+.why-factor-value{font-family:'IBM Plex Mono',monospace;font-size:11px;flex:1}
+.why-factor-lift{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--green);font-weight:500;margin-left:auto}
+.why-footer{font-size:10px;color:var(--text3);margin-top:8px;padding-top:8px;border-top:1px solid var(--border2)}
 
 /* CONFIDENCE */
 .conf{display:flex;align-items:center;gap:7px}
