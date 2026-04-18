@@ -393,26 +393,16 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
       </div>
       <div class="card">
         <div class="card-header"><span class="card-title">Invoice ↔ Bank transaction matching</span><span class="card-hint">Aito matches on vendor, amount pattern, timing and historical pairing</span></div>
-        <div style="display:grid;grid-template-columns:1fr auto 1fr">
+        <div id="pm-grid" style="display:grid;grid-template-columns:1fr auto 1fr">
           <div>
             <div style="padding:10px 20px;font-size:10.5px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;background:var(--surface2);border-bottom:1px solid var(--border2)">Open invoices</div>
-            <div class="match-item matched"><div class="match-name">Telia Finland · INV-2838</div><div class="match-detail">€890.50 · due 12 Apr</div></div>
-            <div class="match-item selected"><div class="match-name">Kesko Oyj · INV-2835</div><div class="match-detail">€4,220.00 · due 14 Apr</div></div>
-            <div class="match-item"><div class="match-name">SOK Corporation · INV-2839</div><div class="match-detail">€7,850.00 · due 18 Apr</div></div>
-            <div class="match-item"><div class="match-name">Unknown Vendor GmbH · INV-2844</div><div class="match-detail">€3,100.00 · due 22 Apr</div></div>
+            <div id="pm-invoices"><div style="padding:16px 20px;font-size:13px;color:var(--text3)">Loading...</div></div>
           </div>
-          <div style="width:80px;display:flex;flex-direction:column;align-items:center;padding-top:46px;gap:56px;border-left:1px solid var(--border2);border-right:1px solid var(--border2)">
-            <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><div style="height:1px;width:44px;background:#6ab87a"></div><span class="badge badge-green" style="font-size:10px">0.99</span></div>
-            <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><div style="height:1px;width:44px;background:var(--gold-mid)"></div><span class="badge badge-gold" style="font-size:10px">0.87</span></div>
-            <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><div style="height:1px;width:44px;background:var(--border)"></div><span style="font-size:10px;color:var(--text3)">—</span></div>
-            <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><div style="height:1px;width:44px;background:var(--border)"></div><span style="font-size:10px;color:var(--text3)">—</span></div>
+          <div id="pm-connectors" style="width:80px;display:flex;flex-direction:column;align-items:center;padding-top:10px;gap:0;border-left:1px solid var(--border2);border-right:1px solid var(--border2)">
           </div>
           <div>
             <div style="padding:10px 20px;font-size:10.5px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;background:var(--surface2);border-bottom:1px solid var(--border2)">Bank transactions</div>
-            <div class="match-item matched"><div class="match-name">TELIA FINLAND OY</div><div class="match-detail">€890.50 · 11 Apr · OP Bank</div></div>
-            <div class="match-item selected"><div class="match-name">KESKO OYJ HELSINKI</div><div class="match-detail">€4,220.00 · 13 Apr · OP Bank</div></div>
-            <div class="match-item"><div class="match-name">SOK CORPORATION</div><div class="match-detail">€7,852.00 · 15 Apr · Nordea</div></div>
-            <div class="match-item"><div class="match-name">VENDOR GMBH BERLIN</div><div class="match-detail">€3,099.00 · 16 Apr · SEPA</div></div>
+            <div id="pm-bank"><div style="padding:16px 20px;font-size:13px;color:var(--text3)">Loading...</div></div>
           </div>
         </div>
       </div>
@@ -828,9 +818,9 @@ function tab(el, paneId){
 }
 
 // ── Live API integration ──────────────────────────────────────────
-// Fetches real predictions from the backend (./do dev on port 8000).
+// Fetches real predictions from the backend (./do dev on port 8200).
 // If the API is unreachable, the static mockup data stays visible.
-const API_BASE = 'http://localhost:8000';
+const API_BASE = 'http://localhost:8200';
 
 function confClass(p) {
   if (p >= 0.80) return 'conf-high';
@@ -1025,6 +1015,63 @@ async function loadFormFillVendors() {
   }
 }
 
+// ── Payment Matching ──────────────────────────────────────────────
+function connectorHtml(pair) {
+  if (pair.status === 'matched') {
+    return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 0"><div style="height:1px;width:44px;background:#6ab87a"></div><span class="badge badge-green" style="font-size:10px">${pair.confidence.toFixed(2)}</span></div>`;
+  }
+  if (pair.status === 'suggested') {
+    return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 0"><div style="height:1px;width:44px;background:var(--gold-mid)"></div><span class="badge badge-gold" style="font-size:10px">${pair.confidence.toFixed(2)}</span></div>`;
+  }
+  return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 0"><div style="height:1px;width:44px;background:var(--border);border-top:1px dashed var(--text3)"></div><span style="font-size:10px;color:var(--text3)">—</span></div>`;
+}
+
+async function loadPaymentMatching() {
+  try {
+    const resp = await fetch(API_BASE + '/api/matching/pairs');
+    if (!resp.ok) return;
+    const data = await resp.json();
+
+    const invCol = document.getElementById('pm-invoices');
+    const conCol = document.getElementById('pm-connectors');
+    const bankCol = document.getElementById('pm-bank');
+    if (!invCol || !conCol || !bankCol) return;
+
+    let invHtml = '', conHtml = '', bankHtml = '';
+
+    data.pairs.forEach(p => {
+      const cls = p.status === 'matched' ? 'match-item matched' : p.status === 'suggested' ? 'match-item selected' : 'match-item';
+      invHtml += `<div class="${cls}"><div class="match-name">${p.invoice_vendor} · ${p.invoice_id}</div><div class="match-detail">${fmtAmount(p.invoice_amount)}</div></div>`;
+      conHtml += connectorHtml(p);
+      if (p.bank_txn_id) {
+        bankHtml += `<div class="${cls}"><div class="match-name">${p.bank_description}</div><div class="match-detail">${fmtAmount(p.bank_amount)} · ${p.bank_name}</div></div>`;
+      } else {
+        bankHtml += `<div class="match-item"><div class="match-name" style="color:var(--text3)">No match found</div><div class="match-detail">—</div></div>`;
+      }
+    });
+
+    invCol.innerHTML = invHtml;
+    conCol.innerHTML = conHtml;
+    bankCol.innerHTML = bankHtml;
+
+    // Update metrics
+    if (data.metrics) {
+      const m = data.metrics;
+      const els = document.querySelectorAll('#view-payment .metric-value');
+      if (els.length >= 4) {
+        els[0].textContent = Math.round(m.match_rate * 100) + '%';
+        els[1].textContent = m.avg_confidence.toFixed(2);
+        els[2].textContent = m.matched + m.suggested;
+        els[3].textContent = m.unmatched;
+      }
+      const topSub = document.querySelector('#view-payment .topbar-sub');
+      if (topSub) topSub.textContent = m.total + ' invoices · ' + m.matched + ' matched · ' + m.suggested + ' suggested · ' + m.unmatched + ' unmatched';
+    }
+  } catch (e) {
+    // API not running — keep loading state
+  }
+}
+
 // ── Rule Mining ────────────────────────────────────────────────────
 function strengthBadge(s) {
   if (s === 'strong') return '<span class="badge badge-green">Strong</span>';
@@ -1095,6 +1142,7 @@ async function loadRuleCandidates() {
 // Load live data on page load
 loadInvoicePredictions();
 loadFormFillVendors();
+loadPaymentMatching();
 loadRuleCandidates();
 
 // Draw confidence distribution bars

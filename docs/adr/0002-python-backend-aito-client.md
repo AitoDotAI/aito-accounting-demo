@@ -30,7 +30,7 @@ Build a thin FastAPI application with:
    `GET /api/health` (returns Aito connectivity status) and
    `GET /api/schema` (returns current Aito table schema).
 
-4. **`./do dev`** — starts the backend with uvicorn on port 8000.
+4. **`./do dev`** — starts the backend with uvicorn on port 8200.
 
 The client is intentionally thin. Outside developers reading this code
 should see direct Aito HTTP calls with clear request/response shapes,
@@ -43,7 +43,7 @@ not abstraction layers that hide what's happening.
 
 ## Acceptance criteria
 
-- `./do dev` starts the FastAPI app on port 8000
+- `./do dev` starts the FastAPI app on port 8200
 - `GET /api/health` returns `{"status": "ok", "aito_connected": true}`
   when Aito is reachable, or `aito_connected: false` with details
 - `GET /api/schema` proxies the Aito schema response

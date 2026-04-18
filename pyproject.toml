@@ -1,0 +1,17 @@
+[project]
+name = "aito-accounting-demo"
+version = "0.1.0"
+description = "OSS reference project demonstrating Aito.ai in accounting automation"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.110,<1",
+    "uvicorn[standard]>=0.29,<1",
+    "httpx>=0.27,<1",
+    "python-dotenv>=1.0,<2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0,<9",
+    "pytest-httpx>=0.30,<1",
+]

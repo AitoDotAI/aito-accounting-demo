@@ -139,6 +139,32 @@ class AitoClient:
         }
         return self._request("POST", "/_relate", json=query)
 
+    def match(self, table: str, where: dict, match_field: str, limit: int = 5) -> dict:
+        """Run a _match query to find records related to a context.
+
+        Unlike _predict (which guesses a field value), _match finds
+        which existing records best associate with the given context.
+        Think of it as "recommendation" — given these features, which
+        records are most relevant?
+
+        Example:
+            client.match(
+                table="bank_transactions",
+                where={"description": "KESKO OYJ", "amount": 4220},
+                match_field="invoice_id",
+            )
+
+        Returns hits with the matched field value and $p score:
+            {"$p": 0.056, "invoice_id": "INV-2628"}
+        """
+        query = {
+            "from": table,
+            "where": where,
+            "match": match_field,
+            "limit": limit,
+        }
+        return self._request("POST", "/_match", json=query)
+
     def search(self, table: str, where: dict, limit: int = 10) -> dict:
         """Run a _search query to retrieve matching rows.
 

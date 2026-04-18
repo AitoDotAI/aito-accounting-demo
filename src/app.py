@@ -11,6 +11,7 @@ from src.aito_client import AitoClient, AitoError
 from src.config import load_config
 from src.formfill_service import KNOWN_VENDORS, predict_fields
 from src.invoice_service import DEMO_INVOICES, compute_metrics, predict_batch
+from src.matching_service import match_all
 from src.rulemining_service import mine_rules
 
 config = load_config()
@@ -86,6 +87,16 @@ def formfill_predict(body: dict):
 
     amount = body.get("amount")
     return predict_fields(aito, vendor, amount)
+
+
+@app.get("/api/matching/pairs")
+def matching_pairs():
+    """Match open invoices to bank transactions.
+
+    Returns matched, suggested, and unmatched pairs with confidence
+    scores based on vendor name similarity and amount proximity.
+    """
+    return match_all(aito)
 
 
 @app.get("/api/rules/candidates")

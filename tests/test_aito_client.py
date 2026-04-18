@@ -118,6 +118,38 @@ class TestPredict:
             )
 
 
+class TestMatch:
+    def test_match_sends_correct_query_and_returns_full_rows(self, httpx_mock):
+        """Aito _match returns full rows from the linked table."""
+        httpx_mock.add_response(
+            url="https://test.aito.app/db/demo/api/v1/_match",
+            json={
+                "offset": 0,
+                "total": 1,
+                "hits": [
+                    {"$p": 0.19, "invoice_id": "INV-2628", "vendor": "Kesko Oyj",
+                     "amount": 1599.57, "gl_code": "4400"},
+                ],
+            },
+        )
+
+        result = make_client().match(
+            table="bank_transactions",
+            where={"description": "KESKO OYJ", "amount": 4220},
+            match_field="invoice_id",
+            limit=3,
+        )
+
+        assert result["hits"][0]["vendor"] == "Kesko Oyj"
+        assert result["hits"][0]["$p"] > 0
+
+        import json
+        body = json.loads(httpx_mock.get_request().content)
+        assert body["from"] == "bank_transactions"
+        assert body["match"] == "invoice_id"
+        assert body["limit"] == 3
+
+
 class TestRelate:
     def test_relate_returns_statistical_relationships(self, httpx_mock):
         """Aito _relate returns rich stats: related value, lift, counts, probabilities."""

@@ -2,20 +2,18 @@
 
 let
   python = pkgs.python312;
-  pythonPackages = python.pkgs;
 in
 pkgs.mkShell {
-  name = "aito-accounting-poc";
+  name = "aito-accounting-demo";
 
   buildInputs = [
-    # Python backend
+    # Python
     python
-    pythonPackages.pip
-    pythonPackages.virtualenv
+    pkgs.uv
 
-    # Node / Next.js frontend
+    # Node / Next.js frontend (future)
     pkgs.nodejs_20
-    pkgs.corepack # enables pnpm/yarn via packageManager field
+    pkgs.corepack
 
     # Playwright system dependencies
     pkgs.playwright-driver.browsers
@@ -23,27 +21,17 @@ pkgs.mkShell {
     # Dev tools
     pkgs.jq
     pkgs.curl
-    pkgs.httpie # nicer than curl for API testing
-    pkgs.watchexec # file watcher for ./do dev
+    pkgs.httpie
+    pkgs.watchexec
   ];
 
   shellHook = ''
-    # Python virtualenv (keeps nix shell pure, pip installs isolated)
-    if [ ! -d .venv ]; then
-      echo "Creating Python virtualenv..."
-      python -m venv .venv
-    fi
-    source .venv/bin/activate
+    # Let uv manage the virtualenv
+    export UV_PYTHON_PREFERENCE=only-system
 
-    # Install Python deps if requirements.txt exists and changed
-    if [ -f requirements.txt ]; then
-      pip install -q -r requirements.txt
-    fi
-
-    # Install Node deps if package.json exists
-    if [ -f frontend/package.json ] && [ ! -d frontend/node_modules ]; then
-      echo "Installing frontend dependencies..."
-      (cd frontend && npm install)
+    # Sync deps on shell entry
+    if [ -f pyproject.toml ]; then
+      uv sync --quiet 2>/dev/null || true
     fi
 
     # Playwright browser path (use nix-managed browsers)
@@ -51,7 +39,7 @@ pkgs.mkShell {
     export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
     # Project env
-    export AITO_API_URL="''${AITO_API_URL:-http://localhost:8002}"
+    export AITO_API_URL="''${AITO_API_URL:-http://localhost:8200}"
     export AITO_API_KEY="''${AITO_API_KEY:-}"
     export PYTHONDONTWRITEBYTECODE=1
     export PYTHONUNBUFFERED=1
@@ -59,13 +47,13 @@ pkgs.mkShell {
     # Remind if Aito key is missing
     if [ -z "$AITO_API_KEY" ]; then
       echo ""
-      echo "⚠  AITO_API_KEY not set. Export it or add to .env"
-      echo "   export AITO_API_KEY=your-key-here"
+      echo "  AITO_API_KEY not set. Export it or add to .env"
+      echo "  export AITO_API_KEY=your-key-here"
       echo ""
     fi
 
     echo ""
-    echo "Aito Accounting PoC — run ./do help for available commands"
+    echo "Aito Accounting Demo — run ./do help for available commands"
     echo ""
   '';
 }

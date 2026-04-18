@@ -11,7 +11,8 @@
 
 | Operator | Purpose | Used in |
 |----------|---------|---------|
-| `_predict` | Predict a field value given known fields | Invoice Processing, Payment Matching, Smart Form Fill, Anomaly Detection |
+| `_predict` | Predict a field value given known fields | Invoice Processing, Smart Form Fill, Anomaly Detection |
+| `_match` | Find related records across linked tables | Payment Matching |
 | `_relate` | Find statistical relationships between features | Rule Mining, Human Overrides |
 | `_search` | Retrieve matching records | Data lookups |
 
@@ -61,6 +62,47 @@ Same shape as GL code, just different predict target:
   "select": ["$p", "feature", "$why"]
 }
 ```
+
+## Pattern: Payment matching with `_match`
+
+**Query:**
+```json
+{
+  "from": "bank_transactions",
+  "where": {
+    "description": "KESKO OYJ HELSINKI",
+    "amount": 4220
+  },
+  "match": "invoice_id",
+  "limit": 3
+}
+```
+
+**Response shape:**
+```json
+{
+  "offset": 0,
+  "total": 230,
+  "hits": [
+    {
+      "$p": 0.19,
+      "invoice_id": "INV-2628",
+      "vendor": "Kesko Oyj",
+      "amount": 1599.57,
+      "gl_code": "4400"
+    }
+  ]
+}
+```
+
+**Key:** `_match` traverses the schema link from
+`bank_transactions.invoice_id → invoices.invoice_id` and returns
+full invoice rows ranked by association strength. Unlike `_predict`
+(which guesses a single field value), `_match` finds which existing
+records best relate to the given context.
+
+**Requires:** A `link` property on the foreign key column in the
+schema: `"invoice_id": {"type": "String", "link": "invoices.invoice_id"}`
 
 ## Pattern: Rule mining with `_relate`
 

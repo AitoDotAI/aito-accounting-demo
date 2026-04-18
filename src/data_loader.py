@@ -44,14 +44,14 @@ SCHEMAS = {
             "description": {"type": "Text", "nullable": False},
             "amount": {"type": "Decimal", "nullable": False},
             "bank": {"type": "String", "nullable": False},
-            "invoice_id": {"type": "String", "nullable": True},
+            "invoice_id": {"type": "String", "nullable": True, "link": "invoices.invoice_id"},
         },
     },
     "overrides": {
         "type": "table",
         "columns": {
             "override_id": {"type": "String", "nullable": False},
-            "invoice_id": {"type": "String", "nullable": False},
+            "invoice_id": {"type": "String", "nullable": False, "link": "invoices.invoice_id"},
             "field": {"type": "String", "nullable": False},
             "predicted_value": {"type": "String", "nullable": False},
             "corrected_value": {"type": "String", "nullable": False},

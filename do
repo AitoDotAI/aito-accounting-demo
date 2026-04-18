@@ -9,7 +9,7 @@ Usage: ./do <command>
 
 Commands:
   help          Show this help
-  dev           Start the backend API server (port 8000)
+  dev           Start the backend API server (port 8200)
   demo          Open the HTML demo in a browser
   load-data     Upload sample data to Aito
   reset-data    Drop and reload all Aito tables
@@ -23,7 +23,7 @@ EOF
 cmd_dev() {
   echo "Starting Ledger Pro API on http://localhost:8000"
   cd "$SCRIPT_DIR"
-  python -m uvicorn src.app:app --reload --port 8000
+  uv run uvicorn src.app:app --reload --port 8200
 }
 
 cmd_demo() {
@@ -45,17 +45,17 @@ cmd_demo() {
 
 cmd_load_data() {
   cd "$SCRIPT_DIR"
-  python -m src.data_loader
+  uv run python -m src.data_loader
 }
 
 cmd_reset_data() {
   cd "$SCRIPT_DIR"
-  python -m src.data_loader --reset
+  uv run python -m src.data_loader --reset
 }
 
 cmd_test() {
   cd "$SCRIPT_DIR"
-  python -m pytest tests/ -v
+  uv run pytest tests/ -v
 }
 
 cmd_fmt() {
@@ -68,14 +68,14 @@ cmd_check() {
 }
 
 case "${1:-help}" in
-  help)   cmd_help ;;
-  dev)    cmd_dev ;;
+  help)       cmd_help ;;
+  dev)        cmd_dev ;;
   demo)       cmd_demo ;;
   load-data)  cmd_load_data ;;
   reset-data) cmd_reset_data ;;
   test)       cmd_test ;;
-  fmt)    cmd_fmt ;;
-  check)  cmd_check ;;
+  fmt)        cmd_fmt ;;
+  check)      cmd_check ;;
   *)
     echo "Unknown command: $1" >&2
     cmd_help
