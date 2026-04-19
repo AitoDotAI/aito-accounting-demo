@@ -27,30 +27,58 @@ aito = AitoClient(config)
 
 
 def _warm_cache() -> None:
-    """Pre-compute all cacheable endpoints on startup.
+    """Pre-compute all cacheable endpoints on startup in parallel.
 
-    This avoids the slow first-load experience where 50+ Aito calls
-    run sequentially while the user stares at "Loading...".
+    Each endpoint warms in its own thread so rule mining (30+ _relate
+    calls) doesn't block invoices and matching from being ready first.
     """
     import threading
+    from concurrent.futures import ThreadPoolExecutor
 
     def warm():
-        try:
-            if not aito.check_connectivity():
-                return
-            print("Warming cache...")
+        if not aito.check_connectivity():
+            return
+        print("Warming cache...")
+
+        def warm_invoices():
             predictions = predict_batch(aito, DEMO_INVOICES)
             cache.set("invoices_pending", {
                 "invoices": [p.to_dict() for p in predictions],
                 "metrics": compute_metrics(predictions),
             })
+            print("  cached: invoices")
+
+        def warm_matching():
             cache.set("matching_pairs", match_all(aito))
+            print("  cached: matching")
+
+        def warm_rules():
             cache.set("rules_candidates", mine_rules(aito))
+            print("  cached: rules")
+
+        def warm_anomalies():
             cache.set("anomalies_scan", scan_all(aito))
+            print("  cached: anomalies")
+
+        def warm_quality():
             cache.set("quality_overview", get_quality_overview(aito))
-            print("Cache warm.")
-        except Exception as e:
-            print(f"Cache warmup failed: {e}")
+            print("  cached: quality")
+
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            futures = [
+                pool.submit(warm_invoices),
+                pool.submit(warm_matching),
+                pool.submit(warm_rules),
+                pool.submit(warm_anomalies),
+                pool.submit(warm_quality),
+            ]
+            for f in futures:
+                try:
+                    f.result()
+                except Exception as e:
+                    print(f"  warmup error: {e}")
+
+        print("Cache warm.")
 
     threading.Thread(target=warm, daemon=True).start()
 
