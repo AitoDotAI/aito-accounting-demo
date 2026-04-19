@@ -46,11 +46,22 @@ interface MatchResponse {
 }
 
 function connectorBadge(pair: MatchPair) {
-  if (pair.status === "matched")
-    return <><div style={{ height: 1, width: 44, background: "#6ab87a" }} /><span className="badge badge-green" style={{ fontSize: 10 }}>{pair.confidence.toFixed(2)}</span></>;
-  if (pair.status === "suggested")
-    return <><div style={{ height: 1, width: 44, background: "var(--gold-mid)" }} /><span className="badge badge-gold" style={{ fontSize: 10 }}>{pair.confidence.toFixed(2)}</span></>;
-  return <><div style={{ height: 1, width: 44, background: "var(--border)", borderTop: "1px dashed var(--text3)" }} /><span style={{ fontSize: 10, color: "var(--text3)" }}>&mdash;</span></>;
+  if (pair.status === "matched" || pair.status === "suggested") {
+    const color = pair.status === "matched" ? "#6ab87a" : "var(--gold-mid)";
+    const badgeClass = pair.status === "matched" ? "badge badge-green" : "badge badge-gold";
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+        <div style={{ height: 3, width: 48, background: color, borderRadius: 2 }} />
+        <span className={badgeClass} style={{ fontSize: 10 }}>{pair.confidence.toFixed(2)}</span>
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+      <div style={{ height: 0, width: 44, borderTop: "2px dashed var(--border)" }} />
+      <span style={{ fontSize: 10, color: "var(--text3)" }}>&mdash;</span>
+    </div>
+  );
 }
 
 export default function MatchingPage() {
@@ -84,36 +95,38 @@ export default function MatchingPage() {
           </div>
           <div className="card">
             <div className="card-header"><span className="card-title">Invoice &#x2194; Bank transaction matching</span><span className="card-hint">Aito _match traverses schema links</span></div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr" }}>
-              <div>
-                <div style={{ padding: "10px 20px", fontSize: "10.5px", fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", background: "var(--surface2)", borderBottom: "1px solid var(--border2)" }}>Open invoices</div>
-                {(data?.pairs ?? []).map((p) => (
-                  <div key={p.invoice_id} className={`match-item ${p.status === "matched" ? "matched" : p.status === "suggested" ? "suggested" : ""}`}>
-                    <div className="match-name">{p.invoice_vendor} &middot; {p.invoice_id}</div>
-                    <div className="match-detail">{fmtAmount(p.invoice_amount)}</div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ width: 80, display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 10, borderLeft: "1px solid var(--border2)", borderRight: "1px solid var(--border2)" }}>
-                {(data?.pairs ?? []).map((p) => (
-                  <div key={p.invoice_id} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "14px 0" }}>
-                    {connectorBadge(p)}
-                  </div>
-                ))}
-              </div>
-              <div>
-                <div style={{ padding: "10px 20px", fontSize: "10.5px", fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", background: "var(--surface2)", borderBottom: "1px solid var(--border2)" }}>Bank transactions</div>
-                {(data?.pairs ?? []).map((p) => (
-                  <div key={p.invoice_id} className={`match-item ${p.status === "matched" ? "matched" : p.status === "suggested" ? "suggested" : ""}`}>
-                    {p.bank_txn_id ? (
-                      <><div className="match-name">{p.bank_description}</div><div className="match-detail">{fmtAmount(p.bank_amount!)} &middot; {p.bank_name}</div></>
-                    ) : (
-                      <div className="match-name" style={{ color: "var(--text3)" }}>No match found</div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={{ padding: "10px 20px", fontSize: "10.5px", fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", background: "var(--surface2)", borderBottom: "1px solid var(--border2)", textAlign: "left" }}>Open invoices</th>
+                  <th style={{ width: 80, background: "var(--surface2)", borderBottom: "1px solid var(--border2)", borderLeft: "1px solid var(--border2)", borderRight: "1px solid var(--border2)" }} />
+                  <th style={{ padding: "10px 20px", fontSize: "10.5px", fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", background: "var(--surface2)", borderBottom: "1px solid var(--border2)", textAlign: "left" }}>Bank transactions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(data?.pairs ?? []).map((p) => {
+                  const rowClass = p.status === "matched" ? "matched" : p.status === "suggested" ? "suggested" : "";
+                  return (
+                    <tr key={p.invoice_id}>
+                      <td className={`match-item ${rowClass}`} style={{ verticalAlign: "middle" }}>
+                        <div className="match-name">{p.invoice_vendor} &middot; {p.invoice_id}</div>
+                        <div className="match-detail">{fmtAmount(p.invoice_amount)}</div>
+                      </td>
+                      <td style={{ textAlign: "center", verticalAlign: "middle", borderLeft: "1px solid var(--border2)", borderRight: "1px solid var(--border2)", borderBottom: "1px solid var(--border2)" }}>
+                        {connectorBadge(p)}
+                      </td>
+                      <td className={`match-item ${rowClass}`} style={{ verticalAlign: "middle" }}>
+                        {p.bank_txn_id ? (
+                          <><div className="match-name">{p.bank_description}</div><div className="match-detail">{fmtAmount(p.bank_amount!)} &middot; {p.bank_name}</div></>
+                        ) : (
+                          <div className="match-name" style={{ color: "var(--text3)" }}>No match found</div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>

@@ -25,6 +25,38 @@ from src.rulemining_service import mine_rules
 config = load_config()
 aito = AitoClient(config)
 
+
+def _warm_cache() -> None:
+    """Pre-compute all cacheable endpoints on startup.
+
+    This avoids the slow first-load experience where 50+ Aito calls
+    run sequentially while the user stares at "Loading...".
+    """
+    import threading
+
+    def warm():
+        try:
+            if not aito.check_connectivity():
+                return
+            print("Warming cache...")
+            predictions = predict_batch(aito, DEMO_INVOICES)
+            cache.set("invoices_pending", {
+                "invoices": [p.to_dict() for p in predictions],
+                "metrics": compute_metrics(predictions),
+            })
+            cache.set("matching_pairs", match_all(aito))
+            cache.set("rules_candidates", mine_rules(aito))
+            cache.set("anomalies_scan", scan_all(aito))
+            cache.set("quality_overview", get_quality_overview(aito))
+            print("Cache warm.")
+        except Exception as e:
+            print(f"Cache warmup failed: {e}")
+
+    threading.Thread(target=warm, daemon=True).start()
+
+
+_warm_cache()
+
 app = FastAPI(
     title="Ledger Pro — Aito Demo API",
     version="0.1.0",
@@ -112,7 +144,12 @@ def matching_pairs():
     Returns matched, suggested, and unmatched pairs with confidence
     scores based on vendor name similarity and amount proximity.
     """
-    return match_all(aito)
+    cached = cache.get("matching_pairs")
+    if cached:
+        return cached
+    result = match_all(aito)
+    cache.set("matching_pairs", result)
+    return result
 
 
 @app.get("/api/rules/candidates")
@@ -123,7 +160,12 @@ def rules_candidates():
     classification. Each candidate represents a potential rule:
     "when condition X is true, GL code is Y (N/M times)".
     """
-    return mine_rules(aito)
+    cached = cache.get("rules_candidates")
+    if cached:
+        return cached
+    result = mine_rules(aito)
+    cache.set("rules_candidates", result)
+    return result
 
 
 @app.get("/api/anomalies/scan")
@@ -134,7 +176,12 @@ def anomalies_scan():
     means the invoice doesn't fit known patterns — that's the
     anomaly signal. No separate anomaly model needed.
     """
-    return scan_all(aito)
+    cached = cache.get("anomalies_scan")
+    if cached:
+        return cached
+    result = scan_all(aito)
+    cache.set("anomalies_scan", result)
+    return result
 
 
 @app.get("/api/quality/overview")
@@ -144,7 +191,12 @@ def quality_overview():
     Returns automation breakdown, override statistics, and emerging
     patterns from override data — closing the feedback loop.
     """
-    return get_quality_overview(aito)
+    cached = cache.get("quality_overview")
+    if cached:
+        return cached
+    result = get_quality_overview(aito)
+    cache.set("quality_overview", result)
+    return result
 
 
 # Serve Next.js static export — must come after all API routes

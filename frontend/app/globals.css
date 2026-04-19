@@ -217,5 +217,5 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 
 /* LIVE INDICATOR */
-.live-dot{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--green)}
-.live-dot::before{content:'';width:6px;height:6px;background:#6ab87a;border-radius:50%}
+.live-dot{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:#2a8a3a;font-weight:600;padding:3px 10px;background:var(--green-bg);border:1px solid #a8d8b0;border-radius:12px}
+.live-dot::before{content:'';width:7px;height:7px;background:#6ab87a;border-radius:50%;box-shadow:0 0 4px #6ab87a}

@@ -15,6 +15,7 @@ Commands:
   demo            Open the demo (http://localhost:8200 if backend running)
   load-data       Upload sample data to Aito
   reset-data      Drop and reload all Aito tables
+  screenshots     Capture screenshots of all views (needs running server)
   test            Run the test suite
   fmt             Format code
   check           Run all pre-merge checks (test + fmt)
@@ -82,6 +83,64 @@ cmd_fmt() {
   echo "No formatter configured yet."
 }
 
+cmd_screenshots() {
+  echo "Capturing screenshots of all views..."
+  echo "  Waiting for API and cache warmup..."
+  mkdir -p "$SCRIPT_DIR/screenshots"
+
+  # Wait for server + full cache warmup by polling the slowest endpoints
+  for ep in /api/invoices/pending /api/matching/pairs /api/rules/candidates /api/anomalies/scan /api/quality/overview; do
+    for i in $(seq 1 60); do
+      result=$(curl -s http://localhost:8200${ep} 2>/dev/null)
+      if [ -n "$result" ] && echo "$result" | grep -qv '"Loading"'; then
+        break
+      fi
+      sleep 2
+    done
+  done
+  echo "  All endpoints ready."
+
+  # Ensure playwright-core is available
+  if [ ! -d "$SCRIPT_DIR/frontend/node_modules/playwright-core" ]; then
+    (cd "$SCRIPT_DIR/frontend" && npm install --save-dev playwright-core@1.52.0 --silent)
+  fi
+
+  # Find chromium binary from nix
+  local chrome="${PLAYWRIGHT_BROWSERS_PATH}/chromium-1169/chrome-linux/chrome"
+  if [ ! -x "$chrome" ]; then
+    echo "Error: chromium not found at $chrome" >&2
+    echo "Set PLAYWRIGHT_BROWSERS_PATH or enter the nix shell." >&2
+    exit 1
+  fi
+
+  node -e "
+    const { chromium } = require('$SCRIPT_DIR/frontend/node_modules/playwright-core');
+    (async () => {
+      const browser = await chromium.launch({ executablePath: '$chrome', headless: true });
+      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      const routes = [
+        ['01-invoices','/invoices/'],
+        ['02-formfill','/formfill/'],
+        ['03-matching','/matching/'],
+        ['04-rulemining','/rulemining/'],
+        ['05-anomalies','/anomalies/'],
+        ['06-quality-overview','/quality/overview/'],
+        ['07-quality-rules','/quality/rules/'],
+        ['08-quality-predictions','/quality/predictions/'],
+        ['09-quality-overrides','/quality/overrides/'],
+      ];
+      for (const [name, path] of routes) {
+        await page.goto('http://localhost:8200' + path);
+        await page.waitForTimeout(2500);
+        await page.screenshot({ path: '$SCRIPT_DIR/screenshots/' + name + '.png' });
+        console.log('  captured ' + name);
+      }
+      await browser.close();
+    })();
+  "
+  echo "Done. Screenshots in screenshots/"
+}
+
 cmd_check() {
   cmd_test
   cmd_fmt
@@ -95,6 +154,7 @@ case "${1:-help}" in
   demo)            cmd_demo ;;
   load-data)       cmd_load_data ;;
   reset-data)      cmd_reset_data ;;
+  screenshots)     cmd_screenshots ;;
   test)            cmd_test ;;
   fmt)             cmd_fmt ;;
   check)           cmd_check ;;
