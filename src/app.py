@@ -64,13 +64,22 @@ def _warm_cache() -> None:
             cache.set("quality_overview", get_quality_overview(aito))
             print("  cached: quality")
 
-        with ThreadPoolExecutor(max_workers=5) as pool:
+        def warm_formfill():
+            import json as _json
+            for vendor in KNOWN_VENDORS:
+                where = {"vendor": vendor}
+                key = "formfill:" + _json.dumps(where, sort_keys=True)
+                cache.set(key, predict_fields(aito, where))
+            print("  cached: formfill (%d vendors)" % len(KNOWN_VENDORS))
+
+        with ThreadPoolExecutor(max_workers=6) as pool:
             futures = [
                 pool.submit(warm_invoices),
                 pool.submit(warm_matching),
                 pool.submit(warm_rules),
                 pool.submit(warm_anomalies),
                 pool.submit(warm_quality),
+                pool.submit(warm_formfill),
             ]
             for f in futures:
                 try:
@@ -102,12 +111,17 @@ app.add_middleware(
 @app.get("/api/health")
 def health():
     """Check backend and Aito connectivity."""
+    cached = cache.get("health")
+    if cached:
+        return cached
     connected = aito.check_connectivity()
-    return {
+    result = {
         "status": "ok",
         "aito_connected": connected,
         "aito_url": config.aito_api_url,
     }
+    cache.set("health", result, ttl=60)
+    return result
 
 
 @app.get("/api/schema")
@@ -157,12 +171,20 @@ def formfill_predict(body: dict):
     Returns predictions for fields NOT provided in the request,
     each with top-3 alternatives and $why explanations.
     """
+    import json as _json
     from src.formfill_service import INPUT_FIELDS
     where = {k: v for k, v in body.items() if k in INPUT_FIELDS and v}
     if not where:
         return {"error": "at least one field is required"}
 
-    return predict_fields(aito, where)
+    cache_key = "formfill:" + _json.dumps(where, sort_keys=True)
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
+    result = predict_fields(aito, where)
+    cache.set(cache_key, result, ttl=300)
+    return result
 
 
 @app.get("/api/matching/pairs")
