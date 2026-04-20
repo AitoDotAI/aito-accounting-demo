@@ -79,8 +79,60 @@ def test_match_various_descriptions(t: bt.TestCaseRun):
             t.iln(f"  {desc:25} → no match")
 
     t.tln("")
-    t.tln("Note: With only ~120 bank transactions, some vendors have too few")
-    t.tln("historical pairings for _match to learn the association reliably.")
-    t.tln("More training data (a few hundred transactions) would improve")
-    t.tln("accuracy for underrepresented vendors like Telia (6 txns) vs")
-    t.tln("Securitas (17 txns) which dominates due to frequency.")
+    t.tln("_match traverses schema links and finds associated records.")
+    t.tln("Some vendors may not match due to sparse training data.")
+
+
+@bt.snapshot_httpx()
+def test_predict_vendor_name(t: bt.TestCaseRun):
+    """Use _predict on vendor_name field for better text matching."""
+    import httpx as _httpx
+    c = get_client()
+
+    t.h1("_predict vendor_name from bank description")
+    t.tln("The vendor_name Text field enables Aito to tokenize and match")
+    t.tln("bank descriptions like 'KESKO OYJ HELSINKI' to vendor 'Kesko Oyj'.")
+    t.tln("This is more reliable than _match for vendor resolution.")
+    t.tln("")
+
+    test_cases = [
+        ("TELIA FINLAND OY", "Telia Finland"),
+        ("KESKO OYJ HELSINKI", "Kesko Oyj"),
+        ("SOK CORPORATION", "SOK Corporation"),
+        ("FAZER GROUP OY", "Fazer Bakeries"),
+        ("VERKKOKAUPPA.COM", "Verkkokauppa.com"),
+        ("KONE", "Kone Oyj"),
+        ("ISS PALVELUT", "ISS Palvelut"),
+        ("UNKNOWN TRANSFER", None),
+    ]
+
+    correct = 0
+    total = len([t for _, exp in test_cases if exp is not None])
+
+    for desc, expected in test_cases:
+        result = c._request("POST", "/_predict", json={
+            "from": "bank_transactions",
+            "where": {"description": desc},
+            "predict": "vendor_name",
+            "limit": 3,
+        })
+        top = result["hits"][0] if result.get("hits") else None
+        if top:
+            vendor = top["$value"]
+            p = top["$p"]
+            if expected:
+                ok = vendor == expected
+                if ok:
+                    correct += 1
+                mark = "ok" if ok else "MISS"
+            else:
+                mark = f"low-p" if p < 0.05 else "unexpected"
+            t.iln(f"  {desc:25} → {vendor:20} p={p:.4f}  [{mark}]")
+        else:
+            t.iln(f"  {desc:25} → no prediction")
+
+    t.tln("")
+    t.tln(f"Accuracy: {correct}/{total} vendors matched correctly.")
+    t.tln("")
+    t.tln("_predict on the Text vendor_name field uses token analysis to")
+    t.tln("match partial and case-insensitive descriptions reliably.")

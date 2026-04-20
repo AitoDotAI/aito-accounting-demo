@@ -94,37 +94,40 @@ def match_bank_txn_to_invoice(
     We then pick the best match among open invoices by combining
     Aito's $p score with amount proximity.
     """
-    open_ids = {inv["invoice_id"] for inv in open_invoices}
     open_by_vendor = {}
     for inv in open_invoices:
         open_by_vendor.setdefault(inv["vendor"], []).append(inv)
 
+    # Step 1: Use _predict on bank_transactions to resolve vendor name
+    # from the bank description text. This uses Aito's text analysis
+    # to match "KESKO OYJ HELSINKI" → "Kesko Oyj".
     try:
-        result = client.match(
-            table="bank_transactions",
-            where={"description": txn["description"], "amount": txn["amount"]},
-            match_field="invoice_id",
-            limit=20,
-        )
+        vendor_result = client._request("POST", "/_predict", json={
+            "from": "bank_transactions",
+            "where": {"description": txn["description"]},
+            "predict": "vendor_name",
+            "limit": 5,
+        })
     except AitoError:
         return None
 
-    # Find the best open invoice from Aito's matches
+    # Find the best open invoice from Aito's vendor predictions
     best_score = 0.0
     best_invoice = None
     best_p = 0.0
     best_why = None
 
-    for hit in result.get("hits", []):
-        vendor = hit.get("vendor")
+    for hit in vendor_result.get("hits", []):
+        vendor = hit.get("$value")
+        if vendor is None:
+            continue
         aito_p = hit.get("$p", 0)
 
-        # Check if any open invoice matches this vendor
+        # Check if any open invoice matches this predicted vendor
         matching_invoices = open_by_vendor.get(vendor, [])
         for inv in matching_invoices:
             amt_score = _amount_match_score(inv["amount"], txn["amount"])
-            # Combine Aito probability with amount score
-            combined = aito_p * 0.6 + amt_score * 0.4
+            combined = aito_p * 0.5 + amt_score * 0.5
             if combined > best_score:
                 best_score = combined
                 best_invoice = inv
@@ -135,9 +138,8 @@ def match_bank_txn_to_invoice(
         return None
 
     # Classify confidence
-    # Note: Aito _match $p values are spread across all invoices, so
-    # even a strong match may have $p ~0.19. The combined score accounts
-    # for this by weighting amount proximity heavily.
+    # _predict vendor_name gives higher $p values than _match, so
+    # thresholds can be more meaningful.
     if best_score >= 0.30:
         status = "matched"
     elif best_score >= 0.15:

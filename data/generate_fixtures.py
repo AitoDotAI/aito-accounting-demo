@@ -157,6 +157,7 @@ def generate_bank_transactions(invoices: list[dict]) -> list[dict]:
         txn = {
             "transaction_id": f"TXN-{10000 + len(transactions)}",
             "description": bank_desc,
+            "vendor_name": inv["vendor"],
             "amount": bank_amount,
             "bank": bank,
             "invoice_id": inv["invoice_id"],
@@ -168,6 +169,7 @@ def generate_bank_transactions(invoices: list[dict]) -> list[dict]:
         txn = {
             "transaction_id": f"TXN-{10000 + len(transactions)}",
             "description": random.choice(["UNKNOWN PAYMENT", "MISC TRANSFER", "SALARY REFUND", "INSURANCE PREMIUM"]),
+            "vendor_name": None,
             "amount": round_amount(random.uniform(100, 5000)),
             "bank": random.choice(["OP Bank", "Nordea"]),
             "invoice_id": None,

@@ -4,6 +4,7 @@
      * [test_anomaly.py::test_anomaly_normal_vs_unusual](book/test_anomaly.py::test_anomaly_normal_vs_unusual.md)
      * [test_match.py::test_match_known_vendor](book/test_match.py::test_match_known_vendor.md)
      * [test_match.py::test_match_various_descriptions](book/test_match.py::test_match_various_descriptions.md)
+     * [test_match.py::test_predict_vendor_name](book/test_match.py::test_predict_vendor_name.md)
      * [test_predict.py::test_predict_approver_by_vendor](book/test_predict.py::test_predict_approver_by_vendor.md)
      * [test_predict.py::test_predict_gl_code_known_vendor](book/test_predict.py::test_predict_gl_code_known_vendor.md)
      * [test_predict.py::test_predict_gl_code_unknown_vendor](book/test_predict.py::test_predict_gl_code_unknown_vendor.md)

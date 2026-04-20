@@ -9,8 +9,5 @@ _match handles the text similarity via the schema link.
   FAZER GROUP OY            → Fazer Bakeries       p=0.1404  [ok]
   UNKNOWN TRANSFER          → AWS EMEA             p=0.3958  [expected]
 
-Note: With only ~120 bank transactions, some vendors have too few
-historical pairings for _match to learn the association reliably.
-More training data (a few hundred transactions) would improve
-accuracy for underrepresented vendors like Telia (6 txns) vs
-Securitas (17 txns) which dominates due to frequency.
+_match traverses schema links and finds associated records.
+Some vendors may not match due to sparse training data.

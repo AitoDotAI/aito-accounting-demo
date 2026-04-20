@@ -42,6 +42,7 @@ SCHEMAS = {
         "columns": {
             "transaction_id": {"type": "String", "nullable": False},
             "description": {"type": "Text", "nullable": False},
+            "vendor_name": {"type": "Text", "nullable": True},
             "amount": {"type": "Decimal", "nullable": False},
             "bank": {"type": "String", "nullable": False},
             "invoice_id": {"type": "String", "nullable": True, "link": "invoices.invoice_id"},

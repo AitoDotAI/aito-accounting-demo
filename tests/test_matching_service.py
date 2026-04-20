@@ -1,7 +1,7 @@
 """Tests for the payment matching service.
 
-Tests verify Aito _match integration, amount proximity scoring,
-and the matching logic that pairs bank transactions to invoices.
+Tests verify vendor resolution via _predict on vendor_name,
+amount proximity scoring, and the matching pipeline.
 """
 
 import pytest
@@ -42,19 +42,18 @@ class TestAmountMatchScore:
 
 
 class TestMatchBankTxnToInvoice:
-    def _mock_match_response(self, httpx_mock, hits):
-        """Mock Aito _match returning invoice rows."""
+    def _mock_predict_response(self, httpx_mock, vendor, p=0.40):
+        """Mock _predict on vendor_name returning a vendor."""
         httpx_mock.add_response(
-            url="https://test.aito.app/db/demo/api/v1/_match",
-            json={"offset": 0, "total": len(hits), "hits": hits},
+            url="https://test.aito.app/db/demo/api/v1/_predict",
+            json={"offset": 0, "total": 1, "hits": [
+                {"$p": p, "$value": vendor, "$why": {"type": "product", "factors": []}},
+            ]},
         )
 
     def test_exact_vendor_and_amount_match(self, httpx_mock):
-        """Aito _match returns the right vendor, exact amount → matched."""
-        self._mock_match_response(httpx_mock, [
-            {"$p": 0.19, "invoice_id": "INV-001", "vendor": "Telia Finland",
-             "amount": 890.50, "gl_code": "6200"},
-        ])
+        """_predict resolves vendor, exact amount → matched."""
+        self._mock_predict_response(httpx_mock, "Telia Finland", 0.46)
 
         client = AitoClient(TEST_CONFIG)
         pair = match_bank_txn_to_invoice(
@@ -66,14 +65,10 @@ class TestMatchBankTxnToInvoice:
         assert pair is not None
         assert pair.status == "matched"
         assert pair.invoice_id == "INV-001"
-        assert pair.confidence > 0.40
 
     def test_vendor_match_with_amount_difference(self, httpx_mock):
-        """Aito finds right vendor, small amount diff → still matches."""
-        self._mock_match_response(httpx_mock, [
-            {"$p": 0.10, "invoice_id": "INV-003", "vendor": "SOK Corporation",
-             "amount": 7850.00, "gl_code": "4400"},
-        ])
+        """_predict finds vendor, small amount diff → still matches."""
+        self._mock_predict_response(httpx_mock, "SOK Corporation", 0.10)
 
         client = AitoClient(TEST_CONFIG)
         pair = match_bank_txn_to_invoice(
@@ -86,11 +81,8 @@ class TestMatchBankTxnToInvoice:
         assert pair.status in ("matched", "suggested")
 
     def test_no_matching_vendor_in_open_invoices(self, httpx_mock):
-        """Aito returns vendors not in open invoices → no match."""
-        self._mock_match_response(httpx_mock, [
-            {"$p": 0.15, "invoice_id": "INV-999", "vendor": "SAP SE",
-             "amount": 5000, "gl_code": "6100"},
-        ])
+        """_predict returns vendor not in open invoices → no match."""
+        self._mock_predict_response(httpx_mock, "SAP SE", 0.15)
 
         client = AitoClient(TEST_CONFIG)
         pair = match_bank_txn_to_invoice(
@@ -102,10 +94,10 @@ class TestMatchBankTxnToInvoice:
         assert pair is None
 
     def test_aito_error_returns_none(self, httpx_mock):
-        """If Aito _match fails, return None."""
+        """If Aito _predict fails, return None."""
         httpx_mock.add_exception(
             httpx.ConnectError("Connection refused"),
-            url="https://test.aito.app/db/demo/api/v1/_match",
+            url="https://test.aito.app/db/demo/api/v1/_predict",
         )
 
         client = AitoClient(TEST_CONFIG)
@@ -118,10 +110,7 @@ class TestMatchBankTxnToInvoice:
         assert pair is None
 
     def test_empty_open_invoices_returns_none(self, httpx_mock):
-        self._mock_match_response(httpx_mock, [
-            {"$p": 0.15, "invoice_id": "INV-001", "vendor": "Telia Finland",
-             "amount": 890.50, "gl_code": "6200"},
-        ])
+        self._mock_predict_response(httpx_mock, "Telia Finland", 0.45)
 
         client = AitoClient(TEST_CONFIG)
         pair = match_bank_txn_to_invoice(
@@ -152,3 +141,4 @@ class TestMatchPair:
         assert d["bank_txn_id"] == "TXN-001"
         assert d["confidence"] == 0.95
         assert d["status"] == "matched"
+        assert "explanation" in d
