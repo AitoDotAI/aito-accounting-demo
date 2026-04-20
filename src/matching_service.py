@@ -106,6 +106,7 @@ def match_bank_txn_to_invoice(
             "from": "bank_transactions",
             "where": {"description": txn["description"]},
             "predict": "vendor_name",
+            "select": ["$p", "$value", "$why"],
             "limit": 5,
         })
     except AitoError:
