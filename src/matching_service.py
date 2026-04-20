@@ -166,34 +166,27 @@ def match_bank_txn_to_invoice(
 
 
 def _build_explanation(txn: dict, invoice: dict, aito_p: float, aito_why: dict | None = None) -> list[dict]:
-    """Build explanation from Aito $why factors and amount proximity."""
+    """Build explanation from Aito $why factors only."""
     factors = []
 
-    # Extract Aito $why factors — these show what text tokens drove the match
-    if aito_why:
-        why_factors = _extract_why_factors(aito_why)
-        for wf in why_factors:
+    if not aito_why:
+        return factors
+
+    why_factors = _extract_why_factors(aito_why)
+    for wf in why_factors:
+        is_base = wf.get("type") == "base"
+        if is_base:
             factors.append({
-                "factor": f"Aito: {wf['field']}",
+                "factor": wf["field"],
+                "detail": f'"{wf["value"]}" (prior {wf["lift"]:.4f})',
+                "signal": "partial",
+            })
+        else:
+            factors.append({
+                "factor": wf["field"],
                 "detail": f'"{wf["value"]}" (lift {wf["lift"]}x)',
                 "signal": "strong" if wf["lift"] > 2 else "partial",
             })
-
-    # Amount proximity
-    diff = abs(invoice["amount"] - txn["amount"])
-    if diff == 0:
-        factors.append({"factor": "Amount", "detail": f"Exact match: {txn['amount']}", "signal": "strong"})
-    elif diff < invoice["amount"] * 0.02:
-        factors.append({"factor": "Amount", "detail": f"Within 2%: {txn['amount']} vs {invoice['amount']} (diff {diff:.2f})", "signal": "partial"})
-    else:
-        factors.append({"factor": "Amount", "detail": f"Differs: {txn['amount']} vs {invoice['amount']} (diff {diff:.2f})", "signal": "weak"})
-
-    # Overall Aito probability
-    factors.append({
-        "factor": "Aito _match $p",
-        "detail": f"{aito_p:.4f} via bank_transactions → invoices link",
-        "signal": "strong" if aito_p > 0.10 else "partial",
-    })
 
     return factors
 
