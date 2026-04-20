@@ -7,6 +7,7 @@ import AitoPanel from "@/components/shell/AitoPanel";
 import ConfidenceBar from "@/components/prediction/ConfidenceBar";
 import PredictionBadge from "@/components/prediction/PredictionBadge";
 import WhyTooltip from "@/components/prediction/WhyTooltip";
+import ErrorState from "@/components/shell/ErrorState";
 import { apiFetch, fmtAmount } from "@/lib/api";
 import type { InvoicesResponse, InvoicePrediction, AitoPanelConfig } from "@/lib/types";
 
@@ -41,11 +42,12 @@ function sourceBadge(source: string) {
 export default function InvoicesPage() {
   const [data, setData] = useState<InvoicesResponse | null>(null);
   const [live, setLive] = useState(false);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     apiFetch<InvoicesResponse>("/api/invoices/pending")
       .then((d) => { setData(d); setLive(true); })
-      .catch(() => {});
+      .catch(() => setError(true));
   }, []);
 
   const metrics = data?.metrics;
@@ -111,10 +113,13 @@ export default function InvoicesPage() {
                 </tr>
               </thead>
               <tbody>
-                {invoices.length === 0 && (
+                {invoices.length === 0 && !error && (
                   <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--text3)", padding: 24 }}>
                     {live ? "No invoices" : "Loading..."}
                   </td></tr>
+                )}
+                {error && (
+                  <tr><td colSpan={7}><ErrorState /></td></tr>
                 )}
                 {invoices.map((inv) => (
                   <InvoiceRow key={inv.invoice_id} inv={inv} />

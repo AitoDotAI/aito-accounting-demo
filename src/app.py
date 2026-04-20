@@ -12,10 +12,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
 from src.aito_client import AitoClient, AitoError
 from src.anomaly_service import scan_all
 from src import cache
 from src.config import load_config
+from src.rate_limit import check_rate_limit
 from src.quality_service import get_quality_overview
 from src.formfill_service import KNOWN_VENDORS, predict_fields
 from src.invoice_service import DEMO_INVOICES, compute_metrics, predict_batch
@@ -98,7 +102,7 @@ def _warm_cache() -> None:
 _warm_cache()
 
 app = FastAPI(
-    title="Ledger Pro — Aito Demo API",
+    title="Predictive Ledger — Aito Demo API",
     version="0.1.0",
 )
 
@@ -109,6 +113,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Rate limit API requests to protect the Aito API key."""
+    if request.url.path.startswith("/api/"):
+        client_ip = request.client.host if request.client else "unknown"
+        if not check_rate_limit(client_ip):
+            return JSONResponse(
+                status_code=429,
+                content={"error": "Rate limit exceeded. Try again in a minute."},
+            )
+    return await call_next(request)
 
 
 @app.get("/api/health")

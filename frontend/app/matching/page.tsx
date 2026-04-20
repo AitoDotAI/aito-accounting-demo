@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Nav from "@/components/shell/Nav";
+import ErrorState from "@/components/shell/ErrorState";
 import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
 import ConfidenceBar from "@/components/prediction/ConfidenceBar";
@@ -76,12 +77,13 @@ const SIGNAL_COLOR: Record<string, string> = { strong: "var(--green)", partial: 
 export default function MatchingPage() {
   const [data, setData] = useState<MatchResponse | null>(null);
   const [live, setLive] = useState(false);
+  const [error, setError] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch<MatchResponse>("/api/matching/pairs")
       .then((d) => { setData(d); setLive(true); })
-      .catch(() => {});
+      .catch(() => setError(true));
   }, []);
 
   const m = data?.metrics;
@@ -93,7 +95,7 @@ export default function MatchingPage() {
         <TopBar
           breadcrumb="Payables"
           title="Payment Matching"
-          subtitle={m ? `${m.total} invoices \u00B7 ${m.matched} matched \u00B7 ${m.suggested} suggested \u00B7 ${m.unmatched} unmatched` : "Loading..."}
+          subtitle={m ? `${m.total} invoices \u00B7 ${m.matched} matched \u00B7 ${m.suggested} suggested \u00B7 ${m.unmatched} unmatched` : error ? "Backend not reachable" : "Loading..."}
           live={live}
         />
         <div className="content">

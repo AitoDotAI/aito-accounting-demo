@@ -1,7 +1,7 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "Ledger Pro — Aito Demo",
+  title: "Predictive Ledger — Aito Demo",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

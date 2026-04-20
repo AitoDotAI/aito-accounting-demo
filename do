@@ -26,7 +26,7 @@ EOF
 }
 
 cmd_dev() {
-  echo "Starting Ledger Pro API on http://localhost:8200"
+  echo "Starting Predictive Ledger API on http://localhost:8200"
   if [[ -d "$SCRIPT_DIR/frontend/out" ]]; then
     echo "  Frontend: serving Next.js build from frontend/out/"
   else
@@ -62,7 +62,7 @@ cmd_demo() {
     fi
   else
     echo "Backend not running. Start with: ./do dev"
-    echo "Or open the static HTML: ledger-pro-demo.html"
+    echo "Start with: ./do dev"
   fi
 }
 

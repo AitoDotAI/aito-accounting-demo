@@ -1,7 +1,7 @@
 [project]
-name = "aito-accounting-demo"
+name = "predictive-ledger"
 version = "0.1.0"
-description = "OSS reference project demonstrating Aito.ai in accounting automation"
+description = "Predictive Ledger — accounting automation powered by Aito.ai's predictive database"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.110,<1",

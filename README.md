@@ -1,13 +1,16 @@
-# Ledger Pro — Aito Accounting Demo
+# Predictive Ledger
 
 A working demo showing how [Aito.ai](https://aito.ai)'s predictive database
-integrates into accounting and financial automation software. Demonstrates the
-path from 70% rules-based automation to 90%+ by filling the gap that rules
+turns accounting software into **predictive** accounting software. Demonstrates
+the path from 70% rules-based automation to 90%+ by filling the gap that rules
 can't reach — without replacing them.
+
+Part of the Predictive family: Predictive Ledger, Predictive ERP,
+Predictive E-Commerce — all powered by the Predictive Database.
 
 ## See it in action
 
-Start the backend, open the HTML demo, and every view fills with live Aito
+Start the backend and open the demo — every view fills with live Aito
 predictions:
 
 - **Invoice Processing** — GL code and approver predictions with confidence
@@ -36,16 +39,16 @@ uv sync
 # 4. Load sample data into Aito
 ./do load-data
 
-# 5. Start the backend
-./do dev
+# 5. Build the frontend
+./do frontend-build
 
-# 6. Open the demo
-# Open ledger-pro-demo.html in a browser
-# (or run ./do demo)
+# 6. Start the server
+./do dev
+# Open http://localhost:8200
 ```
 
-The HTML demo connects to the backend on `localhost:8200`. If the backend
-isn't running, the demo falls back to static mockup data.
+The Next.js frontend is served from FastAPI on `localhost:8200` — single
+port, no CORS issues.
 
 ## How it works
 
@@ -81,7 +84,9 @@ update instantly.
 ## Project structure
 
 ```
-├── ledger-pro-demo.html          # Interactive HTML demo (open in browser)
+├── frontend/                     # Next.js 15 frontend (App Router)
+│   ├── app/                      # Pages (invoices, formfill, matching, ...)
+│   └── components/               # Shared components (Nav, PredictionBadge, WhyTooltip)
 ├── src/
 │   ├── app.py                    # FastAPI endpoints
 │   ├── aito_client.py            # Aito REST API client

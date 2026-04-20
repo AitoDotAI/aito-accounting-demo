@@ -40,9 +40,9 @@ export default function Nav() {
               <path d="M3 4h10M3 7h10M3 10h6" stroke="#0d1520" strokeWidth="1.8" strokeLinecap="round"/>
             </svg>
           </div>
-          <span className="nav-logo-text">Ledger Pro</span>
+          <span className="nav-logo-text">Predictive Ledger</span>
         </div>
-        <div className="nav-logo-sub">Financial Operations Suite</div>
+        <div className="nav-logo-sub">Powered by Aito.ai</div>
       </div>
 
       {NAV_ITEMS.map((section) => (

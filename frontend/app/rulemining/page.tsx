@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Nav from "@/components/shell/Nav";
+import ErrorState from "@/components/shell/ErrorState";
 import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
 import { apiFetch } from "@/lib/api";
@@ -56,11 +57,12 @@ function supportClass(ratio: number) {
 export default function RuleMiningPage() {
   const [data, setData] = useState<RulesResponse | null>(null);
   const [live, setLive] = useState(false);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     apiFetch<RulesResponse>("/api/rules/candidates")
       .then((d) => { setData(d); setLive(true); })
-      .catch(() => {});
+      .catch(() => setError(true));
   }, []);
 
   const m = data?.metrics;
@@ -72,7 +74,7 @@ export default function RuleMiningPage() {
         <TopBar
           breadcrumb="Accounting"
           title="Rule Mining"
-          subtitle={m ? `${m.total} patterns discovered via Aito _relate` : "Loading..."}
+          subtitle={m ? `${m.total} patterns discovered via Aito _relate` : error ? "Backend not reachable" : "Loading..."}
           live={live}
         />
         <div className="content">
@@ -105,7 +107,8 @@ export default function RuleMiningPage() {
                 </div>
               </div>
             ))}
-            {!data && <div style={{ padding: 24, textAlign: "center", color: "var(--text3)" }}>Loading...</div>}
+            {!data && !error && <div style={{ padding: 24, textAlign: "center", color: "var(--text3)" }}>Loading...</div>}
+            {error && <ErrorState />}
           </div>
         </div>
       </div>

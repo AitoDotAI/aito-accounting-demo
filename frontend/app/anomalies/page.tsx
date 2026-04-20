@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Nav from "@/components/shell/Nav";
+import ErrorState from "@/components/shell/ErrorState";
 import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
 import { apiFetch, fmtAmount } from "@/lib/api";
@@ -51,11 +52,12 @@ const SEVERITY_BADGE: Record<string, React.ReactNode> = {
 export default function AnomaliesPage() {
   const [data, setData] = useState<AnomalyResponse | null>(null);
   const [live, setLive] = useState(false);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     apiFetch<AnomalyResponse>("/api/anomalies/scan")
       .then((d) => { setData(d); setLive(true); })
-      .catch(() => {});
+      .catch(() => setError(true));
   }, []);
 
   const m = data?.metrics;
@@ -67,7 +69,7 @@ export default function AnomaliesPage() {
         <TopBar
           breadcrumb="Accounting"
           title="Anomaly Detection"
-          subtitle={m ? `${m.high} high \u00B7 ${m.medium} medium \u00B7 ${m.low} low \u00B7 scanned ${m.scanned} invoices` : "Loading..."}
+          subtitle={m ? `${m.high} high \u00B7 ${m.medium} medium \u00B7 ${m.low} low \u00B7 scanned ${m.scanned} invoices` : error ? "Backend not reachable" : "Loading..."}
           live={live}
         />
         <div className="content">

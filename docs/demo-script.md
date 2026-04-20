@@ -1,13 +1,13 @@
 # Demo script
 
-> Canonical walkthrough for the Ledger Pro + Aito demo.
-> Start: `./do dev` then open `ledger-pro-demo.html` in a browser.
+> Canonical walkthrough for the Predictive Ledger + Aito demo.
+> Start: `./do dev` then open http://localhost:8200 in a browser.
 
 ## Setup
 
 1. Ensure `./do load-data` has been run (sample data in Aito)
 2. Start backend: `./do dev` (port 8200)
-3. Open `ledger-pro-demo.html` — look for the green "Live" indicator
+3. Open http://localhost:8200 — look for the green "Live" indicator
 4. Browser window should be wide enough for nav + main + Aito panel
 
 ## Key narrative

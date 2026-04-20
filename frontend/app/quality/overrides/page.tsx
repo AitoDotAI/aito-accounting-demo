@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Nav from "@/components/shell/Nav";
+import ErrorState from "@/components/shell/ErrorState";
 import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
 import { apiFetch } from "@/lib/api";
@@ -34,11 +35,12 @@ interface QualityData {
 export default function OverridesPage() {
   const [data, setData] = useState<QualityData | null>(null);
   const [live, setLive] = useState(false);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     apiFetch<QualityData>("/api/quality/overview")
       .then((d) => { setData(d); setLive(true); })
-      .catch(() => {});
+      .catch(() => setError(true));
   }, []);
 
   const o = data?.overrides;
