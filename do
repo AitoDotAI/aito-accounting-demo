@@ -16,7 +16,9 @@ Commands:
   load-data       Upload sample data to Aito
   reset-data      Drop and reload all Aito tables
   screenshots     Capture screenshots of all views (needs running server)
-  test            Run the test suite
+  test            Run the unit test suite
+  book            Run book tests (Aito examination notebooks)
+  book-update     Update book test snapshots after review
   fmt             Format code
   check           Run all pre-merge checks (test + fmt)
 
@@ -141,6 +143,18 @@ cmd_screenshots() {
   echo "Done. Screenshots in screenshots/"
 }
 
+cmd_book() {
+  echo "Running book tests..."
+  cd "$SCRIPT_DIR"
+  uv run booktest -v book/ "$@"
+}
+
+cmd_book_update() {
+  echo "Updating book test snapshots..."
+  cd "$SCRIPT_DIR"
+  uv run booktest -v -u book/ "$@"
+}
+
 cmd_check() {
   cmd_test
   cmd_fmt
@@ -156,6 +170,8 @@ case "${1:-help}" in
   reset-data)      cmd_reset_data ;;
   screenshots)     cmd_screenshots ;;
   test)            cmd_test ;;
+  book)            cmd_book ;;
+  book-update)     cmd_book_update ;;
   fmt)             cmd_fmt ;;
   check)           cmd_check ;;
   *)

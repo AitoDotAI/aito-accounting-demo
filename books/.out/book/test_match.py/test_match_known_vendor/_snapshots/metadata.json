@@ -1,0 +1,24 @@
+{
+  "test_id": "book/test_match.py::test_match_known_vendor",
+  "snapshots": {
+    "httpx": {
+      "hash": "sha256:f5f0d8bfaa716e92df7829372f7174224fcec5231f940222c3c1d53dff6d5763",
+      "state": "updated",
+      "details": {
+        "count": 1,
+        "urls": [
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_match"
+        ],
+        "hashes": [
+          "0677b6f06caf2a5484bc9f804a8a53b3ad63dcfb"
+        ]
+      },
+      "timestamp": 1776661970.8232598
+    }
+  },
+  "result": {
+    "success": "ok",
+    "snapshotting": "updated"
+  },
+  "timestamp": 1776661970.8242028
+}

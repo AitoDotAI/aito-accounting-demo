@@ -1,0 +1,154 @@
+{
+  "httpx": {
+    "06a621f43c2a94bc97093e60dea791d2f9db6e9b": {
+      "request": {
+        "hash": "06a621f43c2a94bc97093e60dea791d2f9db6e9b",
+        "method": "POST",
+        "url": "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict"
+      },
+      "response": {
+        "content": "eyJvZmZzZXQiOjAsInRvdGFsIjozLCJoaXRzIjpbeyIkcCI6MC45MDg5Nzc3NzQwMjAzOTksImZlYXR1cmUiOiJNaWthZWwgSC4iLCIkd2h5Ijp7InR5cGUiOiJwcm9kdWN0IiwiZmFjdG9ycyI6W3sidHlwZSI6ImJhc2VQIiwidmFsdWUiOjAuNDA3NzI1MzIxODg4NDEyMDQsInByb3Bvc2l0aW9uIjp7ImFwcHJvdmVyIjp7IiRoYXMiOiJNaWthZWwgSC4ifX19LHsidHlwZSI6InByb2R1Y3QiLCJmYWN0b3JzIjpbeyJ0eXBlIjoibm9ybWFsaXplciIsIm5hbWUiOiJleGNsdXNpdmVuZXNzIiwidmFsdWUiOjEuMDAwNDcyMjU0NTU2MzY5MX0seyJ0eXBlIjoibm9ybWFsaXplciIsIm5hbWUiOiJ0cnVlRmFsc2VFeGNsdXNpdmVuZXNzIiwidmFsdWUiOjEuMDAzNjQ0Nzk3ODc5MzkwM31dfSx7InR5cGUiOiJyZWxhdGVkUHJvcG9zaXRpb25MaWZ0IiwicHJvcG9zaXRpb24iOnsidmVuZG9yIjp7IiRoYXMiOiJWZXJra29rYXVwcGEuY29tIn19LCJ2YWx1ZSI6Mi4yMjAyNDI5MTQ5Nzk3NTd9XX19LHsiJHAiOjAuMDQ2MTY5MjUzNjEwMjgyNzcsImZlYXR1cmUiOiJUaWluYSBNLiIsIiR3aHkiOnsidHlwZSI6InByb2R1Y3QiLCJmYWN0b3JzIjpbeyJ0eXBlIjoiYmFzZVAiLCJ2YWx1ZSI6MC4zMDA0MjkxODQ1NDkzNTYyNCwicHJvcG9zaXRpb24iOnsiYXBwcm92ZXIiOnsiJGhhcyI6IlRpaW5hIE0uIn19fSx7InR5cGUiOiJwcm9kdWN0IiwiZmFjdG9ycyI6W3sidHlwZSI6Im5vcm1hbGl6ZXIiLCJuYW1lIjoiZXhjbHVzaXZlbmVzcyIsInZhbHVlIjoxLjAwMDQ3MjI1NDU1NjM2OTF9LHsidHlwZSI6Im5vcm1hbGl6ZXIiLCJuYW1lIjoidHJ1ZUZhbHNlRXhjbHVzaXZlbmVzcyIsInZhbHVlIjowLjk5ODQzMzI2NTIzODAyMTZ9XX0seyJ0eXBlIjoicmVsYXRlZFByb3Bvc2l0aW9uTGlmdCIsInByb3Bvc2l0aW9uIjp7InZlbmRvciI6eyIkaGFzIjoiVmVya2tva2F1cHBhLmNvbSJ9fSwidmFsdWUiOjAuMTUzODQ2MTUzODQ2MTUzODV9XX19LHsiJHAiOjAuMDQ0ODUyOTcyMzY5MzE4MTY0LCJmZWF0dXJlIjoiU2FubmEgTC4iLCIkd2h5Ijp7InR5cGUiOiJwcm9kdWN0IiwiZmFjdG9ycyI6W3sidHlwZSI6ImJhc2VQIiwidmFsdWUiOjAuMjkxODQ1NDkzNTYyMjMxOCwicHJvcG9zaXRpb24iOnsiYXBwcm92ZXIiOnsiJGhhcyI6IlNhbm5hIEwuIn19fSx7InR5cGUiOiJwcm9kdWN0IiwiZmFjdG9ycyI6W3sidHlwZSI6Im5vcm1hbGl6ZXIiLCJuYW1lIjoiZXhjbHVzaXZlbmVzcyIsInZhbHVlIjoxLjAwMDQ3MjI1NDU1NjM2OTF9LHsidHlwZSI6Im5vcm1hbGl6ZXIiLCJuYW1lIjoidHJ1ZUZhbHNlRXhjbHVzaXZlbmVzcyIsInZhbHVlIjowLjk5ODQ5NjQ5NDUwMDU0Njh9XX0seyJ0eXBlIjoicmVsYXRlZFByb3Bvc2l0aW9uTGlmdCIsInByb3Bvc2l0aW9uIjp7InZlbmRvciI6eyIkaGFzIjoiVmVya2tva2F1cHBhLmNvbSJ9fSwidmFsdWUiOjAuMTUzODQ2MTUzODQ2MTUzODV9XX19XX0=",
+        "headers": {
+          "access-control-allow-credentials": "true",
+          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
+          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
+          "access-control-allow-origin": "*",
+          "connection": "keep-alive",
+          "content-length": "1460",
+          "content-type": "application/json",
+          "date": "Mon, 20 Apr 2026 05:09:53 GMT",
+          "permissions-policy": "geolocation=(), microphone=(), camera=()",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "transfer-encoding": "chunked",
+          "x-aitoai-response-time": "6.33",
+          "x-azure-ref": "20260420T050953Z-r1579b5f97d74xfmhC1OSLnb8g0000000ch0000000007mey",
+          "x-cache": "CONFIG_NOCACHE",
+          "x-content-type-options": "nosniff",
+          "x-frame-options": "DENY",
+          "x-xss-protection": "1; mode=block"
+        },
+        "statusCode": 200
+      }
+    },
+    "3c1cbcaf4cf3100cac17d3794783bb4f49ec0221": {
+      "request": {
+        "hash": "3c1cbcaf4cf3100cac17d3794783bb4f49ec0221",
+        "method": "POST",
+        "url": "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict"
+      },
+      "response": {
+        "content": "eyJvZmZzZXQiOjAsInRvdGFsIjozLCJoaXRzIjpbeyIkcCI6MC45MjI0MDQzMDQxNjE4Mzg5LCJmZWF0dXJlIjoiVGlpbmEgTS4iLCIkd2h5Ijp7InR5cGUiOiJwcm9kdWN0IiwiZmFjdG9ycyI6W3sidHlwZSI6ImJhc2VQIiwidmFsdWUiOjAuMzAwNDI5MTg0NTQ5MzU2MjQsInByb3Bvc2l0aW9uIjp7ImFwcHJvdmVyIjp7IiRoYXMiOiJUaWluYSBNLiJ9fX0seyJ0eXBlIjoicHJvZHVjdCIsImZhY3RvcnMiOlt7InR5cGUiOiJub3JtYWxpemVyIiwibmFtZSI6ImV4Y2x1c2l2ZW5lc3MiLCJ2YWx1ZSI6MS4wMDA0Njg2MzUxOTk0MTk0fSx7InR5cGUiOiJub3JtYWxpemVyIiwibmFtZSI6InRydWVGYWxzZUV4Y2x1c2l2ZW5lc3MiLCJ2YWx1ZSI6MS4wMDM4Mjk1ODM1MzI3OTA2fV19LHsidHlwZSI6InJlbGF0ZWRQcm9wb3NpdGlvbkxpZnQiLCJwcm9wb3NpdGlvbiI6eyJ2ZW5kb3IiOnsiJGhhcyI6IktvbmUgT3lqIn19LCJ2YWx1ZSI6My4wNTcxNDI4NTcxNDI4NTd9XX19LHsiJHAiOjAuMDQ1MjA0NDU5MjY2MDI5MiwiZmVhdHVyZSI6Ik1pa2FlbCBILiIsIiR3aHkiOnsidHlwZSI6InByb2R1Y3QiLCJmYWN0b3JzIjpbeyJ0eXBlIjoiYmFzZVAiLCJ2YWx1ZSI6MC40MDc3MjUzMjE4ODg0MTIwNCwicHJvcG9zaXRpb24iOnsiYXBwcm92ZXIiOnsiJGhhcyI6Ik1pa2FlbCBILiJ9fX0seyJ0eXBlIjoicHJvZHVjdCIsImZhY3RvcnMiOlt7InR5cGUiOiJub3JtYWxpemVyIiwibmFtZSI6ImV4Y2x1c2l2ZW5lc3MiLCJ2YWx1ZSI6MS4wMDA0Njg2MzUxOTk0MTk0fSx7InR5cGUiOiJub3JtYWxpemVyIiwibmFtZSI6InRydWVGYWxzZUV4Y2x1c2l2ZW5lc3MiLCJ2YWx1ZSI6MC45OTczNjE1NjAwMTIzNTg5fV19LHsidHlwZSI6InJlbGF0ZWRQcm9wb3NpdGlvbkxpZnQiLCJwcm9wb3NpdGlvbiI6eyJ2ZW5kb3IiOnsiJGhhcyI6IktvbmUgT3lqIn19LCJ2YWx1ZSI6MC4xMTExMTExMTExMTExMTExMn1dfX0seyIkcCI6MC4wMzIzOTEyMzY1NzIxMzE3NSwiZmVhdHVyZSI6IlNhbm5hIEwuIiwiJHdoeSI6eyJ0eXBlIjoicHJvZHVjdCIsImZhY3RvcnMiOlt7InR5cGUiOiJiYXNlUCIsInZhbHVlIjowLjI5MTg0NTQ5MzU2MjIzMTgsInByb3Bvc2l0aW9uIjp7ImFwcHJvdmVyIjp7IiRoYXMiOiJTYW5uYSBMLiJ9fX0seyJ0eXBlIjoicHJvZHVjdCIsImZhY3RvcnMiOlt7InR5cGUiOiJub3JtYWxpemVyIiwibmFtZSI6ImV4Y2x1c2l2ZW5lc3MiLCJ2YWx1ZSI6MS4wMDA0Njg2MzUxOTk0MTk0fSx7InR5cGUiOiJub3JtYWxpemVyIiwibmFtZSI6InRydWVGYWxzZUV4Y2x1c2l2ZW5lc3MiLCJ2YWx1ZSI6MC45OTg0MjA2Nzk4MDQ0NDN9XX0seyJ0eXBlIjoicmVsYXRlZFByb3Bvc2l0aW9uTGlmdCIsInByb3Bvc2l0aW9uIjp7InZlbmRvciI6eyIkaGFzIjoiS29uZSBPeWoifX0sInZhbHVlIjowLjExMTExMTExMTExMTExMTF9XX19XX0=",
+        "headers": {
+          "access-control-allow-credentials": "true",
+          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
+          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
+          "access-control-allow-origin": "*",
+          "connection": "keep-alive",
+          "content-length": "1433",
+          "content-type": "application/json",
+          "date": "Mon, 20 Apr 2026 05:09:53 GMT",
+          "permissions-policy": "geolocation=(), microphone=(), camera=()",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "transfer-encoding": "chunked",
+          "x-aitoai-response-time": "7.92",
+          "x-azure-ref": "20260420T050953Z-r1579b5f97ddmhbshC1OSL9f5w0000000cg0000000007kd6",
+          "x-cache": "CONFIG_NOCACHE",
+          "x-content-type-options": "nosniff",
+          "x-frame-options": "DENY",
+          "x-xss-protection": "1; mode=block"
+        },
+        "statusCode": 200
+      }
+    },
+    "8e092a4072e235473cd431e35ea5a70ed1c101f5": {
+      "request": {
+        "hash": "8e092a4072e235473cd431e35ea5a70ed1c101f5",
+        "method": "POST",
+        "url": "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict"
+      },
+      "response": {
+        "content": "eyJvZmZzZXQiOjAsInRvdGFsIjozLCJoaXRzIjpbeyIkcCI6MC45MjkzMTI4Nzc5MDE1ODI1LCJmZWF0dXJlIjoiU2FubmEgTC4iLCIkd2h5Ijp7InR5cGUiOiJwcm9kdWN0IiwiZmFjdG9ycyI6W3sidHlwZSI6ImJhc2VQIiwidmFsdWUiOjAuMjkxODQ1NDkzNTYyMjMxOCwicHJvcG9zaXRpb24iOnsiYXBwcm92ZXIiOnsiJGhhcyI6IlNhbm5hIEwuIn19fSx7InR5cGUiOiJwcm9kdWN0IiwiZmFjdG9ycyI6W3sidHlwZSI6Im5vcm1hbGl6ZXIiLCJuYW1lIjoiZXhjbHVzaXZlbmVzcyIsInZhbHVlIjoxLjAwMDQzMzc2MTQxNDQ1ODd9LHsidHlwZSI6Im5vcm1hbGl6ZXIiLCJuYW1lIjoidHJ1ZUZhbHNlRXhjbHVzaXZlbmVzcyIsInZhbHVlIjoxLjAwMzg3NzYzODk0ODcyOX1dfSx7InR5cGUiOiJyZWxhdGVkUHJvcG9zaXRpb25MaWZ0IiwicHJvcG9zaXRpb24iOnsidmVuZG9yIjp7IiRoYXMiOiJLZXNrbyBPeWoifX0sInZhbHVlIjozLjE3MDU4ODIzNTI5NDExNzV9XX19LHsiJHAiOjAuMDQwNjgxMjUzNTEwNDA5MzgsImZlYXR1cmUiOiJNaWthZWwgSC4iLCIkd2h5Ijp7InR5cGUiOiJwcm9kdWN0IiwiZmFjdG9ycyI6W3sidHlwZSI6ImJhc2VQIiwidmFsdWUiOjAuNDA3NzI1MzIxODg4NDEyMDQsInByb3Bvc2l0aW9uIjp7ImFwcHJvdmVyIjp7IiRoYXMiOiJNaWthZWwgSC4ifX19LHsidHlwZSI6InByb2R1Y3QiLCJmYWN0b3JzIjpbeyJ0eXBlIjoibm9ybWFsaXplciIsIm5hbWUiOiJleGNsdXNpdmVuZXNzIiwidmFsdWUiOjEuMDAwNDMzNzYxNDE0NDU4N30seyJ0eXBlIjoibm9ybWFsaXplciIsIm5hbWUiOiJ0cnVlRmFsc2VFeGNsdXNpdmVuZXNzIiwidmFsdWUiOjAuOTk3MzI4NjY3NjE0MzkwOX1dfSx7InR5cGUiOiJyZWxhdGVkUHJvcG9zaXRpb25MaWZ0IiwicHJvcG9zaXRpb24iOnsidmVuZG9yIjp7IiRoYXMiOiJLZXNrbyBPeWoifX0sInZhbHVlIjowLjA5OTk5OTk5OTk5OTk5OTk5fV19fSx7IiRwIjowLjAzMDAwNTg2ODU4ODAwODA0NywiZmVhdHVyZSI6IlRpaW5hIE0uIiwiJHdoeSI6eyJ0eXBlIjoicHJvZHVjdCIsImZhY3RvcnMiOlt7InR5cGUiOiJiYXNlUCIsInZhbHVlIjowLjMwMDQyOTE4NDU0OTM1NjI0LCJwcm9wb3NpdGlvbiI6eyJhcHByb3ZlciI6eyIkaGFzIjoiVGlpbmEgTS4ifX19LHsidHlwZSI6InByb2R1Y3QiLCJmYWN0b3JzIjpbeyJ0eXBlIjoibm9ybWFsaXplciIsIm5hbWUiOiJleGNsdXNpdmVuZXNzIiwidmFsdWUiOjEuMDAwNDMzNzYxNDE0NDU4N30seyJ0eXBlIjoibm9ybWFsaXplciIsIm5hbWUiOiJ0cnVlRmFsc2VFeGNsdXNpdmVuZXNzIiwidmFsdWUiOjAuOTk4MzMzNzMwMDY0MjcwNX1dfSx7InR5cGUiOiJyZWxhdGVkUHJvcG9zaXRpb25MaWZ0IiwicHJvcG9zaXRpb24iOnsidmVuZG9yIjp7IiRoYXMiOiJLZXNrbyBPeWoifX0sInZhbHVlIjowLjA5OTk5OTk5OTk5OTk5OTk5fV19fV19",
+        "headers": {
+          "access-control-allow-credentials": "true",
+          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
+          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
+          "access-control-allow-origin": "*",
+          "connection": "keep-alive",
+          "content-length": "1440",
+          "content-type": "application/json",
+          "date": "Mon, 20 Apr 2026 05:09:52 GMT",
+          "permissions-policy": "geolocation=(), microphone=(), camera=()",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "transfer-encoding": "chunked",
+          "x-aitoai-response-time": "5.99",
+          "x-azure-ref": "20260420T050952Z-r1579b5f97d24qxghC1OSL1t5n0000000csg000000004zxv",
+          "x-cache": "CONFIG_NOCACHE",
+          "x-content-type-options": "nosniff",
+          "x-frame-options": "DENY",
+          "x-xss-protection": "1; mode=block"
+        },
+        "statusCode": 200
+      }
+    },
+    "e1481c2831986d078f5cb9d893a73f57a417f681": {
+      "request": {
+        "hash": "e1481c2831986d078f5cb9d893a73f57a417f681",
+        "method": "POST",
+        "url": "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict"
+      },
+      "response": {
+        "content": "eyJvZmZzZXQiOjAsInRvdGFsIjozLCJoaXRzIjpbeyIkcCI6MC44NTIwMzIzMjE5NTQwMTAyLCJmZWF0dXJlIjoiTWlrYWVsIEguIiwiJHdoeSI6eyJ0eXBlIjoicHJvZHVjdCIsImZhY3RvcnMiOlt7InR5cGUiOiJiYXNlUCIsInZhbHVlIjowLjQwNzcyNTMyMTg4ODQxMjA0LCJwcm9wb3NpdGlvbiI6eyJhcHByb3ZlciI6eyIkaGFzIjoiTWlrYWVsIEguIn19fSx7InR5cGUiOiJwcm9kdWN0IiwiZmFjdG9ycyI6W3sidHlwZSI6Im5vcm1hbGl6ZXIiLCJuYW1lIjoiZXhjbHVzaXZlbmVzcyIsInZhbHVlIjoxLjAwMDY4MDE4NTk2MTE1NzR9LHsidHlwZSI6Im5vcm1hbGl6ZXIiLCJuYW1lIjoidHJ1ZUZhbHNlRXhjbHVzaXZlbmVzcyIsInZhbHVlIjoxLjAwMzIyOTI3ODc5NDQwMjZ9XX0seyJ0eXBlIjoicmVsYXRlZFByb3Bvc2l0aW9uTGlmdCIsInByb3Bvc2l0aW9uIjp7InZlbmRvciI6eyIkaGFzIjoiVGVsaWEgRmlubGFuZCJ9fSwidmFsdWUiOjIuMDgxNTc4OTQ3MzY4NDIxfV19fSx7IiRwIjowLjA3NTA1Mzk5MjI4MDExMzgyLCJmZWF0dXJlIjoiVGlpbmEgTS4iLCIkd2h5Ijp7InR5cGUiOiJwcm9kdWN0IiwiZmFjdG9ycyI6W3sidHlwZSI6ImJhc2VQIiwidmFsdWUiOjAuMzAwNDI5MTg0NTQ5MzU2MjQsInByb3Bvc2l0aW9uIjp7ImFwcHJvdmVyIjp7IiRoYXMiOiJUaWluYSBNLiJ9fX0seyJ0eXBlIjoicHJvZHVjdCIsImZhY3RvcnMiOlt7InR5cGUiOiJub3JtYWxpemVyIiwibmFtZSI6ImV4Y2x1c2l2ZW5lc3MiLCJ2YWx1ZSI6MS4wMDA2ODAxODU5NjExNTc0fSx7InR5cGUiOiJub3JtYWxpemVyIiwibmFtZSI6InRydWVGYWxzZUV4Y2x1c2l2ZW5lc3MiLCJ2YWx1ZSI6MC45OTg2MTEwNTU5OTQyODU3fV19LHsidHlwZSI6InJlbGF0ZWRQcm9wb3NpdGlvbkxpZnQiLCJwcm9wb3NpdGlvbiI6eyJ2ZW5kb3IiOnsiJGhhcyI6IlRlbGlhIEZpbmxhbmQifX0sInZhbHVlIjowLjI1fV19fSx7IiRwIjowLjA3MjkxMzY4NTc2NTg3NTgzLCJmZWF0dXJlIjoiU2FubmEgTC4iLCIkd2h5Ijp7InR5cGUiOiJwcm9kdWN0IiwiZmFjdG9ycyI6W3sidHlwZSI6ImJhc2VQIiwidmFsdWUiOjAuMjkxODQ1NDkzNTYyMjMxOCwicHJvcG9zaXRpb24iOnsiYXBwcm92ZXIiOnsiJGhhcyI6IlNhbm5hIEwuIn19fSx7InR5cGUiOiJwcm9kdWN0IiwiZmFjdG9ycyI6W3sidHlwZSI6Im5vcm1hbGl6ZXIiLCJuYW1lIjoiZXhjbHVzaXZlbmVzcyIsInZhbHVlIjoxLjAwMDY4MDE4NTk2MTE1NzR9LHsidHlwZSI6Im5vcm1hbGl6ZXIiLCJuYW1lIjoidHJ1ZUZhbHNlRXhjbHVzaXZlbmVzcyIsInZhbHVlIjowLjk5ODY2NzExOTY3MTc0NTV9XX0seyJ0eXBlIjoicmVsYXRlZFByb3Bvc2l0aW9uTGlmdCIsInByb3Bvc2l0aW9uIjp7InZlbmRvciI6eyIkaGFzIjoiVGVsaWEgRmlubGFuZCJ9fSwidmFsdWUiOjAuMjV9XX19XX0=",
+        "headers": {
+          "access-control-allow-credentials": "true",
+          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
+          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
+          "access-control-allow-origin": "*",
+          "connection": "keep-alive",
+          "content-length": "1421",
+          "content-type": "application/json",
+          "date": "Mon, 20 Apr 2026 05:09:53 GMT",
+          "permissions-policy": "geolocation=(), microphone=(), camera=()",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "transfer-encoding": "chunked",
+          "x-aitoai-response-time": "5.93",
+          "x-azure-ref": "20260420T050953Z-r1579b5f97d75slzhC1OSLm2cn0000000bp0000000004xm9",
+          "x-cache": "CONFIG_NOCACHE",
+          "x-content-type-options": "nosniff",
+          "x-frame-options": "DENY",
+          "x-xss-protection": "1; mode=block"
+        },
+        "statusCode": 200
+      }
+    },
+    "fe14a9da2ace449409094a7da14c45c47edb5489": {
+      "request": {
+        "hash": "fe14a9da2ace449409094a7da14c45c47edb5489",
+        "method": "POST",
+        "url": "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict"
+      },
+      "response": {
+        "content": "eyJvZmZzZXQiOjAsInRvdGFsIjozLCJoaXRzIjpbeyIkcCI6MC44ODM1NjgzMTc1MzcxMjI1LCJmZWF0dXJlIjoiVGlpbmEgTS4iLCIkd2h5Ijp7InR5cGUiOiJwcm9kdWN0IiwiZmFjdG9ycyI6W3sidHlwZSI6ImJhc2VQIiwidmFsdWUiOjAuMzAwNDI5MTg0NTQ5MzU2MjQsInByb3Bvc2l0aW9uIjp7ImFwcHJvdmVyIjp7IiRoYXMiOiJUaWluYSBNLiJ9fX0seyJ0eXBlIjoicHJvZHVjdCIsImZhY3RvcnMiOlt7InR5cGUiOiJub3JtYWxpemVyIiwibmFtZSI6ImV4Y2x1c2l2ZW5lc3MiLCJ2YWx1ZSI6MS4wMDA2NTkwNzgzMTY0MzJ9LHsidHlwZSI6Im5vcm1hbGl6ZXIiLCJuYW1lIjoidHJ1ZUZhbHNlRXhjbHVzaXZlbmVzcyIsInZhbHVlIjoxLjAwMzU4OTM3NTQ0ODY3Mn1dfSx7InR5cGUiOiJyZWxhdGVkUHJvcG9zaXRpb25MaWZ0IiwicHJvcG9zaXRpb24iOnsidmVuZG9yIjp7IiRoYXMiOiJJU1MgUGFsdmVsdXQifX0sInZhbHVlIjoyLjkyODU3MTQyODU3MTQyOX1dfX0seyIkcCI6MC4wNjc4MzA3ODE2MzI4NDc1NiwiZmVhdHVyZSI6Ik1pa2FlbCBILiIsIiR3aHkiOnsidHlwZSI6InByb2R1Y3QiLCJmYWN0b3JzIjpbeyJ0eXBlIjoiYmFzZVAiLCJ2YWx1ZSI6MC40MDc3MjUzMjE4ODg0MTIwNCwicHJvcG9zaXRpb24iOnsiYXBwcm92ZXIiOnsiJGhhcyI6Ik1pa2FlbCBILiJ9fX0seyJ0eXBlIjoicHJvZHVjdCIsImZhY3RvcnMiOlt7InR5cGUiOiJub3JtYWxpemVyIiwibmFtZSI6ImV4Y2x1c2l2ZW5lc3MiLCJ2YWx1ZSI6MS4wMDA2NTkwNzgzMTY0MzJ9LHsidHlwZSI6Im5vcm1hbGl6ZXIiLCJuYW1lIjoidHJ1ZUZhbHNlRXhjbHVzaXZlbmVzcyIsInZhbHVlIjowLjk5NzUyNjA1NDU1MTc5OTJ9XX0seyJ0eXBlIjoicmVsYXRlZFByb3Bvc2l0aW9uTGlmdCIsInByb3Bvc2l0aW9uIjp7InZlbmRvciI6eyIkaGFzIjoiSVNTIFBhbHZlbHV0In19LCJ2YWx1ZSI6MC4xNjY2NjY2NjY2NjY2NjY2OX1dfX0seyIkcCI6MC4wNDg2MDA5MDA4MzAwMzAwMDUsImZlYXR1cmUiOiJTYW5uYSBMLiIsIiR3aHkiOnsidHlwZSI6InByb2R1Y3QiLCJmYWN0b3JzIjpbeyJ0eXBlIjoiYmFzZVAiLCJ2YWx1ZSI6MC4yOTE4NDU0OTM1NjIyMzE4LCJwcm9wb3NpdGlvbiI6eyJhcHByb3ZlciI6eyIkaGFzIjoiU2FubmEgTC4ifX19LHsidHlwZSI6InByb2R1Y3QiLCJmYWN0b3JzIjpbeyJ0eXBlIjoibm9ybWFsaXplciIsIm5hbWUiOiJleGNsdXNpdmVuZXNzIiwidmFsdWUiOjEuMDAwNjU5MDc4MzE2NDMyfSx7InR5cGUiOiJub3JtYWxpemVyIiwibmFtZSI6InRydWVGYWxzZUV4Y2x1c2l2ZW5lc3MiLCJ2YWx1ZSI6MC45OTg1MTkyNDExNTQ2NDM1fV19LHsidHlwZSI6InJlbGF0ZWRQcm9wb3NpdGlvbkxpZnQiLCJwcm9wb3NpdGlvbiI6eyJ2ZW5kb3IiOnsiJGhhcyI6IklTUyBQYWx2ZWx1dCJ9fSwidmFsdWUiOjAuMTY2NjY2NjY2NjY2NjY2NjZ9XX19XX0=",
+        "headers": {
+          "access-control-allow-credentials": "true",
+          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
+          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
+          "access-control-allow-origin": "*",
+          "connection": "keep-alive",
+          "content-length": "1445",
+          "content-type": "application/json",
+          "date": "Mon, 20 Apr 2026 05:09:53 GMT",
+          "permissions-policy": "geolocation=(), microphone=(), camera=()",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "transfer-encoding": "chunked",
+          "x-aitoai-response-time": "6.37",
+          "x-azure-ref": "20260420T050953Z-r1579b5f97dtd5nqhC1OSLmp8000000009c0000000001sxb",
+          "x-cache": "CONFIG_NOCACHE",
+          "x-content-type-options": "nosniff",
+          "x-frame-options": "DENY",
+          "x-xss-protection": "1; mode=block"
+        },
+        "statusCode": 200
+      }
+    }
+  }
+}

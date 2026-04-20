@@ -1,0 +1,32 @@
+{
+  "test_id": "book/test_relate.py::test_relate_vendor_to_gl_code",
+  "snapshots": {
+    "httpx": {
+      "hash": "sha256:78679f9171bce2dfbec7df0d1b7658d02aed948e85a70c367cce6b5f097acec8",
+      "state": "updated",
+      "details": {
+        "count": 5,
+        "urls": [
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_relate",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_relate",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_relate",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_relate",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_relate"
+        ],
+        "hashes": [
+          "26d498b79d448e8121443cee85b029eb1b6cb655",
+          "41d157dc26f1c9c73aac42735258bba14f52bb91",
+          "7321885eaac403708d882ddb0e1bf6d4838d1b4d",
+          "c5b3a54e94d0c09c0d6e0ad6a80023b8afdbe6e8",
+          "faf183692ee408e302385200ff20f75a0fbd120c"
+        ]
+      },
+      "timestamp": 1776661971.6675024
+    }
+  },
+  "result": {
+    "success": "ok",
+    "snapshotting": "updated"
+  },
+  "timestamp": 1776661971.6678243
+}

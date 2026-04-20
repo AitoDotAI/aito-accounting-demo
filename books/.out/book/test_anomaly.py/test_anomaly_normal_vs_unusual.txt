@@ -1,0 +1,14 @@
+  # Anomaly detection: normal vs unusual invoices
+  
+  Same _predict engine, used in reverse. High confidence = normal.
+  Low confidence = data doesn't fit known patterns = anomaly.
+  
+  
+  ## GL code prediction confidence
+  
+    Normal: Kesko Oyj, supplies                   gl=4400  p=0.915  anomaly=0.085  [normal]
+    Normal: Telia Finland, telecom                gl=6200  p=0.769  anomaly=0.231  [normal]
+    Anomaly: unknown vendor                       gl=6100  p=0.287  anomaly=0.713  [ANOMALY]
+    Anomaly: Kesko wrong GL context               gl=5100  p=1.000  anomaly=0.000  [normal]
+  
+  No separate anomaly model. No threshold tuning. Just _predict.

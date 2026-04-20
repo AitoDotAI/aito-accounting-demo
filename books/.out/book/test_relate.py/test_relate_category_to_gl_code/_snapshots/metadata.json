@@ -1,0 +1,36 @@
+{
+  "test_id": "book/test_relate.py::test_relate_category_to_gl_code",
+  "snapshots": {
+    "httpx": {
+      "hash": "sha256:aad5e95973833e825549a45cb6737f236c16a736f17730fe3b9171e483b157bd",
+      "state": "updated",
+      "details": {
+        "count": 7,
+        "urls": [
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_relate",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_relate",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_relate",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_relate",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_relate",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_relate",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_relate"
+        ],
+        "hashes": [
+          "32722b24dc945d096752ca699920b8392b64f02e",
+          "42ddc5ed4b909d8578726e6a1c4e6f10e72ede23",
+          "5e2f8e41ae9d01070f8ce5d7c55e4b2b5312cbd5",
+          "6c615c0f210b2ebf425e6243dce88f524683e3e5",
+          "8ea0ea77b97c1a2cb397ed2d787a53f38aeea984",
+          "92f945040402b2da57a799777fc52eb45af35c76",
+          "bbefae46a648e97d09f1cb7317f7c33667a1e708"
+        ]
+      },
+      "timestamp": 1776661971.4848754
+    }
+  },
+  "result": {
+    "success": "ok",
+    "snapshotting": "updated"
+  },
+  "timestamp": 1776661971.4853766
+}

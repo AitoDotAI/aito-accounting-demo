@@ -1,0 +1,10 @@
+{"name": "book/test_anomaly.py::test_anomaly_normal_vs_unusual", "result": "OK", "duration_ms": 117.6915168762207, "timestamp": 1776661970.7747638, "ai_review": null}
+{"name": "book/test_match.py::test_match_known_vendor", "result": "OK", "duration_ms": 31.6464900970459, "timestamp": 1776661970.8246078, "ai_review": null}
+{"name": "book/test_match.py::test_match_various_descriptions", "result": "OK", "duration_ms": 134.0785026550293, "timestamp": 1776661970.9799895, "ai_review": null}
+{"name": "book/test_predict.py::test_predict_approver_by_vendor", "result": "OK", "duration_ms": 129.4405460357666, "timestamp": 1776661971.1259348, "ai_review": null}
+{"name": "book/test_predict.py::test_predict_gl_code_known_vendor", "result": "OK", "duration_ms": 38.4519100189209, "timestamp": 1776661971.1798885, "ai_review": null}
+{"name": "book/test_predict.py::test_predict_gl_code_unknown_vendor", "result": "OK", "duration_ms": 28.08356285095215, "timestamp": 1776661971.2263026, "ai_review": null}
+{"name": "book/test_predict.py::test_predict_with_category_context", "result": "OK", "duration_ms": 49.35169219970703, "timestamp": 1776661971.2927723, "ai_review": null}
+{"name": "book/test_relate.py::test_relate_category_to_gl_code", "result": "OK", "duration_ms": 176.1784553527832, "timestamp": 1776661971.4855883, "ai_review": null}
+{"name": "book/test_relate.py::test_relate_override_patterns", "result": "OK", "duration_ms": 29.864788055419922, "timestamp": 1776661971.5301952, "ai_review": null}
+{"name": "book/test_relate.py::test_relate_vendor_to_gl_code", "result": "OK", "duration_ms": 124.28832054138184, "timestamp": 1776661971.6679816, "ai_review": null}

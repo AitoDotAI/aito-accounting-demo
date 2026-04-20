@@ -1,0 +1,12 @@
+# Approver prediction by vendor
+
+Different vendors route to different approvers based on
+historical patterns in the dataset.
+
+  Kesko Oyj                 → Sanna L.     p=0.929  expected=Sanna L.  [ok]
+  Telia Finland             → Mikael H.    p=0.852  expected=Mikael H.  [ok]
+  Kone Oyj                  → Tiina M.     p=0.922  expected=Tiina M.  [ok]
+  ISS Palvelut              → Tiina M.     p=0.884  expected=Tiina M.  [ok]
+  Verkkokauppa.com          → Mikael H.    p=0.909  expected=Mikael H.  [ok]
+
+Approver routing is driven by vendor → department → approver patterns.

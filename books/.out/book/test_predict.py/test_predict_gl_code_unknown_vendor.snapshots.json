@@ -1,0 +1,34 @@
+{
+  "httpx": {
+    "9aa5069a13447f7a569b86cbd0a033a0f9e088c9": {
+      "request": {
+        "hash": "9aa5069a13447f7a569b86cbd0a033a0f9e088c9",
+        "method": "POST",
+        "url": "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict"
+      },
+      "response": {
+        "content": "eyJvZmZzZXQiOjAsInRvdGFsIjo3LCJoaXRzIjpbeyIkcCI6MC4yODY5MTk4MzEyMjM2Mjg3LCJmZWF0dXJlIjoiNjEwMCIsIiR3aHkiOnsidHlwZSI6InByb2R1Y3QiLCJmYWN0b3JzIjpbeyJ0eXBlIjoiYmFzZVAiLCJ2YWx1ZSI6MC4yODY5MTk4MzEyMjM2Mjg3LCJwcm9wb3NpdGlvbiI6eyJnbF9jb2RlIjp7IiRoYXMiOiI2MTAwIn19fSx7InR5cGUiOiJwcm9kdWN0IiwiZmFjdG9ycyI6W3sidHlwZSI6Im5vcm1hbGl6ZXIiLCJuYW1lIjoiZXhjbHVzaXZlbmVzcyIsInZhbHVlIjoxLjB9LHsidHlwZSI6Im5vcm1hbGl6ZXIiLCJuYW1lIjoidHJ1ZUZhbHNlRXhjbHVzaXZlbmVzcyIsInZhbHVlIjoxLjB9XX0seyJ0eXBlIjoicmVsYXRlZFByb3Bvc2l0aW9uTGlmdCIsInByb3Bvc2l0aW9uIjp7InZlbmRvciI6eyIkaGFzIjoiQnJhbmQgTmV3IENvcnAifX0sInZhbHVlIjoxLjB9LHsidHlwZSI6InJlbGF0ZWRQcm9wb3NpdGlvbkxpZnQiLCJwcm9wb3NpdGlvbiI6eyJhbW91bnQiOnsiJGhhcyI6NDUwMDAuMH19LCJ2YWx1ZSI6MS4wfV19fSx7IiRwIjowLjE0MzQ1OTkxNTYxMTgxNDM0LCJmZWF0dXJlIjoiNDEwMCIsIiR3aHkiOnsidHlwZSI6InByb2R1Y3QiLCJmYWN0b3JzIjpbeyJ0eXBlIjoiYmFzZVAiLCJ2YWx1ZSI6MC4xNDM0NTk5MTU2MTE4MTQzNCwicHJvcG9zaXRpb24iOnsiZ2xfY29kZSI6eyIkaGFzIjoiNDEwMCJ9fX0seyJ0eXBlIjoicHJvZHVjdCIsImZhY3RvcnMiOlt7InR5cGUiOiJub3JtYWxpemVyIiwibmFtZSI6ImV4Y2x1c2l2ZW5lc3MiLCJ2YWx1ZSI6MS4wfSx7InR5cGUiOiJub3JtYWxpemVyIiwibmFtZSI6InRydWVGYWxzZUV4Y2x1c2l2ZW5lc3MiLCJ2YWx1ZSI6MS4wfV19LHsidHlwZSI6InJlbGF0ZWRQcm9wb3NpdGlvbkxpZnQiLCJwcm9wb3NpdGlvbiI6eyJ2ZW5kb3IiOnsiJGhhcyI6IkJyYW5kIE5ldyBDb3JwIn19LCJ2YWx1ZSI6MS4wfSx7InR5cGUiOiJyZWxhdGVkUHJvcG9zaXRpb25MaWZ0IiwicHJvcG9zaXRpb24iOnsiYW1vdW50Ijp7IiRoYXMiOjQ1MDAwLjB9fSwidmFsdWUiOjEuMH1dfX0seyIkcCI6MC4xNDM0NTk5MTU2MTE4MTQzNCwiZmVhdHVyZSI6IjQ0MDAiLCIkd2h5Ijp7InR5cGUiOiJwcm9kdWN0IiwiZmFjdG9ycyI6W3sidHlwZSI6ImJhc2VQIiwidmFsdWUiOjAuMTQzNDU5OTE1NjExODE0MzQsInByb3Bvc2l0aW9uIjp7ImdsX2NvZGUiOnsiJGhhcyI6IjQ0MDAifX19LHsidHlwZSI6InByb2R1Y3QiLCJmYWN0b3JzIjpbeyJ0eXBlIjoibm9ybWFsaXplciIsIm5hbWUiOiJleGNsdXNpdmVuZXNzIiwidmFsdWUiOjEuMH0seyJ0eXBlIjoibm9ybWFsaXplciIsIm5hbWUiOiJ0cnVlRmFsc2VFeGNsdXNpdmVuZXNzIiwidmFsdWUiOjEuMH1dfSx7InR5cGUiOiJyZWxhdGVkUHJvcG9zaXRpb25MaWZ0IiwicHJvcG9zaXRpb24iOnsidmVuZG9yIjp7IiRoYXMiOiJCcmFuZCBOZXcgQ29ycCJ9fSwidmFsdWUiOjEuMH0seyJ0eXBlIjoicmVsYXRlZFByb3Bvc2l0aW9uTGlmdCIsInByb3Bvc2l0aW9uIjp7ImFtb3VudCI6eyIkaGFzIjo0NTAwMC4wfX0sInZhbHVlIjoxLjB9XX19LHsiJHAiOjAuMTMwODAxNjg3NzYzNzEzMSwiZmVhdHVyZSI6IjQ1MDAiLCIkd2h5Ijp7InR5cGUiOiJwcm9kdWN0IiwiZmFjdG9ycyI6W3sidHlwZSI6ImJhc2VQIiwidmFsdWUiOjAuMTMwODAxNjg3NzYzNzEzMSwicHJvcG9zaXRpb24iOnsiZ2xfY29kZSI6eyIkaGFzIjoiNDUwMCJ9fX0seyJ0eXBlIjoicHJvZHVjdCIsImZhY3RvcnMiOlt7InR5cGUiOiJub3JtYWxpemVyIiwibmFtZSI6ImV4Y2x1c2l2ZW5lc3MiLCJ2YWx1ZSI6MS4wfSx7InR5cGUiOiJub3JtYWxpemVyIiwibmFtZSI6InRydWVGYWxzZUV4Y2x1c2l2ZW5lc3MiLCJ2YWx1ZSI6MS4wfV19LHsidHlwZSI6InJlbGF0ZWRQcm9wb3NpdGlvbkxpZnQiLCJwcm9wb3NpdGlvbiI6eyJ2ZW5kb3IiOnsiJGhhcyI6IkJyYW5kIE5ldyBDb3JwIn19LCJ2YWx1ZSI6MS4wfSx7InR5cGUiOiJyZWxhdGVkUHJvcG9zaXRpb25MaWZ0IiwicHJvcG9zaXRpb24iOnsiYW1vdW50Ijp7IiRoYXMiOjQ1MDAwLjB9fSwidmFsdWUiOjEuMH1dfX0seyIkcCI6MC4xMTgxNDM0NTk5MTU2MTE4MSwiZmVhdHVyZSI6IjUxMDAiLCIkd2h5Ijp7InR5cGUiOiJwcm9kdWN0IiwiZmFjdG9ycyI6W3sidHlwZSI6ImJhc2VQIiwidmFsdWUiOjAuMTE4MTQzNDU5OTE1NjExODEsInByb3Bvc2l0aW9uIjp7ImdsX2NvZGUiOnsiJGhhcyI6IjUxMDAifX19LHsidHlwZSI6InByb2R1Y3QiLCJmYWN0b3JzIjpbeyJ0eXBlIjoibm9ybWFsaXplciIsIm5hbWUiOiJleGNsdXNpdmVuZXNzIiwidmFsdWUiOjEuMH0seyJ0eXBlIjoibm9ybWFsaXplciIsIm5hbWUiOiJ0cnVlRmFsc2VFeGNsdXNpdmVuZXNzIiwidmFsdWUiOjEuMH1dfSx7InR5cGUiOiJyZWxhdGVkUHJvcG9zaXRpb25MaWZ0IiwicHJvcG9zaXRpb24iOnsidmVuZG9yIjp7IiRoYXMiOiJCcmFuZCBOZXcgQ29ycCJ9fSwidmFsdWUiOjEuMH0seyJ0eXBlIjoicmVsYXRlZFByb3Bvc2l0aW9uTGlmdCIsInByb3Bvc2l0aW9uIjp7ImFtb3VudCI6eyIkaGFzIjo0NTAwMC4wfX0sInZhbHVlIjoxLjB9XX19LHsiJHAiOjAuMTAxMjY1ODIyNzg0ODEwMTMsImZlYXR1cmUiOiI1MjAwIiwiJHdoeSI6eyJ0eXBlIjoicHJvZHVjdCIsImZhY3RvcnMiOlt7InR5cGUiOiJiYXNlUCIsInZhbHVlIjowLjEwMTI2NTgyMjc4NDgxMDEzLCJwcm9wb3NpdGlvbiI6eyJnbF9jb2RlIjp7IiRoYXMiOiI1MjAwIn19fSx7InR5cGUiOiJwcm9kdWN0IiwiZmFjdG9ycyI6W3sidHlwZSI6Im5vcm1hbGl6ZXIiLCJuYW1lIjoiZXhjbHVzaXZlbmVzcyIsInZhbHVlIjoxLjB9LHsidHlwZSI6Im5vcm1hbGl6ZXIiLCJuYW1lIjoidHJ1ZUZhbHNlRXhjbHVzaXZlbmVzcyIsInZhbHVlIjoxLjB9XX0seyJ0eXBlIjoicmVsYXRlZFByb3Bvc2l0aW9uTGlmdCIsInByb3Bvc2l0aW9uIjp7InZlbmRvciI6eyIkaGFzIjoiQnJhbmQgTmV3IENvcnAifX0sInZhbHVlIjoxLjB9LHsidHlwZSI6InJlbGF0ZWRQcm9wb3NpdGlvbkxpZnQiLCJwcm9wb3NpdGlvbiI6eyJhbW91bnQiOnsiJGhhcyI6NDUwMDAuMH19LCJ2YWx1ZSI6MS4wfV19fSx7IiRwIjowLjA3NTk0OTM2NzA4ODYwNzYsImZlYXR1cmUiOiI2MjAwIiwiJHdoeSI6eyJ0eXBlIjoicHJvZHVjdCIsImZhY3RvcnMiOlt7InR5cGUiOiJiYXNlUCIsInZhbHVlIjowLjA3NTk0OTM2NzA4ODYwNzYsInByb3Bvc2l0aW9uIjp7ImdsX2NvZGUiOnsiJGhhcyI6IjYyMDAifX19LHsidHlwZSI6InByb2R1Y3QiLCJmYWN0b3JzIjpbeyJ0eXBlIjoibm9ybWFsaXplciIsIm5hbWUiOiJleGNsdXNpdmVuZXNzIiwidmFsdWUiOjEuMH0seyJ0eXBlIjoibm9ybWFsaXplciIsIm5hbWUiOiJ0cnVlRmFsc2VFeGNsdXNpdmVuZXNzIiwidmFsdWUiOjEuMH1dfSx7InR5cGUiOiJyZWxhdGVkUHJvcG9zaXRpb25MaWZ0IiwicHJvcG9zaXRpb24iOnsidmVuZG9yIjp7IiRoYXMiOiJCcmFuZCBOZXcgQ29ycCJ9fSwidmFsdWUiOjEuMH0seyJ0eXBlIjoicmVsYXRlZFByb3Bvc2l0aW9uTGlmdCIsInByb3Bvc2l0aW9uIjp7ImFtb3VudCI6eyIkaGFzIjo0NTAwMC4wfX0sInZhbHVlIjoxLjB9XX19XX0=",
+        "headers": {
+          "access-control-allow-credentials": "true",
+          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
+          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
+          "access-control-allow-origin": "*",
+          "connection": "keep-alive",
+          "content-length": "3581",
+          "content-type": "application/json",
+          "date": "Mon, 20 Apr 2026 05:09:54 GMT",
+          "permissions-policy": "geolocation=(), microphone=(), camera=()",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "transfer-encoding": "chunked",
+          "x-aitoai-response-time": "10.80",
+          "x-azure-ref": "20260420T050954Z-r1579b5f97dbvl4chC1OSLkfx4000000093g000000007zp3",
+          "x-cache": "CONFIG_NOCACHE",
+          "x-content-type-options": "nosniff",
+          "x-frame-options": "DENY",
+          "x-xss-protection": "1; mode=block"
+        },
+        "statusCode": 200
+      }
+    }
+  }
+}
