@@ -115,7 +115,8 @@ def run(reset: bool = False) -> None:
 
     if reset:
         print("\nResetting — deleting existing tables...")
-        for table_name in SCHEMAS:
+        # Delete in reverse order: linked tables first, then the target
+        for table_name in reversed(list(SCHEMAS.keys())):
             delete_table(client, table_name)
 
     print("\nCreating schemas...")

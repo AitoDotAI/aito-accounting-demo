@@ -2,7 +2,7 @@
   "test_id": "book/test_match.py::test_match_various_descriptions",
   "snapshots": {
     "httpx": {
-      "hash": "sha256:0206661b133a152559deada9f779775e1e8e1d73b79cd412a231accdb3de89da",
+      "hash": "sha256:7b25116298e1030f126544130214412cf44e4d1f60620440901e3c91b5ff967e",
       "state": "updated",
       "details": {
         "count": 5,
@@ -14,19 +14,19 @@
           "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_match"
         ],
         "hashes": [
-          "3217c575d7d662f52d271cbe2c58320d0ade860d",
-          "3c2546688c006fa880611af261d1cef03895b57b",
-          "3e4b8fc83b52a6d64dce0addb1dd5f75a4c493ee",
-          "bb06be70626076f5dce1809295ad8841a4cd2edc",
-          "c5aec771a9b5396823adc7ea383785656e27050f"
+          "3edcf492444964742290265bbcc1ef98d896d03d",
+          "82957b522d39d6c1cae0ee2e613db53a0f05334d",
+          "8ed00b352622a65452f969173cf79d87cfd1995a",
+          "9595b509ddf4059c3d71e145a4011d5d7fcaf2d1",
+          "fa5f7386f36014e5d15d4610f7fc3552da18d5a7"
         ]
       },
-      "timestamp": 1776661970.9795513
+      "timestamp": 1776664135.3496423
     }
   },
   "result": {
     "success": "ok",
     "snapshotting": "updated"
   },
-  "timestamp": 1776661970.9798195
+  "timestamp": 1776664135.3515027
 }

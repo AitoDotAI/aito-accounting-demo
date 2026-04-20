@@ -12,6 +12,7 @@ invoice when Aito returns multiple vendor matches.
 from dataclasses import dataclass, field
 
 from src.aito_client import AitoClient, AitoError
+from src.invoice_service import _extract_why_factors
 
 
 @dataclass
@@ -112,6 +113,7 @@ def match_bank_txn_to_invoice(
     best_score = 0.0
     best_invoice = None
     best_p = 0.0
+    best_why = None
 
     for hit in result.get("hits", []):
         vendor = hit.get("vendor")
@@ -127,6 +129,7 @@ def match_bank_txn_to_invoice(
                 best_score = combined
                 best_invoice = inv
                 best_p = aito_p
+                best_why = hit.get("$why")
 
     if best_invoice is None:
         return None
@@ -143,7 +146,7 @@ def match_bank_txn_to_invoice(
         return None
 
     # Build explanation showing what drove the match
-    explanation = _build_explanation(txn, best_invoice, best_p)
+    explanation = _build_explanation(txn, best_invoice, best_p, best_why)
 
     return MatchPair(
         invoice_id=best_invoice["invoice_id"],
@@ -159,21 +162,19 @@ def match_bank_txn_to_invoice(
     )
 
 
-def _build_explanation(txn: dict, invoice: dict, aito_p: float) -> list[dict]:
-    """Build human-readable explanation of why a match was made."""
+def _build_explanation(txn: dict, invoice: dict, aito_p: float, aito_why: dict | None = None) -> list[dict]:
+    """Build explanation from Aito $why factors and amount proximity."""
     factors = []
 
-    # Vendor name similarity
-    bank_desc = txn["description"].upper()
-    vendor = invoice["vendor"].upper()
-    vendor_words = [w for w in vendor.split() if len(w) > 2]
-    matched_words = [w for w in vendor_words if w in bank_desc]
-    if matched_words:
-        factors.append({
-            "factor": "Vendor name",
-            "detail": f'"{txn["description"]}" matches "{invoice["vendor"]}" ({len(matched_words)}/{len(vendor_words)} words)',
-            "signal": "strong" if len(matched_words) == len(vendor_words) else "partial",
-        })
+    # Extract Aito $why factors — these show what text tokens drove the match
+    if aito_why:
+        why_factors = _extract_why_factors(aito_why)
+        for wf in why_factors:
+            factors.append({
+                "factor": f"Aito: {wf['field']}",
+                "detail": f'"{wf["value"]}" (lift {wf["lift"]}x)',
+                "signal": "strong" if wf["lift"] > 2 else "partial",
+            })
 
     # Amount proximity
     diff = abs(invoice["amount"] - txn["amount"])
@@ -184,10 +185,10 @@ def _build_explanation(txn: dict, invoice: dict, aito_p: float) -> list[dict]:
     else:
         factors.append({"factor": "Amount", "detail": f"Differs: {txn['amount']} vs {invoice['amount']} (diff {diff:.2f})", "signal": "weak"})
 
-    # Aito _match probability
+    # Overall Aito probability
     factors.append({
-        "factor": "Aito _match",
-        "detail": f"Association probability {aito_p:.4f} via bank_transactions → invoices link",
+        "factor": "Aito _match $p",
+        "detail": f"{aito_p:.4f} via bank_transactions → invoices link",
         "signal": "strong" if aito_p > 0.10 else "partial",
     })
 

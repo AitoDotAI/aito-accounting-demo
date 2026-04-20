@@ -161,6 +161,7 @@ class AitoClient:
             "from": table,
             "where": where,
             "match": match_field,
+            "select": ["$p", "vendor", "invoice_id", "amount", "$why"],
             "limit": limit,
         }
         return self._request("POST", "/_match", json=query)

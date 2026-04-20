@@ -73,11 +73,14 @@ def test_match_various_descriptions(t: bt.TestCaseRun):
         if top:
             vendor = top["vendor"]
             correct = vendor == expected_vendor if expected_vendor else "?"
-            mark = "ok" if correct is True else ("expected" if expected_vendor is None else "WRONG")
+            mark = "ok" if correct is True else ("expected" if expected_vendor is None else "MISS")
             t.iln(f"  {desc:25} → {vendor:20} p={top['$p']:.4f}  [{mark}]")
         else:
             t.iln(f"  {desc:25} → no match")
 
     t.tln("")
-    t.tln("Even abbreviated descriptions (FAZER GROUP OY vs Fazer Bakeries)")
-    t.tln("are matched correctly via learned associations in the data.")
+    t.tln("Note: With only ~120 bank transactions, some vendors have too few")
+    t.tln("historical pairings for _match to learn the association reliably.")
+    t.tln("More training data (a few hundred transactions) would improve")
+    t.tln("accuracy for underrepresented vendors like Telia (6 txns) vs")
+    t.tln("Securitas (17 txns) which dominates due to frequency.")
