@@ -1,0 +1,19 @@
+# Comparison: _predict vs _match for vendor resolution
+
+_predict on vendor_name uses text tokenization directly.
+_match traverses schema links but doesn't analyze text tokens.
+
+
+## Side by side
+
+  Description               _predict                  _match                   
+  ------------------------- ------------------------- -------------------------
+  TELIA FINLAND OY          Telia Finland p=0.4593    Securitas Oy p=0.1261    
+  KESKO OYJ HELSINKI        Kesko Oyj p=0.1985        Kesko Oyj p=0.1895       
+  FAZER GROUP OY            Fazer Bakeries p=0.1965   Fazer Bakeries p=0.1404  
+
+_predict gives higher confidence and correct vendor resolution
+because it operates directly on the Text field's token analysis.
+_match relies on historical invoice_id link associations, which
+can be overwhelmed by frequent vendors (like Securitas) in
+sparse training data.

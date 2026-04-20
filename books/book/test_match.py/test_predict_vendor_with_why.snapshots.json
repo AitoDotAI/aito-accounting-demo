@@ -1,0 +1,33 @@
+{
+  "httpx": {
+    "ba84e745455e8edb90e3add3388750cc35d435ae": {
+      "request": {
+        "hash": "ba84e745455e8edb90e3add3388750cc35d435ae",
+        "method": "POST",
+        "url": "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict"
+      },
+      "response": {
+        "content": "eyJvZmZzZXQiOjAsInRvdGFsIjoxMjAsImhpdHMiOlt7IiRwIjowLjE5ODQ1NDQyMDk0ODMzNTY4LCIkdmFsdWUiOiJLZXNrbyBPeWoiLCIkd2h5Ijp7InR5cGUiOiJwcm9kdWN0IiwiZmFjdG9ycyI6W3sidHlwZSI6ImJhc2VQIiwidmFsdWUiOjAuMDA4MzMzMzMzMzMzMzMzMzMzLCJwcm9wb3NpdGlvbiI6eyJ2ZW5kb3JfbmFtZSI6eyIkaGFzIjoiS2Vza28gT3lqIn19fSx7InR5cGUiOiJwcm9kdWN0IiwiZmFjdG9ycyI6W3sidHlwZSI6Im5vcm1hbGl6ZXIiLCJuYW1lIjoiZXhjbHVzaXZlbmVzcyIsInZhbHVlIjoxLjE4NTkzNDIwNTM3MDkxNH0seyJ0eXBlIjoibm9ybWFsaXplciIsIm5hbWUiOiJ0cnVlRmFsc2VFeGNsdXNpdmVuZXNzIiwidmFsdWUiOjAuNzA0MjI5MzAwMjgxMjQ0MX1dfSx7InR5cGUiOiJyZWxhdGVkUHJvcG9zaXRpb25MaWZ0IiwicHJvcG9zaXRpb24iOnsiJGFuZCI6W3siZGVzY3JpcHRpb24iOnsiJGhhcyI6Imtlc2tvIn19LHsiZGVzY3JpcHRpb24iOnsiJGhhcyI6Im95aiJ9fV19LCJ2YWx1ZSI6MjguNTE0NjAzNTgyNTI0MzQ0fV19fV19",
+        "headers": {
+          "access-control-allow-credentials": "true",
+          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
+          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
+          "access-control-allow-origin": "*",
+          "connection": "keep-alive",
+          "content-type": "application/json",
+          "date": "Mon, 20 Apr 2026 09:43:12 GMT",
+          "permissions-policy": "geolocation=(), microphone=(), camera=()",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "transfer-encoding": "chunked",
+          "x-aitoai-response-time": "23.34",
+          "x-azure-ref": "20260420T094312Z-r1579b5f97d24pnhhC1OSL9ezw00000009w000000000fqu4",
+          "x-cache": "CONFIG_NOCACHE",
+          "x-content-type-options": "nosniff",
+          "x-frame-options": "DENY",
+          "x-xss-protection": "1; mode=block"
+        },
+        "statusCode": 200
+      }
+    }
+  }
+}

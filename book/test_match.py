@@ -1,7 +1,8 @@
-"""Book tests for Aito _match — invoice to bank transaction matching.
+"""Book tests for payment matching — vendor resolution via _predict.
 
-Examines how _match traverses schema links to find invoices related
-to bank transaction descriptions and amounts.
+Examines how _predict on the vendor_name Text field resolves bank
+transaction descriptions to invoice vendors. Compares with _match
+to show why _predict is better for text-based matching.
 """
 
 import json
@@ -15,84 +16,25 @@ def get_client():
     return AitoClient(load_config())
 
 
-@bt.snapshot_httpx()
-def test_match_known_vendor(t: bt.TestCaseRun):
-    """Match a bank transaction to invoices via schema link."""
-    c = get_client()
-
-    t.h1("_match: KESKO OYJ HELSINKI → invoices")
-    t.tln("Aito's _match traverses bank_transactions.invoice_id → invoices")
-    t.tln("and returns full invoice rows ranked by association strength.")
-    t.tln("")
-
-    result = c.match(
-        table="bank_transactions",
-        where={"description": "KESKO OYJ HELSINKI", "amount": 4220},
-        match_field="invoice_id",
-        limit=5,
-    )
-
-    t.h2("Top matches")
-    for hit in result["hits"][:5]:
-        t.iln(f"  {hit['invoice_id']:12} vendor={hit['vendor']:20} amount={hit['amount']:>10.2f}  p={hit['$p']:.4f}")
-
-    t.tln("")
-    top = result["hits"][0]
-    t.assertln("Top match is Kesko Oyj", top["vendor"] == "Kesko Oyj")
-    t.tln("")
-    t.tln(f"Note: $p={top['$p']:.4f} is low in absolute terms because")
-    t.tln(f"probability is spread across {result['total']} invoices.")
+def predict_vendor(client, description):
+    """Predict vendor_name from bank description via _predict."""
+    return client._request("POST", "/_predict", json={
+        "from": "bank_transactions",
+        "where": {"description": description},
+        "predict": "vendor_name",
+        "limit": 5,
+    })
 
 
 @bt.snapshot_httpx()
-def test_match_various_descriptions(t: bt.TestCaseRun):
-    """Match different bank descriptions to see vendor resolution."""
+def test_predict_vendor_resolution(t: bt.TestCaseRun):
+    """Resolve bank descriptions to vendors using _predict on vendor_name."""
     c = get_client()
 
-    t.h1("_match: vendor resolution from bank descriptions")
+    t.h1("Vendor resolution: _predict on vendor_name")
     t.tln("Bank descriptions are uppercased, abbreviated, and inconsistent.")
-    t.tln("_match handles the text similarity via the schema link.")
-    t.tln("")
-
-    test_cases = [
-        ("TELIA FINLAND OY", 890.50, "Telia Finland"),
-        ("KESKO OYJ HELSINKI", 4220.00, "Kesko Oyj"),
-        ("SOK CORPORATION", 7852.00, "SOK Corporation"),
-        ("FAZER GROUP OY", 2340.00, "Fazer Bakeries"),
-        ("UNKNOWN TRANSFER", 550.00, None),
-    ]
-
-    for desc, amount, expected_vendor in test_cases:
-        result = c.match(
-            table="bank_transactions",
-            where={"description": desc, "amount": amount},
-            match_field="invoice_id",
-            limit=3,
-        )
-        top = result["hits"][0] if result["hits"] else None
-        if top:
-            vendor = top["vendor"]
-            correct = vendor == expected_vendor if expected_vendor else "?"
-            mark = "ok" if correct is True else ("expected" if expected_vendor is None else "MISS")
-            t.iln(f"  {desc:25} → {vendor:20} p={top['$p']:.4f}  [{mark}]")
-        else:
-            t.iln(f"  {desc:25} → no match")
-
-    t.tln("")
-    t.tln("_match traverses schema links and finds associated records.")
-    t.tln("Some vendors may not match due to sparse training data.")
-
-
-@bt.snapshot_httpx()
-def test_predict_vendor_name(t: bt.TestCaseRun):
-    """Use _predict on vendor_name field for better text matching."""
-    import httpx as _httpx
-    c = get_client()
-
-    t.h1("_predict vendor_name from bank description")
-    t.tln("The vendor_name Text field enables Aito to tokenize and match")
-    t.tln("bank descriptions like 'KESKO OYJ HELSINKI' to vendor 'Kesko Oyj'.")
-    t.tln("This is more reliable than _match for vendor resolution.")
+    t.tln("_predict on the Text vendor_name field tokenizes the input and")
+    t.tln("matches via learned word associations in the training data.")
     t.tln("")
 
     test_cases = [
@@ -107,15 +49,11 @@ def test_predict_vendor_name(t: bt.TestCaseRun):
     ]
 
     correct = 0
-    total = len([t for _, exp in test_cases if exp is not None])
+    total = sum(1 for _, exp in test_cases if exp is not None)
 
+    t.h2("Results")
     for desc, expected in test_cases:
-        result = c._request("POST", "/_predict", json={
-            "from": "bank_transactions",
-            "where": {"description": desc},
-            "predict": "vendor_name",
-            "limit": 3,
-        })
+        result = predict_vendor(c, desc)
         top = result["hits"][0] if result.get("hits") else None
         if top:
             vendor = top["$value"]
@@ -127,12 +65,86 @@ def test_predict_vendor_name(t: bt.TestCaseRun):
                 mark = "ok" if ok else "MISS"
             else:
                 mark = f"low-p" if p < 0.05 else "unexpected"
-            t.iln(f"  {desc:25} → {vendor:20} p={p:.4f}  [{mark}]")
+            t.iln(f"  {desc:25} -> {vendor:20} p={p:.4f}  [{mark}]")
         else:
-            t.iln(f"  {desc:25} → no prediction")
+            t.iln(f"  {desc:25} -> no prediction")
 
     t.tln("")
     t.tln(f"Accuracy: {correct}/{total} vendors matched correctly.")
+    t.assertln(f"All known vendors matched", correct == total)
+
+
+@bt.snapshot_httpx()
+def test_predict_vendor_with_why(t: bt.TestCaseRun):
+    """Show $why explanation for vendor prediction."""
+    c = get_client()
+
+    t.h1("$why explanation for vendor matching")
+    t.tln("The $why factors show which text tokens drove the prediction.")
     t.tln("")
-    t.tln("_predict on the Text vendor_name field uses token analysis to")
-    t.tln("match partial and case-insensitive descriptions reliably.")
+
+    result = c._request("POST", "/_predict", json={
+        "from": "bank_transactions",
+        "where": {"description": "KESKO OYJ HELSINKI"},
+        "predict": "vendor_name",
+        "select": ["$p", "$value", "$why"],
+        "limit": 1,
+    })
+
+    top = result["hits"][0]
+    t.iln(f"  Description: KESKO OYJ HELSINKI")
+    t.iln(f"  Predicted:   {top['$value']}  p={top['$p']:.4f}")
+    t.tln("")
+
+    t.h2("$why factors")
+    t.icode(json.dumps(top.get("$why", {}), indent=2)[:1200], "json")
+
+    t.tln("")
+    t.tln("The description tokens 'kesko' and 'oyj' provide strong lift")
+    t.tln("for vendor 'Kesko Oyj' via learned text associations.")
+
+
+@bt.snapshot_httpx()
+def test_predict_vs_match_comparison(t: bt.TestCaseRun):
+    """Compare _predict vendor_name vs _match for the same inputs."""
+    c = get_client()
+
+    t.h1("Comparison: _predict vs _match for vendor resolution")
+    t.tln("_predict on vendor_name uses text tokenization directly.")
+    t.tln("_match traverses schema links but doesn't analyze text tokens.")
+    t.tln("")
+
+    test_descs = [
+        "TELIA FINLAND OY",
+        "KESKO OYJ HELSINKI",
+        "FAZER GROUP OY",
+    ]
+
+    t.h2("Side by side")
+    t.iln(f"  {'Description':25} {'_predict':25} {'_match':25}")
+    t.iln(f"  {'-'*25} {'-'*25} {'-'*25}")
+
+    for desc in test_descs:
+        # _predict
+        pr = predict_vendor(c, desc)
+        pr_top = pr["hits"][0] if pr.get("hits") else None
+        pr_str = f"{pr_top['$value']} p={pr_top['$p']:.4f}" if pr_top else "none"
+
+        # _match
+        mr = c.match(
+            "bank_transactions",
+            {"description": desc, "amount": 1000},
+            "invoice_id",
+            limit=1,
+        )
+        mr_top = mr["hits"][0] if mr.get("hits") else None
+        mr_str = f"{mr_top.get('vendor', '?')} p={mr_top['$p']:.4f}" if mr_top else "none"
+
+        t.iln(f"  {desc:25} {pr_str:25} {mr_str:25}")
+
+    t.tln("")
+    t.tln("_predict gives higher confidence and correct vendor resolution")
+    t.tln("because it operates directly on the Text field's token analysis.")
+    t.tln("_match relies on historical invoice_id link associations, which")
+    t.tln("can be overwhelmed by frequent vendors (like Securitas) in")
+    t.tln("sparse training data.")

@@ -1,0 +1,20 @@
+# Vendor resolution: _predict on vendor_name
+
+Bank descriptions are uppercased, abbreviated, and inconsistent.
+_predict on the Text vendor_name field tokenizes the input and
+matches via learned word associations in the training data.
+
+
+## Results
+
+  TELIA FINLAND OY          -> Telia Finland        p=0.4593  [ok]
+  KESKO OYJ HELSINKI        -> Kesko Oyj            p=0.1985  [ok]
+  SOK CORPORATION           -> SOK Corporation      p=0.0998  [ok]
+  FAZER GROUP OY            -> Fazer Bakeries       p=0.1965  [ok]
+  VERKKOKAUPPA.COM          -> Verkkokauppa.com     p=0.2000  [ok]
+  KONE                      -> Kone Oyj             p=0.1423  [ok]
+  ISS PALVELUT              -> ISS Palvelut         p=0.1990  [ok]
+  UNKNOWN TRANSFER          -> Verkkokauppa.com     p=0.0108  [low-p]
+
+Accuracy: 7/7 vendors matched correctly.
+ok

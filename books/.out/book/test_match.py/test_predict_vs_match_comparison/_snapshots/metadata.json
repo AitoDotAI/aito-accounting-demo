@@ -1,0 +1,34 @@
+{
+  "test_id": "book/test_match.py::test_predict_vs_match_comparison",
+  "snapshots": {
+    "httpx": {
+      "hash": "sha256:da666f8d16109892fe44057f893e23d312a7823b5db27e3107ed496bdf294abb",
+      "state": "updated",
+      "details": {
+        "count": 6,
+        "urls": [
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_match",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_match",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_match",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict"
+        ],
+        "hashes": [
+          "031efaccb4bf44417cdde9ce5ad1a61834267d4b",
+          "3d1b0dedc3795eecbaa005f0142ac755119fbfe1",
+          "6c6491ab5c939423b8189d5a2597dd1d20e4301c",
+          "34282dead468fbce3763ab7a604c4019ed2ea2f4",
+          "efd0207cb82040a0b44597ea0a373c7085bf7679",
+          "f76b79c486911b1fc5f14ce26e9dfdf0b3da50dc"
+        ]
+      },
+      "timestamp": 1776680275.6067648
+    }
+  },
+  "result": {
+    "success": "ok",
+    "snapshotting": "updated"
+  },
+  "timestamp": 1776680275.6069746
+}
