@@ -75,6 +75,30 @@ def _walk_why(node: dict, factors: list[dict]) -> None:
     if node.get("type") == "relatedPropositionLift":
         prop = node.get("proposition", {})
         lift = node.get("value", 0)
+        _extract_propositions(prop, lift, factors)
+    if node.get("type") == "baseP":
+        # Base probability — useful context
+        prop = node.get("proposition", {})
+        base_p = node.get("value", 0)
+        for field_name, condition in prop.items():
+            if isinstance(condition, dict) and "$has" in condition:
+                factors.append({
+                    "field": field_name,
+                    "value": str(condition["$has"]),
+                    "lift": round(base_p, 4),
+                    "type": "base",
+                })
+    for child in node.get("factors", []):
+        if isinstance(child, dict):
+            _walk_why(child, factors)
+
+
+def _extract_propositions(prop: dict, lift: float, factors: list[dict]) -> None:
+    """Extract field/value pairs from a proposition, handling $and arrays."""
+    if "$and" in prop:
+        for sub_prop in prop["$and"]:
+            _extract_propositions(sub_prop, lift, factors)
+    else:
         for field_name, condition in prop.items():
             if isinstance(condition, dict) and "$has" in condition:
                 factors.append({
@@ -82,9 +106,6 @@ def _walk_why(node: dict, factors: list[dict]) -> None:
                     "value": str(condition["$has"]),
                     "lift": round(lift, 2),
                 })
-    for child in node.get("factors", []):
-        if isinstance(child, dict):
-            _walk_why(child, factors)
 
 
 @dataclass
@@ -143,11 +164,14 @@ RULES = [
 ]
 
 
-def check_rules(invoice: dict) -> tuple[str, str] | None:
-    """Check if any rule matches the invoice."""
+def check_rules(invoice: dict) -> tuple[str, str, str] | None:
+    """Check if any rule matches the invoice.
+
+    Returns (gl_code, approver, rule_name) or None.
+    """
     for rule in RULES:
         if rule["match"](invoice):
-            return rule["gl_code"], rule["approver"]
+            return rule["gl_code"], rule["approver"], rule["name"]
     return None
 
 
@@ -159,7 +183,9 @@ def predict_invoice(client: AitoClient, invoice: dict) -> InvoicePrediction:
 
     rule_match = check_rules(invoice)
     if rule_match:
-        gl_code, approver = rule_match
+        gl_code, approver, rule_name = rule_match
+        rule_why = [{"field": "rule", "value": rule_name, "lift": 1.0}]
+        gl_label = GL_LABELS.get(gl_code, gl_code)
         return InvoicePrediction(
             invoice_id=invoice_id,
             vendor=vendor,
@@ -167,10 +193,12 @@ def predict_invoice(client: AitoClient, invoice: dict) -> InvoicePrediction:
             approver=f"AP / {approver}",
             approver_confidence=0.99,
             gl_code=gl_code,
-            gl_label=GL_LABELS.get(gl_code, gl_code),
+            gl_label=gl_label,
             gl_confidence=0.99,
             source="rule",
             confidence=0.99,
+            gl_alternatives=[{"value": gl_code, "display": f"{gl_code} \u2013 {gl_label}", "confidence": 0.99, "why": rule_why}],
+            approver_alternatives=[{"value": approver, "display": f"AP / {approver}", "confidence": 0.99, "why": rule_why}],
         )
 
     where = {"vendor": vendor, "amount": amount}

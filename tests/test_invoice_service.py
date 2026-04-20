@@ -27,15 +27,15 @@ TEST_CONFIG = Config(
 class TestCheckRules:
     def test_telia_matches_telecom_rule(self):
         result = check_rules({"vendor": "Telia Finland", "amount": 890})
-        assert result == ("6200", "Mikael H.")
+        assert result[:2] == ("6200", "Mikael H.")
 
     def test_elisa_matches_telecom_rule(self):
         result = check_rules({"vendor": "Elisa Oyj", "amount": 500})
-        assert result == ("6200", "Mikael H.")
+        assert result[:2] == ("6200", "Mikael H.")
 
     def test_small_office_purchase_matches_rule(self):
         result = check_rules({"vendor": "Lyreco Oy", "amount": 35, "category": "office"})
-        assert result == ("4500", "Mikael H.")
+        assert result[:2] == ("4500", "Mikael H.")
 
     def test_unknown_vendor_returns_none(self):
         result = check_rules({"vendor": "Unknown GmbH", "amount": 3000})
