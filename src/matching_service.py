@@ -9,7 +9,7 @@ Amount proximity is used as a secondary signal to pick the best
 invoice when Aito returns multiple vendor matches.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from src.aito_client import AitoClient, AitoError
 
@@ -25,6 +25,7 @@ class MatchPair:
     bank_name: str | None
     confidence: float
     status: str  # "matched", "suggested", "unmatched"
+    explanation: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -37,6 +38,7 @@ class MatchPair:
             "bank_name": self.bank_name,
             "confidence": round(self.confidence, 2),
             "status": self.status,
+            "explanation": self.explanation,
         }
 
 
@@ -140,6 +142,9 @@ def match_bank_txn_to_invoice(
     else:
         return None
 
+    # Build explanation showing what drove the match
+    explanation = _build_explanation(txn, best_invoice, best_p)
+
     return MatchPair(
         invoice_id=best_invoice["invoice_id"],
         invoice_vendor=best_invoice["vendor"],
@@ -150,7 +155,43 @@ def match_bank_txn_to_invoice(
         bank_name=txn["bank"],
         confidence=best_score,
         status=status,
+        explanation=explanation,
     )
+
+
+def _build_explanation(txn: dict, invoice: dict, aito_p: float) -> list[dict]:
+    """Build human-readable explanation of why a match was made."""
+    factors = []
+
+    # Vendor name similarity
+    bank_desc = txn["description"].upper()
+    vendor = invoice["vendor"].upper()
+    vendor_words = [w for w in vendor.split() if len(w) > 2]
+    matched_words = [w for w in vendor_words if w in bank_desc]
+    if matched_words:
+        factors.append({
+            "factor": "Vendor name",
+            "detail": f'"{txn["description"]}" matches "{invoice["vendor"]}" ({len(matched_words)}/{len(vendor_words)} words)',
+            "signal": "strong" if len(matched_words) == len(vendor_words) else "partial",
+        })
+
+    # Amount proximity
+    diff = abs(invoice["amount"] - txn["amount"])
+    if diff == 0:
+        factors.append({"factor": "Amount", "detail": f"Exact match: {txn['amount']}", "signal": "strong"})
+    elif diff < invoice["amount"] * 0.02:
+        factors.append({"factor": "Amount", "detail": f"Within 2%: {txn['amount']} vs {invoice['amount']} (diff {diff:.2f})", "signal": "partial"})
+    else:
+        factors.append({"factor": "Amount", "detail": f"Differs: {txn['amount']} vs {invoice['amount']} (diff {diff:.2f})", "signal": "weak"})
+
+    # Aito _match probability
+    factors.append({
+        "factor": "Aito _match",
+        "detail": f"Association probability {aito_p:.4f} via bank_transactions → invoices link",
+        "signal": "strong" if aito_p > 0.10 else "partial",
+    })
+
+    return factors
 
 
 def match_all(client: AitoClient) -> dict:

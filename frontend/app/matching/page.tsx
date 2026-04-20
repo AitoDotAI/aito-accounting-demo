@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import Nav from "@/components/shell/Nav";
 import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
@@ -28,6 +28,12 @@ const PANEL: AitoPanelConfig = {
   ],
 };
 
+interface MatchExplanation {
+  factor: string;
+  detail: string;
+  signal: "strong" | "partial" | "weak";
+}
+
 interface MatchPair {
   invoice_id: string;
   invoice_vendor: string;
@@ -38,6 +44,7 @@ interface MatchPair {
   bank_name: string | null;
   confidence: number;
   status: "matched" | "suggested" | "unmatched";
+  explanation?: MatchExplanation[];
 }
 
 interface MatchResponse {
@@ -64,9 +71,12 @@ function connectorBadge(pair: MatchPair) {
   );
 }
 
+const SIGNAL_COLOR: Record<string, string> = { strong: "var(--green)", partial: "var(--amber)", weak: "var(--red)" };
+
 export default function MatchingPage() {
   const [data, setData] = useState<MatchResponse | null>(null);
   const [live, setLive] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch<MatchResponse>("/api/matching/pairs")
@@ -94,7 +104,7 @@ export default function MatchingPage() {
             <div className="metric"><div className="metric-label">Unmatched</div><div className="metric-value">{m?.unmatched ?? "--"}</div></div>
           </div>
           <div className="card">
-            <div className="card-header"><span className="card-title">Invoice &#x2194; Bank transaction matching</span><span className="card-hint">Aito _match traverses schema links</span></div>
+            <div className="card-header"><span className="card-title">Invoice &#x2194; Bank transaction matching</span><span className="card-hint">Click a match to see why &middot; Aito _match traverses schema links</span></div>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr>
@@ -106,8 +116,14 @@ export default function MatchingPage() {
               <tbody>
                 {(data?.pairs ?? []).map((p) => {
                   const rowClass = p.status === "matched" ? "matched" : p.status === "suggested" ? "suggested" : "";
+                  const isExpanded = expanded === p.invoice_id;
+                  const hasExplanation = p.explanation && p.explanation.length > 0;
                   return (
-                    <tr key={p.invoice_id}>
+                    <React.Fragment key={p.invoice_id}>
+                    <tr
+                      onClick={() => hasExplanation && setExpanded(isExpanded ? null : p.invoice_id)}
+                      style={{ cursor: hasExplanation ? "pointer" : "default" }}
+                    >
                       <td className={`match-item ${rowClass}`} style={{ verticalAlign: "middle" }}>
                         <div className="match-name">{p.invoice_vendor} &middot; {p.invoice_id}</div>
                         <div className="match-detail">{fmtAmount(p.invoice_amount)}</div>
@@ -123,6 +139,21 @@ export default function MatchingPage() {
                         )}
                       </td>
                     </tr>
+                    {isExpanded && p.explanation && (
+                      <tr>
+                        <td colSpan={3} style={{ padding: "0 20px 12px", background: "var(--surface2)" }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--gold-dark)", marginBottom: 6, marginTop: 8 }}>Why this match?</div>
+                          {p.explanation.map((e, i) => (
+                            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 8px", background: "var(--surface)", borderRadius: 4, marginBottom: 3, fontSize: 12 }}>
+                              <span style={{ width: 8, height: 8, borderRadius: "50%", background: SIGNAL_COLOR[e.signal], flexShrink: 0 }} />
+                              <span style={{ fontWeight: 500, minWidth: 90, color: "var(--text2)" }}>{e.factor}</span>
+                              <span style={{ color: "var(--text3)" }}>{e.detail}</span>
+                            </div>
+                          ))}
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>

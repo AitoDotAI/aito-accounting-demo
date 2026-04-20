@@ -66,10 +66,13 @@ def _warm_cache() -> None:
 
         def warm_formfill():
             import json as _json
-            for vendor in KNOWN_VENDORS:
+            from concurrent.futures import ThreadPoolExecutor as TPE
+            def warm_vendor(vendor):
                 where = {"vendor": vendor}
                 key = "formfill:" + _json.dumps(where, sort_keys=True)
                 cache.set(key, predict_fields(aito, where))
+            with TPE(max_workers=4) as vpool:
+                list(vpool.map(warm_vendor, KNOWN_VENDORS))
             print("  cached: formfill (%d vendors)" % len(KNOWN_VENDORS))
 
         with ThreadPoolExecutor(max_workers=6) as pool:
