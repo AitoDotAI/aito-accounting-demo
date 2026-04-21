@@ -1,12 +1,10 @@
 """Payment matching service — invoice to bank transaction pairing.
 
-Uses Aito's _match endpoint to find invoices related to bank
-transactions. The _match query traverses the link between
-bank_transactions.invoice_id → invoices.invoice_id and returns
-full invoice rows ranked by match probability.
-
-Amount proximity is used as a secondary signal to pick the best
-invoice when Aito returns multiple vendor matches.
+Uses Aito _predict on the bank_transactions.vendor_name Text field
+to resolve bank descriptions to invoice vendors. The Text analyzer
+tokenizes "KESKO OYJ HELSINKI" and matches it to "Kesko Oyj" via
+learned word associations. Amount is included as context to improve
+prediction accuracy.
 """
 
 from dataclasses import dataclass, field
@@ -85,26 +83,24 @@ def match_bank_txn_to_invoice(
     txn: dict,
     open_invoices: list[dict],
 ) -> MatchPair | None:
-    """Use Aito _match to find the best invoice for a bank transaction.
+    """Use Aito _predict to resolve vendor name from bank description.
 
-    Aito's _match traverses the bank_transactions → invoices link and
-    returns invoice rows ranked by how well they associate with the
-    bank transaction's features (description text, amount).
-
-    We then pick the best match among open invoices by combining
-    Aito's $p score with amount proximity.
+    Predicts vendor_name from the bank transaction's description and
+    amount, then finds matching open invoices by vendor. Combines
+    Aito's $p score with amount proximity for final ranking.
     """
     open_by_vendor = {}
     for inv in open_invoices:
         open_by_vendor.setdefault(inv["vendor"], []).append(inv)
 
     # Step 1: Use _predict on bank_transactions to resolve vendor name
-    # from the bank description text. This uses Aito's text analysis
-    # to match "KESKO OYJ HELSINKI" → "Kesko Oyj".
+    # from description text and amount. Aito uses both signals to find
+    # the most likely vendor: text tokens for name matching, amount
+    # for narrowing to the right invoice range.
     try:
         vendor_result = client._request("POST", "/_predict", json={
             "from": "bank_transactions",
-            "where": {"description": txn["description"]},
+            "where": {"description": txn["description"], "amount": txn["amount"]},
             "predict": "vendor_name",
             "select": ["$p", "$value", "$why"],
             "limit": 5,

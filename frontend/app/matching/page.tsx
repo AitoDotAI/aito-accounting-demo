@@ -10,22 +10,22 @@ import { apiFetch, fmtAmount } from "@/lib/api";
 import type { AitoPanelConfig } from "@/lib/types";
 
 const PANEL: AitoPanelConfig = {
-  operation: "_match",
+  operation: "_predict",
   stats: [
-    { value: "0.91", label: "Avg confidence" },
-    { value: "18ms", label: "Response" },
+    { value: "0.46", label: "Top confidence" },
+    { value: "27ms", label: "Response" },
     { value: "120", label: "Bank txns" },
     { value: "Zero", label: "Training" },
   ],
   description:
-    'Invoice-to-bank matching uses <code style="font-size:11px;color:var(--aito-accent)">_match</code> to traverse the schema link from bank_transactions to invoices. ' +
-    "Aito finds which invoices associate with each bank description and amount.",
+    'Vendor resolution uses <code style="font-size:11px;color:var(--aito-accent)">_predict</code> on the <code style="font-size:11px;color:var(--aito-accent)">vendor_name</code> Text field. ' +
+    "Bank description tokens (\"kesko\", \"oyj\") and amount are used as context to predict the most likely vendor.",
   query: JSON.stringify(
-    { from: "bank_transactions", where: { description: "KESKO OYJ", amount: 4220 }, match: "invoice_id", limit: 3 },
+    { from: "bank_transactions", where: { description: "KESKO OYJ HELSINKI", amount: 4220 }, predict: "vendor_name", select: ["$p", "$value", "$why"] },
     null, 2,
   ),
   links: [
-    { label: "API reference: _match", url: "https://aito.ai/docs/api/#post-api-v1-match" },
+    { label: "API reference: _predict", url: "https://aito.ai/docs/api/#post-api-v1-predict" },
   ],
 };
 
