@@ -109,3 +109,18 @@ def set(key: str, value: Any, ttl: int = DEFAULT_TTL) -> None:
 def clear() -> None:
     """Clear in-memory cache. Aito cache persists intentionally."""
     _cache.clear()
+
+
+def clear_all() -> None:
+    """Clear both in-memory and Aito persistent cache.
+
+    Drops and recreates the cache table in Aito.
+    """
+    _cache.clear()
+    if _aito_client is not None:
+        try:
+            _aito_client._request("DELETE", f"/schema/{CACHE_TABLE}")
+            _aito_client._request("PUT", f"/schema/{CACHE_TABLE}", json=CACHE_SCHEMA)
+            print("Cleared Aito prediction cache.")
+        except AitoError as e:
+            print(f"Could not clear Aito cache: {e}")

@@ -15,6 +15,7 @@ Commands:
   demo            Open the demo (http://localhost:8200 if backend running)
   load-data       Upload sample data to Aito
   reset-data      Drop and reload all Aito tables
+  clear-cache     Clear in-memory and Aito persistent cache
   screenshots     Capture screenshots of all views (needs running server)
   test            Run the unit test suite
   book            Run book tests (Aito examination notebooks)
@@ -74,6 +75,20 @@ cmd_load_data() {
 cmd_reset_data() {
   cd "$SCRIPT_DIR"
   uv run python -m src.data_loader --reset
+}
+
+cmd_clear_cache() {
+  echo "Clearing caches..."
+  cd "$SCRIPT_DIR"
+  uv run python -c "
+from src.config import load_config
+from src.aito_client import AitoClient
+from src.cache import init_persistent_cache, clear_all
+client = AitoClient(load_config())
+init_persistent_cache(client)
+clear_all()
+print('Done. Restart ./do dev to recompute predictions.')
+"
 }
 
 cmd_test() {
@@ -168,6 +183,7 @@ case "${1:-help}" in
   demo)            cmd_demo ;;
   load-data)       cmd_load_data ;;
   reset-data)      cmd_reset_data ;;
+  clear-cache)     cmd_clear_cache ;;
   screenshots)     cmd_screenshots ;;
   test)            cmd_test ;;
   book)            cmd_book ;;
