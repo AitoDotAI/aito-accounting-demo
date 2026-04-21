@@ -116,7 +116,8 @@ def run(reset: bool = False) -> None:
 
     if reset:
         print("\nResetting — deleting existing tables...")
-        # Delete in reverse order: linked tables first, then the target
+        # Delete cache table first, then linked tables, then base tables
+        delete_table(client, "prediction_cache")
         for table_name in reversed(list(SCHEMAS.keys())):
             delete_table(client, table_name)
 

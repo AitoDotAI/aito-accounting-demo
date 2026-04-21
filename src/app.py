@@ -33,8 +33,8 @@ aito = AitoClient(config)
 def _warm_cache() -> None:
     """Pre-compute all cacheable endpoints on startup in parallel.
 
-    Each endpoint warms in its own thread so rule mining (30+ _relate
-    calls) doesn't block invoices and matching from being ready first.
+    First tries to load from Aito persistent cache (instant if previous
+    run stored results). Falls back to computing fresh predictions.
     """
     import threading
     from concurrent.futures import ThreadPoolExecutor
@@ -42,31 +42,41 @@ def _warm_cache() -> None:
     def warm():
         if not aito.check_connectivity():
             return
+
+        # Initialize persistent cache table in Aito
+        cache.init_persistent_cache(aito)
         print("Warming cache...")
 
+        def warm_or_load(key, compute_fn):
+            """Load from persistent cache if available, else compute and store."""
+            existing = cache.get(key)
+            if existing:
+                print(f"  loaded: {key} (from Aito cache)")
+                return
+            result = compute_fn()
+            cache.set(key, result)
+            print(f"  computed: {key}")
+
         def warm_invoices():
-            predictions = predict_batch(aito, DEMO_INVOICES)
-            cache.set("invoices_pending", {
-                "invoices": [p.to_dict() for p in predictions],
-                "metrics": compute_metrics(predictions),
-            })
-            print("  cached: invoices")
+            def compute():
+                predictions = predict_batch(aito, DEMO_INVOICES)
+                return {
+                    "invoices": [p.to_dict() for p in predictions],
+                    "metrics": compute_metrics(predictions),
+                }
+            warm_or_load("invoices_pending", compute)
 
         def warm_matching():
-            cache.set("matching_pairs", match_all(aito))
-            print("  cached: matching")
+            warm_or_load("matching_pairs", lambda: match_all(aito))
 
         def warm_rules():
-            cache.set("rules_candidates", mine_rules(aito))
-            print("  cached: rules")
+            warm_or_load("rules_candidates", lambda: mine_rules(aito))
 
         def warm_anomalies():
-            cache.set("anomalies_scan", scan_all(aito))
-            print("  cached: anomalies")
+            warm_or_load("anomalies_scan", lambda: scan_all(aito))
 
         def warm_quality():
-            cache.set("quality_overview", get_quality_overview(aito))
-            print("  cached: quality")
+            warm_or_load("quality_overview", lambda: get_quality_overview(aito))
 
         def warm_formfill():
             import json as _json
@@ -74,10 +84,10 @@ def _warm_cache() -> None:
             def warm_vendor(vendor):
                 where = {"vendor": vendor}
                 key = "formfill:" + _json.dumps(where, sort_keys=True)
-                cache.set(key, predict_fields(aito, where))
+                warm_or_load(key, lambda: predict_fields(aito, where))
             with TPE(max_workers=4) as vpool:
                 list(vpool.map(warm_vendor, KNOWN_VENDORS))
-            print("  cached: formfill (%d vendors)" % len(KNOWN_VENDORS))
+            print("  formfill: %d vendors" % len(KNOWN_VENDORS))
 
         with ThreadPoolExecutor(max_workers=6) as pool:
             futures = [
