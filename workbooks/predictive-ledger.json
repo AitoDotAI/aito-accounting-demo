@@ -45,8 +45,8 @@
           "title": "Invoices by vendor",
           "size": "medium",
           "config": {
-            "query": {"from": "invoices", "aggregate": ["vendor.$f"]},
-            "endpoint": "aggregate",
+            "query": {"from": "invoices", "get": "vendor", "orderBy": "$f", "select": ["$score", "$value"]},
+            "endpoint": "query",
             "displayMode": "fixed",
             "outputFormat": "chart",
             "runPolicy": "onLoad"
@@ -57,8 +57,8 @@
           "title": "Invoices by GL code",
           "size": "medium",
           "config": {
-            "query": {"from": "invoices", "aggregate": ["gl_code.$f"]},
-            "endpoint": "aggregate",
+            "query": {"from": "invoices", "get": "gl_code", "orderBy": "$f", "select": ["$score", "$value"]},
+            "endpoint": "query",
             "displayMode": "fixed",
             "outputFormat": "chart",
             "runPolicy": "onLoad"
@@ -69,8 +69,8 @@
           "title": "Routing breakdown (rules vs Aito vs human)",
           "size": "full",
           "config": {
-            "query": {"from": "invoices", "aggregate": ["routed_by.$f"]},
-            "endpoint": "aggregate",
+            "query": {"from": "invoices", "get": "routed_by", "orderBy": "$f", "select": ["$score", "$value"]},
+            "endpoint": "query",
             "displayMode": "fixed",
             "outputFormat": "chart",
             "runPolicy": "onLoad"
