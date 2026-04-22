@@ -203,24 +203,58 @@
     },
     {
       "title": "Payment Matching",
-      "description": "Match bank transaction descriptions to invoice vendors",
+      "description": "Match bank transactions to invoices via _predict invoice_id",
       "widgets": [
         {
           "type": "text",
           "title": "How it works",
           "size": "full",
           "config": {
-            "content": "## Payment Matching\n\nBank descriptions are uppercased and abbreviated: \"KESKO OYJ HELSINKI\". Aito predicts the `vendor_name` from the `description` Text field, using learned token associations.\n\nThe Text analyzer tokenizes the description, so \"kesko\" and \"oyj\" independently contribute lift to \"Kesko Oyj\"."
+            "content": "## Payment Matching\n\n`_predict invoice_id` traverses the schema link from `bank_transactions` to `invoices`, returning full invoice rows ranked by how well they match the bank transaction.\n\nAito uses **description text tokens** and **amount** as context. When the amount matches training data, it appears as a lift factor in `$why`.\n\nTry modifying the description and amount to see how predictions change."
           }
         },
         {
           "type": "query",
-          "title": "Predict vendor from bank description",
+          "title": "Match bank transaction to invoice (with $why)",
           "size": "full",
           "config": {
             "query": {
               "from": "bank_transactions",
-              "where": {"description": "KESKO OYJ HELSINKI"},
+              "where": {"description": "KESKO OYJ HELSINKI", "amount": 4220},
+              "predict": "invoice_id",
+              "select": ["$p", "invoice_id", "vendor", "amount", "$why"]
+            },
+            "endpoint": "predict",
+            "displayMode": "playground",
+            "outputFormat": "table",
+            "runPolicy": "manual"
+          }
+        },
+        {
+          "type": "query",
+          "title": "Telia Finland — amount in $why when it matches training data",
+          "size": "full",
+          "config": {
+            "query": {
+              "from": "bank_transactions",
+              "where": {"description": "TELIA FINLAND", "amount": 1785.1},
+              "predict": "invoice_id",
+              "select": ["$p", "invoice_id", "vendor", "amount", "$why"]
+            },
+            "endpoint": "predict",
+            "displayMode": "playground",
+            "outputFormat": "table",
+            "runPolicy": "manual"
+          }
+        },
+        {
+          "type": "query",
+          "title": "Vendor resolution: _predict vendor_name (comparison)",
+          "size": "medium",
+          "config": {
+            "query": {
+              "from": "bank_transactions",
+              "where": {"description": "TELIA FINLAND OY"},
               "predict": "vendor_name",
               "select": ["$p", "$value", "$why"]
             },
@@ -232,14 +266,14 @@
         },
         {
           "type": "query",
-          "title": "Try: TELIA FINLAND OY",
+          "title": "Unknown transfer (should be low confidence)",
           "size": "medium",
           "config": {
             "query": {
               "from": "bank_transactions",
-              "where": {"description": "TELIA FINLAND OY"},
-              "predict": "vendor_name",
-              "select": ["$p", "$value"]
+              "where": {"description": "UNKNOWN TRANSFER", "amount": 550},
+              "predict": "invoice_id",
+              "select": ["$p", "invoice_id", "vendor", "amount"]
             },
             "endpoint": "predict",
             "displayMode": "playground",
@@ -249,16 +283,11 @@
         },
         {
           "type": "query",
-          "title": "Try: UNKNOWN TRANSFER (should be low confidence)",
-          "size": "medium",
+          "title": "Browse bank transactions (training data)",
+          "size": "full",
           "config": {
-            "query": {
-              "from": "bank_transactions",
-              "where": {"description": "UNKNOWN TRANSFER"},
-              "predict": "vendor_name",
-              "select": ["$p", "$value"]
-            },
-            "endpoint": "predict",
+            "query": {"from": "bank_transactions", "limit": 10},
+            "endpoint": "query",
             "displayMode": "playground",
             "outputFormat": "table",
             "runPolicy": "manual"

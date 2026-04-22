@@ -87,20 +87,22 @@ def match_bank_txn_to_invoice(
     """Use Aito _predict invoice_id to match bank transaction to invoice.
 
     The bank_transactions.invoice_id links to invoices, so _predict
-    returns full invoice rows from the linked table, ranked by how
-    well they associate with the bank transaction's description and
-    amount. We then pick the best match among open invoices.
+    returns full invoice rows from the linked table, ranked by Aito's
+    probability. We trust Aito's ranking and pick the first open
+    invoice from the results.
 
-    Single Aito query — no separate vendor resolution step needed.
+    No amount heuristic — Aito handles the full ranking. If we wanted
+    to narrow the search space (e.g. only open invoices, or filter by
+    amount range), we could add where conditions on the invoice side.
     """
     open_ids = {inv["invoice_id"] for inv in open_invoices}
-    open_by_id = {inv["invoice_id"]: inv for inv in open_invoices}
     open_by_vendor = {}
     for inv in open_invoices:
         open_by_vendor.setdefault(inv["vendor"], []).append(inv)
 
     # _predict invoice_id traverses the link and returns invoice rows
-    # ranked by association with the bank transaction's features
+    # ranked by association with the bank transaction's features.
+    # Aito considers description text tokens and amount together.
     try:
         result = client._request("POST", "/_predict", json={
             "from": "bank_transactions",
@@ -112,8 +114,9 @@ def match_bank_txn_to_invoice(
     except AitoError:
         return None
 
-    # Find the best open invoice from Aito's predictions
-    best_score = 0.0
+    # Pick the first result that matches an open invoice — either
+    # directly by invoice_id, or by vendor (Aito may return a
+    # different invoice from the same vendor).
     best_invoice = None
     best_p = 0.0
     best_why = None
@@ -125,26 +128,17 @@ def match_bank_txn_to_invoice(
 
         # Direct match: Aito returned an open invoice
         if inv_id in open_ids:
-            amt_score = _amount_match_score(open_by_id[inv_id]["amount"], txn["amount"])
-            combined = aito_p * 0.5 + amt_score * 0.5
-            if combined > best_score:
-                best_score = combined
-                best_invoice = open_by_id[inv_id]
-                best_p = aito_p
-                best_why = hit.get("$why")
-            continue
+            best_invoice = next(i for i in open_invoices if i["invoice_id"] == inv_id)
+            best_p = aito_p
+            best_why = hit.get("$why")
+            break
 
-        # Indirect match: Aito returned the right vendor but different invoice.
-        # Check if we have an open invoice from this vendor with matching amount.
+        # Vendor match: same vendor, pick best open invoice for that vendor
         if vendor and vendor in open_by_vendor:
-            for inv in open_by_vendor[vendor]:
-                amt_score = _amount_match_score(inv["amount"], txn["amount"])
-                combined = aito_p * 0.4 + amt_score * 0.6
-                if combined > best_score:
-                    best_score = combined
-                    best_invoice = inv
-                    best_p = aito_p
-                    best_why = hit.get("$why")
+            best_invoice = open_by_vendor[vendor][0]
+            best_p = aito_p
+            best_why = hit.get("$why")
+            break
 
     if best_invoice is None:
         return None
