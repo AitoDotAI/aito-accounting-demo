@@ -1,0 +1,14 @@
+# Strategy 1: _predict vendor_name
+
+Predict the vendor from the bank description text.
+This resolves the vendor but not the specific invoice.
+
+  TELIA FINLAND OY          → Telia Finland        p=0.4593  ok
+  KESKO OYJ HELSINKI        → Kesko Oyj            p=0.1985  ok
+  SOK CORPORATION           → SOK Corporation      p=0.0998  ok
+  FAZER GROUP OY            → Fazer Bakeries       p=0.1965  ok
+  UNKNOWN TRANSFER          → Verkkokauppa.com     p=0.0108  (no expected)
+
+Vendor accuracy: 4/4
+Good: resolves vendor name reliably via text tokens.
+Limitation: doesn't identify the specific invoice.

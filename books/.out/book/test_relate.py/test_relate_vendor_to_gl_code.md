@@ -1,9 +1,0 @@
-# _relate: vendor → gl_code
-
-Vendor-specific patterns are narrower but very precise.
-
-  Kesko Oyj                 → GL 4400  18/18  lift=6.5
-  Telia Finland             → GL 6200  6/6  lift=10.7
-  Fazer Bakeries            → GL 4100  15/16  lift=6.0
-  SAP SE                    → GL 6100  17/17  lift=3.1
-  Kone Oyj                  → GL 5200  14/16  lift=8.0

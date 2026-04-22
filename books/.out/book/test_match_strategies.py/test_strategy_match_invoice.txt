@@ -1,0 +1,14 @@
+  # Strategy 2: _match via invoice_id link
+  
+  Use _match to traverse bank_transactions.invoice_id → invoices
+  and find the actual invoice row.
+  
+    TELIA FINLAND OY          → Securitas Oy         INV-2616     p=0.1261  MISS
+    KESKO OYJ HELSINKI        → Kesko Oyj            INV-2628     p=0.1895  ok
+    SOK CORPORATION           → SOK Corporation      INV-2600     p=0.0788  ok
+    FAZER GROUP OY            → Fazer Bakeries       INV-2688     p=0.1404  ok
+    UNKNOWN TRANSFER          → AWS EMEA             p=0.3958
+  
+  Vendor accuracy: 3/4
+  _match traverses the link but doesn't use text analysis
+  on the description, so common words ('oy') dominate.

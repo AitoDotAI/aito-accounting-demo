@@ -1,6 +1,6 @@
 """Tests for the payment matching service.
 
-Tests verify vendor resolution via _predict on vendor_name,
+Tests verify invoice matching via _predict invoice_id (link traversal),
 amount proximity scoring, and the matching pipeline.
 """
 
@@ -42,18 +42,19 @@ class TestAmountMatchScore:
 
 
 class TestMatchBankTxnToInvoice:
-    def _mock_predict_response(self, httpx_mock, vendor, p=0.40):
-        """Mock _predict on vendor_name returning a vendor."""
+    def _mock_predict_invoice(self, httpx_mock, invoice_id, vendor, amount, p=0.10):
+        """Mock _predict invoice_id returning invoice rows via link."""
         httpx_mock.add_response(
             url="https://test.aito.app/db/demo/api/v1/_predict",
             json={"offset": 0, "total": 1, "hits": [
-                {"$p": p, "$value": vendor, "$why": {"type": "product", "factors": []}},
+                {"$p": p, "invoice_id": invoice_id, "vendor": vendor,
+                 "amount": amount, "$why": {"type": "product", "factors": []}},
             ]},
         )
 
-    def test_exact_vendor_and_amount_match(self, httpx_mock):
-        """_predict resolves vendor, exact amount → matched."""
-        self._mock_predict_response(httpx_mock, "Telia Finland", 0.46)
+    def test_direct_invoice_match(self, httpx_mock):
+        """Aito returns an open invoice directly → matched."""
+        self._mock_predict_invoice(httpx_mock, "INV-001", "Telia Finland", 890.50, 0.10)
 
         client = AitoClient(TEST_CONFIG)
         pair = match_bank_txn_to_invoice(
@@ -63,12 +64,12 @@ class TestMatchBankTxnToInvoice:
         )
 
         assert pair is not None
-        assert pair.status == "matched"
         assert pair.invoice_id == "INV-001"
+        assert pair.status == "matched"
 
-    def test_vendor_match_with_amount_difference(self, httpx_mock):
-        """_predict finds vendor, small amount diff → still matches."""
-        self._mock_predict_response(httpx_mock, "SOK Corporation", 0.10)
+    def test_vendor_match_different_invoice(self, httpx_mock):
+        """Aito returns right vendor but different invoice → matches by vendor + amount."""
+        self._mock_predict_invoice(httpx_mock, "INV-999", "SOK Corporation", 10000, 0.13)
 
         client = AitoClient(TEST_CONFIG)
         pair = match_bank_txn_to_invoice(
@@ -78,11 +79,11 @@ class TestMatchBankTxnToInvoice:
         )
 
         assert pair is not None
-        assert pair.status in ("matched", "suggested")
+        assert pair.invoice_id == "INV-003"
 
-    def test_no_matching_vendor_in_open_invoices(self, httpx_mock):
-        """_predict returns vendor not in open invoices → no match."""
-        self._mock_predict_response(httpx_mock, "SAP SE", 0.15)
+    def test_no_matching_vendor_returns_none(self, httpx_mock):
+        """Aito returns vendors not in open invoices → no match."""
+        self._mock_predict_invoice(httpx_mock, "INV-999", "SAP SE", 5000, 0.05)
 
         client = AitoClient(TEST_CONFIG)
         pair = match_bank_txn_to_invoice(
@@ -94,7 +95,7 @@ class TestMatchBankTxnToInvoice:
         assert pair is None
 
     def test_aito_error_returns_none(self, httpx_mock):
-        """If Aito _predict fails, return None."""
+        """If Aito fails, return None."""
         httpx_mock.add_exception(
             httpx.ConnectError("Connection refused"),
             url="https://test.aito.app/db/demo/api/v1/_predict",
@@ -110,7 +111,7 @@ class TestMatchBankTxnToInvoice:
         assert pair is None
 
     def test_empty_open_invoices_returns_none(self, httpx_mock):
-        self._mock_predict_response(httpx_mock, "Telia Finland", 0.45)
+        self._mock_predict_invoice(httpx_mock, "INV-999", "Telia Finland", 890.50, 0.10)
 
         client = AitoClient(TEST_CONFIG)
         pair = match_bank_txn_to_invoice(

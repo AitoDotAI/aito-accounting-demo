@@ -1,9 +1,9 @@
 {
-  "test_id": "book/test_predict.py::test_predict_approver_by_vendor",
+  "test_id": "book/test_match_strategies.py::test_strategy_predict_vendor_name",
   "snapshots": {
     "httpx": {
-      "hash": "sha256:52908e47d1a8d34f3db9e6fed36032a33dac47e694d691f099d1d36804b5685e",
-      "state": "intact",
+      "hash": "sha256:a42085d9ff347b51b6adbc8e780e907e889662469bbd96a3a3d7bc317f1d610a",
+      "state": "updated",
       "details": {
         "count": 5,
         "urls": [
@@ -14,19 +14,19 @@
           "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict"
         ],
         "hashes": [
-          "06a621f43c2a94bc97093e60dea791d2f9db6e9b",
-          "3c1cbcaf4cf3100cac17d3794783bb4f49ec0221",
-          "8e092a4072e235473cd431e35ea5a70ed1c101f5",
-          "e1481c2831986d078f5cb9d893a73f57a417f681",
-          "fe14a9da2ace449409094a7da14c45c47edb5489"
+          "3be96a2de7e50f023e86e03fa77fa66e0b0a575e",
+          "48559b40457a1263c97ba03d76b80017e6b5527c",
+          "485df09b01d832925eae2ae27265f098edf436fd",
+          "4bb192ca80f98160fdfac2a7a9af4f597e2e00a7",
+          "bd669d05a0d88c2b3b6f4541f8b06100cdf67e80"
         ]
       },
-      "timestamp": 1776840109.3669307
+      "timestamp": 1776840109.2747207
     }
   },
   "result": {
     "success": "ok",
-    "snapshotting": "intact"
+    "snapshotting": "updated"
   },
-  "timestamp": 1776840109.3673103
+  "timestamp": 1776840109.2753482
 }

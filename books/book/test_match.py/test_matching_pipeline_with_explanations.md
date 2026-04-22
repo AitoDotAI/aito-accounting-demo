@@ -6,29 +6,29 @@ The pipeline: _predict vendor_name → find matching invoices
 
 ## TELIA FINLAND OY → Telia Finland
 
-  status=matched  confidence=0.73
-  description        "telia" (lift 56.96x)
-  description        "finland" (lift 56.96x)
-  description        "oy" (lift 0.55x)
-  vendor_name        "Telia Finland" (prior 0.0083)
+  status=matched  confidence=0.64
+  description        "telia" (lift 15.75x)
+  description        "finland" (lift 15.75x)
+  description        "oy" (lift 0.89x)
+  invoice_id         "INV-2696" (prior 0.0061)
   amount             exact match (890.5)
 
 
 ## KESKO OYJ HELSINKI → Kesko Oyj
 
-  status=matched  confidence=0.60
-  description        "kesko" (lift 28.51x)
-  description        "oyj" (lift 28.51x)
-  vendor_name        "Kesko Oyj" (prior 0.0083)
+  status=matched  confidence=0.62
+  description        "kesko" (lift 17.89x)
+  description        "oyj" (lift 17.89x)
+  invoice_id         "INV-2717" (prior 0.0043)
   amount             exact match (4220.0)
 
 
 ## SOK CORPORATION → SOK Corporation
 
-  status=matched  confidence=0.52
-  description        "corporation" (lift 14.02x)
-  description        "sok" (lift 14.02x)
-  vendor_name        "SOK Corporation" (prior 0.0083)
+  status=matched  confidence=0.62
+  description        "corporation" (lift 62.96x)
+  description        "sok" (lift 62.96x)
+  invoice_id         "INV-2819" (prior 0.0043)
   amount             within 0.5% (diff 2.00)
 
 Explanation shows: description tokens (lift from Aito $why),

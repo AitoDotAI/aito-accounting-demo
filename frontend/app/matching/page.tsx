@@ -18,10 +18,10 @@ const PANEL: AitoPanelConfig = {
     { value: "Zero", label: "Training" },
   ],
   description:
-    'Vendor resolution uses <code style="font-size:11px;color:var(--aito-accent)">_predict</code> on the <code style="font-size:11px;color:var(--aito-accent)">vendor_name</code> Text field. ' +
-    "Bank description tokens (\"kesko\", \"oyj\") and amount are used as context to predict the most likely vendor.",
+    '<code style="font-size:11px;color:var(--aito-accent)">_predict invoice_id</code> traverses the schema link from bank_transactions to invoices, returning full invoice rows ranked by association. ' +
+    "Aito matches description text tokens and amount to find the most likely invoice.",
   query: JSON.stringify(
-    { from: "bank_transactions", where: { description: "KESKO OYJ HELSINKI", amount: 4220 }, predict: "vendor_name", select: ["$p", "$value", "$why"] },
+    { from: "bank_transactions", where: { description: "KESKO OYJ HELSINKI", amount: 4220 }, predict: "invoice_id", select: ["$p", "invoice_id", "vendor", "amount", "$why"] },
     null, 2,
   ),
   links: [
@@ -106,7 +106,7 @@ export default function MatchingPage() {
             <div className="metric"><div className="metric-label">Unmatched</div><div className="metric-value">{m?.unmatched ?? "--"}</div></div>
           </div>
           <div className="card">
-            <div className="card-header"><span className="card-title">Invoice &#x2194; Bank transaction matching</span><span className="card-hint">Click a match to see why &middot; Aito _predict on vendor_name</span></div>
+            <div className="card-header"><span className="card-title">Invoice &#x2194; Bank transaction matching</span><span className="card-hint">Click a match to see why &middot; Aito _predict invoice_id via schema link</span></div>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr>
