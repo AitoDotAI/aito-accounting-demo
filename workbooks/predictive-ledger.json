@@ -1,0 +1,380 @@
+{
+  "name": "Predictive Ledger — Aito Accounting Demo",
+  "description": "Interactive workbook demonstrating how Aito's predictive database powers accounting automation: GL code prediction, vendor matching, rule mining, and anomaly detection.",
+  "sections": [
+    {
+      "title": "Welcome",
+      "widgets": [
+        {
+          "type": "text",
+          "title": "Predictive Ledger",
+          "size": "full",
+          "config": {
+            "content": "# Predictive Ledger\n\nThis workbook demonstrates how Aito turns accounting software into **predictive** accounting software.\n\n**The 70% → 90% gap:** Rules-based automation tops out at ~70%. The remaining 30% is too sparse or contextual to write rules for. Aito fills this gap — without replacing rules.\n\n**Dataset:** 230 Finnish invoices across 17 vendors, 120 bank transactions, 44 human overrides.\n\n**Aito operators used:**\n- `_predict` — GL code, approver, vendor matching, anomaly detection\n- `_relate` — rule mining, override pattern discovery\n- `_match` — invoice-to-bank-transaction linking\n- `_evaluate` — prediction accuracy measurement"
+          }
+        },
+        {
+          "type": "metrics",
+          "title": "Instance Activity",
+          "size": "full",
+          "config": {
+            "displayFields": ["status", "lastRequest", "requests5min", "memory"],
+            "refreshIntervalSeconds": 30
+          }
+        }
+      ]
+    },
+    {
+      "title": "Data Overview",
+      "description": "Explore the accounting dataset",
+      "widgets": [
+        {
+          "type": "query",
+          "title": "Sample invoices",
+          "size": "full",
+          "config": {
+            "query": {"from": "invoices", "limit": 10},
+            "endpoint": "query",
+            "displayMode": "playground",
+            "outputFormat": "table",
+            "runPolicy": "manual"
+          }
+        },
+        {
+          "type": "query",
+          "title": "Invoices by vendor",
+          "size": "medium",
+          "config": {
+            "query": {"from": "invoices", "aggregate": ["vendor.$f"]},
+            "endpoint": "aggregate",
+            "displayMode": "fixed",
+            "outputFormat": "chart",
+            "runPolicy": "onLoad"
+          }
+        },
+        {
+          "type": "query",
+          "title": "Invoices by GL code",
+          "size": "medium",
+          "config": {
+            "query": {"from": "invoices", "aggregate": ["gl_code.$f"]},
+            "endpoint": "aggregate",
+            "displayMode": "fixed",
+            "outputFormat": "chart",
+            "runPolicy": "onLoad"
+          }
+        },
+        {
+          "type": "query",
+          "title": "Routing breakdown (rules vs Aito vs human)",
+          "size": "full",
+          "config": {
+            "query": {"from": "invoices", "aggregate": ["routed_by.$f"]},
+            "endpoint": "aggregate",
+            "displayMode": "fixed",
+            "outputFormat": "chart",
+            "runPolicy": "onLoad"
+          }
+        }
+      ]
+    },
+    {
+      "title": "GL Code Prediction",
+      "description": "Predict which GL account an invoice should be assigned to",
+      "widgets": [
+        {
+          "type": "text",
+          "title": "How it works",
+          "size": "full",
+          "config": {
+            "content": "## GL Code Prediction\n\nGiven a vendor name and amount, Aito predicts the most likely GL code. The `$why` explanation shows which features drove the prediction.\n\nTry changing the vendor name to see how predictions change."
+          }
+        },
+        {
+          "type": "query",
+          "title": "Predict GL code for Kesko Oyj",
+          "size": "full",
+          "config": {
+            "query": {
+              "from": "invoices",
+              "where": {"vendor": "Kesko Oyj", "amount": 4220},
+              "predict": "gl_code",
+              "select": ["$p", "feature", "$why"]
+            },
+            "endpoint": "predict",
+            "displayMode": "playground",
+            "outputFormat": "table",
+            "runPolicy": "manual"
+          }
+        },
+        {
+          "type": "query",
+          "title": "Predict GL code for unknown vendor (low confidence)",
+          "size": "full",
+          "config": {
+            "query": {
+              "from": "invoices",
+              "where": {"vendor": "Brand New Corp", "amount": 45000},
+              "predict": "gl_code",
+              "select": ["$p", "feature", "$why"]
+            },
+            "endpoint": "predict",
+            "displayMode": "playground",
+            "outputFormat": "table",
+            "runPolicy": "manual"
+          }
+        },
+        {
+          "type": "evaluate",
+          "title": "GL code prediction accuracy",
+          "size": "full",
+          "config": {
+            "queryType": "predict",
+            "query": {
+              "from": "invoices",
+              "predict": "gl_code",
+              "where": {
+                "vendor": {"$get": "vendor"},
+                "amount": {"$get": "amount"},
+                "category": {"$get": "category"}
+              }
+            },
+            "testSelection": {"type": "random", "percentage": 20}
+          }
+        }
+      ]
+    },
+    {
+      "title": "Approver Routing",
+      "description": "Predict which approver should handle an invoice",
+      "widgets": [
+        {
+          "type": "query",
+          "title": "Predict approver for Kesko Oyj",
+          "size": "medium",
+          "config": {
+            "query": {
+              "from": "invoices",
+              "where": {"vendor": "Kesko Oyj"},
+              "predict": "approver",
+              "select": ["$p", "feature", "$why"]
+            },
+            "endpoint": "predict",
+            "displayMode": "playground",
+            "outputFormat": "table",
+            "runPolicy": "manual"
+          }
+        },
+        {
+          "type": "query",
+          "title": "Predict approver for Kone Oyj",
+          "size": "medium",
+          "config": {
+            "query": {
+              "from": "invoices",
+              "where": {"vendor": "Kone Oyj"},
+              "predict": "approver",
+              "select": ["$p", "feature", "$why"]
+            },
+            "endpoint": "predict",
+            "displayMode": "playground",
+            "outputFormat": "table",
+            "runPolicy": "manual"
+          }
+        },
+        {
+          "type": "evaluate",
+          "title": "Approver prediction accuracy",
+          "size": "full",
+          "config": {
+            "queryType": "predict",
+            "query": {
+              "from": "invoices",
+              "predict": "approver",
+              "where": {
+                "vendor": {"$get": "vendor"},
+                "category": {"$get": "category"}
+              }
+            },
+            "testSelection": {"type": "random", "percentage": 20}
+          }
+        }
+      ]
+    },
+    {
+      "title": "Payment Matching",
+      "description": "Match bank transaction descriptions to invoice vendors",
+      "widgets": [
+        {
+          "type": "text",
+          "title": "How it works",
+          "size": "full",
+          "config": {
+            "content": "## Payment Matching\n\nBank descriptions are uppercased and abbreviated: \"KESKO OYJ HELSINKI\". Aito predicts the `vendor_name` from the `description` Text field, using learned token associations.\n\nThe Text analyzer tokenizes the description, so \"kesko\" and \"oyj\" independently contribute lift to \"Kesko Oyj\"."
+          }
+        },
+        {
+          "type": "query",
+          "title": "Predict vendor from bank description",
+          "size": "full",
+          "config": {
+            "query": {
+              "from": "bank_transactions",
+              "where": {"description": "KESKO OYJ HELSINKI"},
+              "predict": "vendor_name",
+              "select": ["$p", "$value", "$why"]
+            },
+            "endpoint": "predict",
+            "displayMode": "playground",
+            "outputFormat": "table",
+            "runPolicy": "manual"
+          }
+        },
+        {
+          "type": "query",
+          "title": "Try: TELIA FINLAND OY",
+          "size": "medium",
+          "config": {
+            "query": {
+              "from": "bank_transactions",
+              "where": {"description": "TELIA FINLAND OY"},
+              "predict": "vendor_name",
+              "select": ["$p", "$value"]
+            },
+            "endpoint": "predict",
+            "displayMode": "playground",
+            "outputFormat": "table",
+            "runPolicy": "manual"
+          }
+        },
+        {
+          "type": "query",
+          "title": "Try: UNKNOWN TRANSFER (should be low confidence)",
+          "size": "medium",
+          "config": {
+            "query": {
+              "from": "bank_transactions",
+              "where": {"description": "UNKNOWN TRANSFER"},
+              "predict": "vendor_name",
+              "select": ["$p", "$value"]
+            },
+            "endpoint": "predict",
+            "displayMode": "playground",
+            "outputFormat": "table",
+            "runPolicy": "manual"
+          }
+        }
+      ]
+    },
+    {
+      "title": "Rule Mining",
+      "description": "Discover patterns with _relate for rule candidates",
+      "widgets": [
+        {
+          "type": "text",
+          "title": "How it works",
+          "size": "full",
+          "config": {
+            "content": "## Rule Mining\n\n`_relate` finds statistical relationships between features. For each vendor or category, it shows how strongly it predicts a GL code — with exact support ratios.\n\n**Support ratios like 18/18 are exact historical counts, not ML estimates.** An accountant can verify each one."
+          }
+        },
+        {
+          "type": "query",
+          "title": "What GL code does category=telecom predict?",
+          "size": "full",
+          "config": {
+            "query": {
+              "from": "invoices",
+              "where": {"category": "telecom"},
+              "relate": "gl_code"
+            },
+            "endpoint": "relate",
+            "displayMode": "playground",
+            "outputFormat": "table",
+            "runPolicy": "manual"
+          }
+        },
+        {
+          "type": "query",
+          "title": "What GL code does vendor=Kesko Oyj predict?",
+          "size": "full",
+          "config": {
+            "query": {
+              "from": "invoices",
+              "where": {"vendor": "Kesko Oyj"},
+              "relate": "gl_code"
+            },
+            "endpoint": "relate",
+            "displayMode": "playground",
+            "outputFormat": "table",
+            "runPolicy": "manual"
+          }
+        },
+        {
+          "type": "query",
+          "title": "Override patterns: which GL corrections cluster?",
+          "size": "full",
+          "config": {
+            "query": {
+              "from": "overrides",
+              "where": {"field": "gl_code"},
+              "relate": "corrected_value"
+            },
+            "endpoint": "relate",
+            "displayMode": "playground",
+            "outputFormat": "table",
+            "runPolicy": "manual"
+          }
+        }
+      ]
+    },
+    {
+      "title": "Anomaly Detection",
+      "description": "Inverse prediction: low confidence = anomaly signal",
+      "widgets": [
+        {
+          "type": "text",
+          "title": "How it works",
+          "size": "full",
+          "config": {
+            "content": "## Anomaly Detection\n\nSame `_predict` engine, used in reverse. If Aito is confident about the GL code (high $p), the invoice fits known patterns. If confidence is low, something is unusual — that's the anomaly signal.\n\n**No separate anomaly model needed.** Compare the two queries below: known vendor vs unknown vendor."
+          }
+        },
+        {
+          "type": "query",
+          "title": "Normal invoice: Kesko Oyj (high confidence = no anomaly)",
+          "size": "medium",
+          "config": {
+            "query": {
+              "from": "invoices",
+              "where": {"vendor": "Kesko Oyj", "amount": 4220, "category": "supplies"},
+              "predict": "gl_code",
+              "select": ["$p", "feature"]
+            },
+            "endpoint": "predict",
+            "displayMode": "fixed",
+            "outputFormat": "table",
+            "runPolicy": "manual"
+          }
+        },
+        {
+          "type": "query",
+          "title": "Anomalous: unknown vendor (low confidence = anomaly)",
+          "size": "medium",
+          "config": {
+            "query": {
+              "from": "invoices",
+              "where": {"vendor": "Brand New Corp", "amount": 45000},
+              "predict": "gl_code",
+              "select": ["$p", "feature"]
+            },
+            "endpoint": "predict",
+            "displayMode": "fixed",
+            "outputFormat": "table",
+            "runPolicy": "manual"
+          }
+        }
+      ]
+    }
+  ]
+}
