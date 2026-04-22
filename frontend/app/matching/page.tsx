@@ -106,7 +106,7 @@ export default function MatchingPage() {
             <div className="metric"><div className="metric-label">Unmatched</div><div className="metric-value">{m?.unmatched ?? "--"}</div></div>
           </div>
           <div className="card">
-            <div className="card-header"><span className="card-title">Invoice &#x2194; Bank transaction matching</span><span className="card-hint">Click a match to see why &middot; Aito _match traverses schema links</span></div>
+            <div className="card-header"><span className="card-title">Invoice &#x2194; Bank transaction matching</span><span className="card-hint">Click a match to see why &middot; Aito _predict on vendor_name</span></div>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr>

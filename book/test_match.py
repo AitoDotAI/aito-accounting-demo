@@ -148,3 +148,42 @@ def test_predict_vs_match_comparison(t: bt.TestCaseRun):
     t.tln("_match relies on historical invoice_id link associations, which")
     t.tln("can be overwhelmed by frequent vendors (like Securitas) in")
     t.tln("sparse training data.")
+
+
+@bt.snapshot_httpx()
+def test_matching_pipeline_with_explanations(t: bt.TestCaseRun):
+    """Test the full matching pipeline: vendor resolution + amount + explanations."""
+    from src.matching_service import match_bank_txn_to_invoice
+
+    c = get_client()
+
+    t.h1("Full matching pipeline with explanations")
+    t.tln("The pipeline: _predict vendor_name → find matching invoices")
+    t.tln("→ rank by amount proximity → build explanation.")
+    t.tln("")
+
+    test_cases = [
+        {"txn_id": "T1", "description": "TELIA FINLAND OY", "amount": 890.50, "bank": "OP"},
+        {"txn_id": "T2", "description": "KESKO OYJ HELSINKI", "amount": 4220.00, "bank": "OP"},
+        {"txn_id": "T3", "description": "SOK CORPORATION", "amount": 7852.00, "bank": "Nordea"},
+    ]
+
+    open_invoices = [
+        {"invoice_id": "INV-A", "vendor": "Telia Finland", "amount": 890.50},
+        {"invoice_id": "INV-B", "vendor": "Kesko Oyj", "amount": 4220.00},
+        {"invoice_id": "INV-C", "vendor": "SOK Corporation", "amount": 7850.00},
+    ]
+
+    for txn in test_cases:
+        pair = match_bank_txn_to_invoice(c, txn, open_invoices)
+        if pair:
+            t.h2(f"{txn['description']} → {pair.invoice_vendor}")
+            t.iln(f"  status={pair.status}  confidence={pair.confidence:.2f}")
+            for e in pair.explanation:
+                t.iln(f"  {e['factor']:18} {e['detail']}")
+        else:
+            t.h2(f"{txn['description']} → no match")
+        t.tln("")
+
+    t.tln("Explanation shows: description tokens (lift from Aito $why),")
+    t.tln("vendor_name prior, and amount proximity.")

@@ -162,27 +162,42 @@ def match_bank_txn_to_invoice(
 
 
 def _build_explanation(txn: dict, invoice: dict, aito_p: float, aito_why: dict | None = None) -> list[dict]:
-    """Build explanation from Aito $why factors only."""
+    """Build explanation from Aito $why factors + amount proximity."""
     factors = []
 
-    if not aito_why:
-        return factors
+    # Aito $why factors — text token lifts and base probability
+    if aito_why:
+        why_factors = _extract_why_factors(aito_why)
+        for wf in why_factors:
+            is_base = wf.get("type") == "base"
+            if is_base:
+                factors.append({
+                    "factor": wf["field"],
+                    "detail": f'"{wf["value"]}" (prior {wf["lift"]:.4f})',
+                    "signal": "partial",
+                })
+            else:
+                factors.append({
+                    "factor": wf["field"],
+                    "detail": f'"{wf["value"]}" (lift {wf["lift"]}x)',
+                    "signal": "strong" if wf["lift"] > 2 else "partial",
+                })
 
-    why_factors = _extract_why_factors(aito_why)
-    for wf in why_factors:
-        is_base = wf.get("type") == "base"
-        if is_base:
-            factors.append({
-                "factor": wf["field"],
-                "detail": f'"{wf["value"]}" (prior {wf["lift"]:.4f})',
-                "signal": "partial",
-            })
-        else:
-            factors.append({
-                "factor": wf["field"],
-                "detail": f'"{wf["value"]}" (lift {wf["lift"]}x)',
-                "signal": "strong" if wf["lift"] > 2 else "partial",
-            })
+    # Amount proximity — computed outside Aito since _predict on
+    # vendor_name within bank_transactions doesn't cross-reference
+    # invoice amounts. Amount matching narrows which invoice for a
+    # given vendor.
+    diff = abs(invoice["amount"] - txn["amount"])
+    if diff == 0:
+        factors.append({"factor": "amount", "detail": f"exact match ({txn['amount']})", "signal": "strong"})
+    elif diff < invoice["amount"] * 0.005:
+        factors.append({"factor": "amount", "detail": f"within 0.5% (diff {diff:.2f})", "signal": "strong"})
+    elif diff < invoice["amount"] * 0.02:
+        factors.append({"factor": "amount", "detail": f"within 2% (diff {diff:.2f})", "signal": "partial"})
+    elif diff < invoice["amount"] * 0.05:
+        factors.append({"factor": "amount", "detail": f"within 5% (diff {diff:.2f})", "signal": "partial"})
+    else:
+        factors.append({"factor": "amount", "detail": f"differs by {diff:.2f}", "signal": "weak"})
 
     return factors
 

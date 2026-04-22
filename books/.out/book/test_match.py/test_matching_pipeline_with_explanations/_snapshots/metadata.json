@@ -1,0 +1,28 @@
+{
+  "test_id": "book/test_match.py::test_matching_pipeline_with_explanations",
+  "snapshots": {
+    "httpx": {
+      "hash": "sha256:030bc872d42e1f92f55055edd7ff72a4b77963e539322a76931b9307cc5052f7",
+      "state": "updated",
+      "details": {
+        "count": 3,
+        "urls": [
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict"
+        ],
+        "hashes": [
+          "36df0812efbf6f797a04dec42da5217f7a9c97b7",
+          "480021261a8e6eb884f8c581590d70678f4a74f1",
+          "8f6251759c66ea141f8e6e1f994e4304c1e67913"
+        ]
+      },
+      "timestamp": 1776834785.1377082
+    }
+  },
+  "result": {
+    "success": "ok",
+    "snapshotting": "updated"
+  },
+  "timestamp": 1776834785.1381898
+}
