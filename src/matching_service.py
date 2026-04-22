@@ -102,20 +102,11 @@ def match_bank_txn_to_invoice(
 
     # _predict invoice_id traverses the link and returns invoice rows
     # ranked by association with the bank transaction's features.
-    # We filter on the linked invoices table to narrow by amount range,
-    # so Aito only considers invoices within 50% of the bank amount.
-    # A tighter range (e.g. 2%) would be better with more training data.
-    amt = txn["amount"]
+    # Aito considers description text tokens and amount together.
     try:
         result = client._request("POST", "/_predict", json={
             "from": "bank_transactions",
-            "where": {
-                "description": txn["description"],
-                "amount": amt,
-                "invoice_id": {
-                    "amount": {"$gte": amt * 0.50, "$lte": amt * 1.50},
-                },
-            },
+            "where": {"description": txn["description"], "amount": txn["amount"]},
             "predict": "invoice_id",
             "select": ["$p", "invoice_id", "vendor", "amount", "$why"],
             "limit": 20,
@@ -152,10 +143,12 @@ def match_bank_txn_to_invoice(
     if best_invoice is None:
         return None
 
-    # Classify by Aito's probability
-    if best_p >= 0.02:
+    # Classify confidence
+    # _predict vendor_name gives higher $p values than _match, so
+    # thresholds can be more meaningful.
+    if best_score >= 0.30:
         status = "matched"
-    elif best_p >= 0.005:
+    elif best_score >= 0.15:
         status = "suggested"
     else:
         return None
@@ -171,39 +164,49 @@ def match_bank_txn_to_invoice(
         bank_description=txn["description"],
         bank_amount=txn["amount"],
         bank_name=txn["bank"],
-        confidence=best_p,
+        confidence=best_score,
         status=status,
         explanation=explanation,
     )
 
 
 def _build_explanation(txn: dict, invoice: dict, aito_p: float, aito_why: dict | None = None) -> list[dict]:
-    """Build explanation purely from Aito $why factors.
-
-    Amount filtering is done in the query (invoice_id.amount.$gte/$lte),
-    so Aito's ranking already accounts for amount. The $why factors
-    show what drove the match — description tokens, amount when it
-    matches training data, and the invoice_id base probability.
-    """
-    if not aito_why:
-        return []
-
+    """Build explanation from Aito $why factors + amount proximity."""
     factors = []
-    why_factors = _extract_why_factors(aito_why)
-    for wf in why_factors:
-        is_base = wf.get("type") == "base"
-        if is_base:
-            factors.append({
-                "factor": wf["field"],
-                "detail": f'"{wf["value"]}" (prior {wf["lift"]:.4f})',
-                "signal": "partial",
-            })
-        else:
-            factors.append({
-                "factor": wf["field"],
-                "detail": f'"{wf["value"]}" (lift {wf["lift"]}x)',
-                "signal": "strong" if wf["lift"] > 2 else "partial",
-            })
+
+    # Aito $why factors — text token lifts and base probability
+    if aito_why:
+        why_factors = _extract_why_factors(aito_why)
+        for wf in why_factors:
+            is_base = wf.get("type") == "base"
+            if is_base:
+                factors.append({
+                    "factor": wf["field"],
+                    "detail": f'"{wf["value"]}" (prior {wf["lift"]:.4f})',
+                    "signal": "partial",
+                })
+            else:
+                factors.append({
+                    "factor": wf["field"],
+                    "detail": f'"{wf["value"]}" (lift {wf["lift"]}x)',
+                    "signal": "strong" if wf["lift"] > 2 else "partial",
+                })
+
+    # Amount proximity — computed outside Aito since _predict on
+    # vendor_name within bank_transactions doesn't cross-reference
+    # invoice amounts. Amount matching narrows which invoice for a
+    # given vendor.
+    diff = abs(invoice["amount"] - txn["amount"])
+    if diff == 0:
+        factors.append({"factor": "amount", "detail": f"exact match ({txn['amount']})", "signal": "strong"})
+    elif diff < invoice["amount"] * 0.005:
+        factors.append({"factor": "amount", "detail": f"within 0.5% (diff {diff:.2f})", "signal": "strong"})
+    elif diff < invoice["amount"] * 0.02:
+        factors.append({"factor": "amount", "detail": f"within 2% (diff {diff:.2f})", "signal": "partial"})
+    elif diff < invoice["amount"] * 0.05:
+        factors.append({"factor": "amount", "detail": f"within 5% (diff {diff:.2f})", "signal": "partial"})
+    else:
+        factors.append({"factor": "amount", "detail": f"differs by {diff:.2f}", "signal": "weak"})
 
     return factors
 
