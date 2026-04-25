@@ -222,10 +222,8 @@ def match_all(client: AitoClient, customer_id: str | None = None) -> dict:
     # Fetch bank transactions and open invoices from Aito
     try:
         where = {"customer_id": customer_id} if customer_id else {}
-        txn_result = client.search("bank_transactions", where, limit=20)
-        inv_result = client.search("invoices", {**where, "routed": False}, limit=50)
-        if not inv_result["hits"]:
-            inv_result = client.search("invoices", where, limit=50)
+        txn_result = client.search("bank_transactions", where, limit=10)
+        inv_result = client.search("invoices", where, limit=20)
     except AitoError:
         return {"pairs": [], "metrics": {"matched": 0, "suggested": 0, "unmatched": 0, "total": 0, "avg_confidence": 0, "match_rate": 0}}
 
@@ -235,7 +233,7 @@ def match_all(client: AitoClient, customer_id: str | None = None) -> dict:
     matched_invoices: dict[str, MatchPair] = {}
     remaining = list(open_invoices)
 
-    for txn in bank_txns[:15]:  # limit to avoid long queries
+    for txn in bank_txns[:8]:  # limit for response time
         pair = match_bank_txn_to_invoice(client, txn, remaining)
         if pair and pair.invoice_id not in matched_invoices:
             matched_invoices[pair.invoice_id] = pair

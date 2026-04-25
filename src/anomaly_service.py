@@ -190,7 +190,7 @@ def scan_all(client: AitoClient, customer_id: str | None = None) -> dict:
     # Fetch a sample of invoices for this customer
     try:
         where = {"customer_id": customer_id} if customer_id else {}
-        result = client.search("invoices", where, limit=30)
+        result = client.search("invoices", where, limit=15)
         scan_invoices = result.get("hits", [])
     except AitoError:
         scan_invoices = []

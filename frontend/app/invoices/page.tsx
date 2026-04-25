@@ -116,10 +116,11 @@ export default function InvoicesPage() {
                 </tr>
               </thead>
               <tbody>
-                {invoices.length === 0 && !error && (
-                  <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--text3)", padding: 24 }}>
-                    {live ? "No invoices" : "Loading..."}
-                  </td></tr>
+                {!live && !error && Array.from({ length: 8 }).map((_, i) => (
+                  <SkeletonRow key={i} />
+                ))}
+                {live && invoices.length === 0 && !error && (
+                  <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--text3)", padding: 24 }}>No invoices</td></tr>
                 )}
                 {error && (
                   <tr><td colSpan={7}><ErrorState /></td></tr>
@@ -178,6 +179,18 @@ function InvoiceRow({ inv }: { inv: InvoicePrediction }) {
       </td>
       <td><ConfidenceBar value={inv.confidence} /></td>
       <td>{sourceBadge(inv.source)}</td>
+    </tr>
+  );
+}
+
+function SkeletonRow() {
+  return (
+    <tr>
+      {Array.from({ length: 7 }).map((_, i) => (
+        <td key={i}>
+          <div className="skeleton" style={{ height: 14, borderRadius: 4, width: i === 1 ? "80%" : i === 2 ? "60%" : "70%" }} />
+        </td>
+      ))}
     </tr>
   );
 }

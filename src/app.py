@@ -32,6 +32,50 @@ aito = AitoClient(config)
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+
+def _warm_top_customers():
+    """Warm cache for top customers on startup."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    def warm():
+        if not aito.check_connectivity():
+            return
+        # Get top customers by invoice count
+        try:
+            r = aito.search("customers", {}, limit=5)
+            top_customers = sorted(r.get("hits", []), key=lambda c: -c.get("invoice_count", 0))[:5]
+        except Exception as e:
+            print(f"warmup: cannot list customers: {e}")
+            return
+
+        from src.invoice_service import predict_invoice, compute_metrics
+
+        def warm_one(cust):
+            cid = cust["customer_id"]
+            try:
+                result = aito.search("invoices", {"customer_id": cid}, limit=20)
+                with ThreadPoolExecutor(max_workers=8) as pool:
+                    preds = list(pool.map(
+                        lambda inv: predict_invoice(aito, {**inv, "customer_id": cid}),
+                        result.get("hits", []),
+                    ))
+                data = {"invoices": [p.to_dict() for p in preds], "metrics": compute_metrics(preds)}
+                cache.set(f"invoices:{cid}", data)
+                cache.set(f"quality:{cid}", get_quality_overview(aito, customer_id=cid))
+                print(f"  {cid}: cached ({len(preds)} predictions)")
+            except Exception as e:
+                print(f"  {cid} error: {e}")
+
+        # Warm all top customers in parallel (each one parallelizes internally)
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            list(pool.map(warm_one, top_customers))
+
+    threading.Thread(target=warm, daemon=True).start()
+
+
+_warm_top_customers()
+
 # ── App setup ─────────────────────────────────────────────────────
 
 app = FastAPI(
@@ -87,18 +131,21 @@ def invoices_pending(customer_id: str = Query(...), page: int = 1, per_page: int
     if cached:
         data = cached
     else:
-        # Get unrouted invoices for this customer
+        # Fetch only one page worth of invoices — lazy loading
         try:
-            result = aito.search("invoices", {"customer_id": customer_id, "routed": False}, limit=50)
+            result = aito.search("invoices", {"customer_id": customer_id}, limit=per_page)
             sample_invoices = result.get("hits", [])
-            if not sample_invoices:
-                # Fall back to recent invoices
-                result = aito.search("invoices", {"customer_id": customer_id}, limit=50)
-                sample_invoices = result.get("hits", [])
         except AitoError:
             return {"invoices": [], "metrics": {}, "error": "Could not fetch invoices"}
 
-        predictions = predict_batch(aito, sample_invoices, customer_id=customer_id)
+        # Parallelize predictions for faster response
+        from concurrent.futures import ThreadPoolExecutor
+        from src.invoice_service import predict_invoice
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            predictions = list(pool.map(
+                lambda inv: predict_invoice(aito, {**inv, "customer_id": customer_id}),
+                sample_invoices,
+            ))
         metrics = compute_metrics(predictions)
         data = {"invoices": [p.to_dict() for p in predictions], "metrics": metrics}
         cache.set(cache_key, data, ttl=300)
