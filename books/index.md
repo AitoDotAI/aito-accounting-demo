@@ -2,6 +2,9 @@
 
  * book
      * [test_anomaly.py::test_anomaly_normal_vs_unusual](book/test_anomaly.py::test_anomaly_normal_vs_unusual.md)
+     * [test_evaluate_matching.py::test_evaluate_gl_code_from_vendor_and_amount](book/test_evaluate_matching.py::test_evaluate_gl_code_from_vendor_and_amount.md)
+     * [test_evaluate_matching.py::test_evaluate_invoice_id_from_description_and_amount](book/test_evaluate_matching.py::test_evaluate_invoice_id_from_description_and_amount.md)
+     * [test_evaluate_matching.py::test_evaluate_vendor_name_from_description](book/test_evaluate_matching.py::test_evaluate_vendor_name_from_description.md)
      * [test_match.py::test_matching_pipeline_with_explanations](book/test_match.py::test_matching_pipeline_with_explanations.md)
      * [test_match.py::test_predict_vendor_resolution](book/test_match.py::test_predict_vendor_resolution.md)
      * [test_match.py::test_predict_vendor_with_why](book/test_match.py::test_predict_vendor_with_why.md)
@@ -10,6 +13,10 @@
      * [test_match_strategies.py::test_strategy_match_invoice](book/test_match_strategies.py::test_strategy_match_invoice.md)
      * [test_match_strategies.py::test_strategy_predict_invoice_id](book/test_match_strategies.py::test_strategy_predict_invoice_id.md)
      * [test_match_strategies.py::test_strategy_predict_vendor_name](book/test_match_strategies.py::test_strategy_predict_vendor_name.md)
+     * [test_match_with_amount.py::test_predict_invoice_amount_filter_10pct](book/test_match_with_amount.py::test_predict_invoice_amount_filter_10pct.md)
+     * [test_match_with_amount.py::test_predict_invoice_amount_filter_50pct](book/test_match_with_amount.py::test_predict_invoice_amount_filter_50pct.md)
+     * [test_match_with_amount.py::test_predict_invoice_no_amount_filter](book/test_match_with_amount.py::test_predict_invoice_no_amount_filter.md)
+     * [test_match_with_amount.py::test_predict_invoice_with_why](book/test_match_with_amount.py::test_predict_invoice_with_why.md)
      * [test_predict.py::test_predict_approver_by_vendor](book/test_predict.py::test_predict_approver_by_vendor.md)
      * [test_predict.py::test_predict_gl_code_known_vendor](book/test_predict.py::test_predict_gl_code_known_vendor.md)
      * [test_predict.py::test_predict_gl_code_unknown_vendor](book/test_predict.py::test_predict_gl_code_unknown_vendor.md)

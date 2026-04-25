@@ -1,122 +1,55 @@
-"""FastAPI application — Aito accounting demo backend.
+"""Predictive Ledger — Aito Demo API.
 
-Thin API layer that delegates to the Aito client. Each endpoint is
-a direct window into an Aito capability, not an abstraction over it.
+Serves pre-computed predictions from data/precomputed/ for all views
+except Form Fill, which calls Aito live for interactive predictions.
 
-Serves the Next.js static export from frontend/out/ when available.
+This design means: instant startup, no warmup, no cache management,
+and the demo works even if Aito is temporarily slow.
 """
 
+import json
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from fastapi import Request
-from fastapi.responses import JSONResponse
-
 from src.aito_client import AitoClient, AitoError
-from src.anomaly_service import scan_all
 from src import cache
 from src.config import load_config
-from src.rate_limit import check_rate_limit
-from src.quality_service import get_quality_overview
 from src.formfill_service import KNOWN_VENDORS, predict_fields
-from src.invoice_service import DEMO_INVOICES, compute_metrics, predict_batch
-from src.matching_service import match_all
-from src.rulemining_service import mine_rules
+from src.rate_limit import check_rate_limit
 
 config = load_config()
 aito = AitoClient(config)
 
+# ── Load pre-computed data ────────────────────────────────────────
 
-def _warm_cache() -> None:
-    """Pre-compute all cacheable endpoints on startup in parallel.
-
-    First tries to load from Aito persistent cache (instant if previous
-    run stored results). Falls back to computing fresh predictions.
-    """
-    import threading
-    from concurrent.futures import ThreadPoolExecutor
-
-    def warm():
-        if not aito.check_connectivity():
-            return
-
-        # Initialize persistent cache table in Aito
-        cache.init_persistent_cache(aito)
-        print("Warming cache...")
-
-        def warm_or_load(key, compute_fn):
-            """Load from persistent cache if available, else compute and store."""
-            existing = cache.get(key)
-            if existing:
-                print(f"  loaded: {key} (from Aito cache)")
-                return
-            result = compute_fn()
-            cache.set(key, result)
-            print(f"  computed: {key}")
-
-        def warm_invoices():
-            def compute():
-                predictions = predict_batch(aito, DEMO_INVOICES)
-                return {
-                    "invoices": [p.to_dict() for p in predictions],
-                    "metrics": compute_metrics(predictions),
-                }
-            warm_or_load("invoices_pending", compute)
-
-        def warm_matching():
-            warm_or_load("matching_pairs", lambda: match_all(aito))
-
-        def warm_rules():
-            warm_or_load("rules_candidates", lambda: mine_rules(aito))
-
-        def warm_anomalies():
-            warm_or_load("anomalies_scan", lambda: scan_all(aito))
-
-        def warm_quality():
-            warm_or_load("quality_overview", lambda: get_quality_overview(aito))
-
-        def warm_formfill():
-            import json as _json
-            from concurrent.futures import ThreadPoolExecutor as TPE
-            def warm_vendor(vendor):
-                where = {"vendor": vendor}
-                key = "formfill:" + _json.dumps(where, sort_keys=True)
-                warm_or_load(key, lambda: predict_fields(aito, where))
-            with TPE(max_workers=4) as vpool:
-                list(vpool.map(warm_vendor, KNOWN_VENDORS))
-            print("  formfill: %d vendors" % len(KNOWN_VENDORS))
-
-        with ThreadPoolExecutor(max_workers=6) as pool:
-            futures = [
-                pool.submit(warm_invoices),
-                pool.submit(warm_matching),
-                pool.submit(warm_rules),
-                pool.submit(warm_anomalies),
-                pool.submit(warm_quality),
-                pool.submit(warm_formfill),
-            ]
-            for f in futures:
-                try:
-                    f.result()
-                except Exception as e:
-                    print(f"  warmup error: {e}")
-
-        print("Cache warm.")
-
-    threading.Thread(target=warm, daemon=True).start()
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PRECOMPUTED_DIR = _PROJECT_ROOT / "data" / "precomputed"
+_precomputed: dict[str, dict] = {}
 
 
-_warm_cache()
+def _load_precomputed(name: str) -> dict:
+    """Load a pre-computed JSON file. Cached in memory after first read."""
+    if name not in _precomputed:
+        path = _PRECOMPUTED_DIR / f"{name}.json"
+        if path.exists():
+            with open(path) as f:
+                _precomputed[name] = json.load(f)
+        else:
+            _precomputed[name] = {"error": f"Precomputed data not found: {name}. Run: python data/precompute_predictions.py"}
+    return _precomputed[name]
+
+
+# ── App setup ─────────────────────────────────────────────────────
 
 app = FastAPI(
     title="Predictive Ledger — Aito Demo API",
-    version="0.1.0",
+    version="0.2.0",
 )
 
-# Allow the HTML demo to call the API from file:// or localhost
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -138,52 +71,75 @@ async def rate_limit_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+# ── Pre-computed endpoints (instant, no Aito calls) ───────────────
+
 @app.get("/api/health")
 def health():
-    """Check backend and Aito connectivity."""
-    cached = cache.get("health")
-    if cached:
-        return cached
-    connected = aito.check_connectivity()
-    result = {
+    """Check backend status."""
+    precomputed_ready = (_PRECOMPUTED_DIR / "invoices_pending.json").exists()
+    return {
         "status": "ok",
-        "aito_connected": connected,
+        "precomputed_data": precomputed_ready,
         "aito_url": config.aito_api_url,
     }
-    cache.set("health", result, ttl=60)
-    return result
-
-
-@app.get("/api/schema")
-def schema():
-    """Return the Aito database schema — shows what tables and fields exist."""
-    try:
-        return aito.get_schema()
-    except AitoError as exc:
-        return {"error": str(exc), "status_code": exc.status_code}
 
 
 @app.get("/api/invoices/pending")
-def invoices_pending():
-    """Return pending invoices with live Aito predictions.
+def invoices_pending(page: int = 1, per_page: int = 20):
+    """Return pending invoices with predictions. Paginated."""
+    data = _load_precomputed("invoices_pending")
+    if "error" in data:
+        return data
 
-    Each invoice gets a predicted GL code and approver, with confidence
-    scores and source classification (rule/aito/review).
-    """
-    cached = cache.get("invoices_pending")
-    if cached:
-        return cached
+    invoices = data.get("invoices", [])
+    total = len(invoices)
+    start = (page - 1) * per_page
+    end = start + per_page
 
-    predictions = predict_batch(aito, DEMO_INVOICES)
-    metrics = compute_metrics(predictions)
-
-    result = {
-        "invoices": [p.to_dict() for p in predictions],
-        "metrics": metrics,
+    return {
+        "invoices": invoices[start:end],
+        "metrics": data.get("metrics", {}),
+        "pagination": {"page": page, "per_page": per_page, "total": total, "pages": (total + per_page - 1) // per_page},
     }
-    cache.set("invoices_pending", result)
-    return result
 
+
+@app.get("/api/matching/pairs")
+def matching_pairs():
+    """Return pre-computed invoice ↔ bank transaction matches."""
+    return _load_precomputed("matching_pairs")
+
+
+@app.get("/api/rules/candidates")
+def rules_candidates():
+    """Return pre-computed rule candidates from _relate."""
+    return _load_precomputed("rules_candidates")
+
+
+@app.get("/api/anomalies/scan")
+def anomalies_scan():
+    """Return pre-computed anomaly flags from inverse _predict."""
+    return _load_precomputed("anomalies_scan")
+
+
+@app.get("/api/quality/overview")
+def quality_overview():
+    """Return pre-computed quality metrics."""
+    return _load_precomputed("quality_overview")
+
+
+@app.get("/api/quality/predictions")
+def quality_predictions():
+    """Return pre-computed prediction accuracy metrics."""
+    return _load_precomputed("prediction_accuracy")
+
+
+@app.get("/api/quality/rules")
+def quality_rules():
+    """Return pre-computed rule performance metrics."""
+    return _load_precomputed("rule_performance")
+
+
+# ── Live Aito endpoints (interactive) ─────────────────────────────
 
 @app.get("/api/formfill/vendors")
 def formfill_vendors():
@@ -195,19 +151,15 @@ def formfill_vendors():
 def formfill_predict(body: dict):
     """Predict form fields from any combination of known fields.
 
-    Accepts any subset: {"vendor": "Kesko Oyj"} or {"amount": 4220}
-    or {"vendor": "Kesko Oyj", "gl_code": "4400"}.
-
-    Returns predictions for fields NOT provided in the request,
-    each with top-3 alternatives and $why explanations.
+    This is the ONLY endpoint that calls Aito live — it's the
+    interactive showcase of real-time predictions.
     """
-    import json as _json
     from src.formfill_service import INPUT_FIELDS
     where = {k: v for k, v in body.items() if k in INPUT_FIELDS and v}
     if not where:
         return {"error": "at least one field is required"}
 
-    cache_key = "formfill:" + _json.dumps(where, sort_keys=True)
+    cache_key = "formfill:" + json.dumps(where, sort_keys=True)
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -217,69 +169,17 @@ def formfill_predict(body: dict):
     return result
 
 
-@app.get("/api/matching/pairs")
-def matching_pairs():
-    """Match open invoices to bank transactions.
-
-    Returns matched, suggested, and unmatched pairs with confidence
-    scores based on vendor name similarity and amount proximity.
-    """
-    cached = cache.get("matching_pairs")
-    if cached:
-        return cached
-    result = match_all(aito)
-    cache.set("matching_pairs", result)
-    return result
+@app.get("/api/schema")
+def schema():
+    """Return the Aito database schema."""
+    try:
+        return aito.get_schema()
+    except AitoError as exc:
+        return {"error": str(exc), "status_code": exc.status_code}
 
 
-@app.get("/api/rules/candidates")
-def rules_candidates():
-    """Mine rule candidates from invoice data using Aito _relate.
+# ── Serve Next.js static export ───────────────────────────────────
 
-    Returns patterns with support ratios, coverage, and strength
-    classification. Each candidate represents a potential rule:
-    "when condition X is true, GL code is Y (N/M times)".
-    """
-    cached = cache.get("rules_candidates")
-    if cached:
-        return cached
-    result = mine_rules(aito)
-    cache.set("rules_candidates", result)
-    return result
-
-
-@app.get("/api/anomalies/scan")
-def anomalies_scan():
-    """Scan invoices for anomalies using inverse prediction.
-
-    Predicts GL code and approver for each invoice. Low confidence
-    means the invoice doesn't fit known patterns — that's the
-    anomaly signal. No separate anomaly model needed.
-    """
-    cached = cache.get("anomalies_scan")
-    if cached:
-        return cached
-    result = scan_all(aito)
-    cache.set("anomalies_scan", result)
-    return result
-
-
-@app.get("/api/quality/overview")
-def quality_overview():
-    """Aggregate quality metrics for the dashboard.
-
-    Returns automation breakdown, override statistics, and emerging
-    patterns from override data — closing the feedback loop.
-    """
-    cached = cache.get("quality_overview")
-    if cached:
-        return cached
-    result = get_quality_overview(aito)
-    cache.set("quality_overview", result)
-    return result
-
-
-# Serve Next.js static export — must come after all API routes
-_frontend_dir = Path(__file__).resolve().parent.parent / "frontend" / "out"
+_frontend_dir = _PROJECT_ROOT / "frontend" / "out"
 if _frontend_dir.exists():
     app.mount("/", StaticFiles(directory=str(_frontend_dir), html=True), name="frontend")

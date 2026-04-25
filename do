@@ -15,7 +15,8 @@ Commands:
   demo            Open the demo (http://localhost:8200 if backend running)
   load-data       Upload sample data to Aito
   reset-data      Drop and reload all Aito tables
-  clear-cache     Clear in-memory and Aito persistent cache
+  generate-data   Generate fixture data (--small for 1K, default 100K)
+  precompute      Pre-compute all predictions (run after load-data)
   screenshots     Capture screenshots of all views (needs running server)
   test            Run the unit test suite
   book            Run book tests (Aito examination notebooks)
@@ -77,18 +78,15 @@ cmd_reset_data() {
   uv run python -m src.data_loader --reset
 }
 
-cmd_clear_cache() {
-  echo "Clearing caches..."
+cmd_generate_data() {
   cd "$SCRIPT_DIR"
-  uv run python -c "
-from src.config import load_config
-from src.aito_client import AitoClient
-from src.cache import init_persistent_cache, clear_all
-client = AitoClient(load_config())
-init_persistent_cache(client)
-clear_all()
-print('Done. Restart ./do dev to recompute predictions.')
-"
+  uv run python data/generate_fixtures.py "$@"
+}
+
+cmd_precompute() {
+  echo "Pre-computing predictions (this may take several minutes)..."
+  cd "$SCRIPT_DIR"
+  uv run python data/precompute_predictions.py
 }
 
 cmd_test() {
@@ -183,7 +181,8 @@ case "${1:-help}" in
   demo)            cmd_demo ;;
   load-data)       cmd_load_data ;;
   reset-data)      cmd_reset_data ;;
-  clear-cache)     cmd_clear_cache ;;
+  generate-data)   cmd_generate_data "${@:2}" ;;
+  precompute)      cmd_precompute ;;
   screenshots)     cmd_screenshots ;;
   test)            cmd_test ;;
   book)            cmd_book ;;

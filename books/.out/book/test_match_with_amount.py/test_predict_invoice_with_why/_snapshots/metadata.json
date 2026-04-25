@@ -1,0 +1,24 @@
+{
+  "test_id": "book/test_match_with_amount.py::test_predict_invoice_with_why",
+  "snapshots": {
+    "httpx": {
+      "hash": "sha256:31bb6c99db47f86133493a34edfc21b91290078d9be4857206b9dc928c814473",
+      "state": "updated",
+      "details": {
+        "count": 1,
+        "urls": [
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict"
+        ],
+        "hashes": [
+          "8597900314e095063e1dad1f6233069dcb104c72"
+        ]
+      },
+      "timestamp": 1776878333.5853395
+    }
+  },
+  "result": {
+    "success": "diff",
+    "snapshotting": "updated"
+  },
+  "timestamp": 1776878333.586415
+}

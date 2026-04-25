@@ -1,0 +1,33 @@
+{
+  "httpx": {
+    "8597900314e095063e1dad1f6233069dcb104c72": {
+      "request": {
+        "hash": "8597900314e095063e1dad1f6233069dcb104c72",
+        "method": "POST",
+        "url": "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict"
+      },
+      "response": {
+        "content": "eyJvZmZzZXQiOjAsInRvdGFsIjo3NSwiaGl0cyI6W3siJHAiOjAuMDI0MjA4NzA1MzM4Mjk1NDk2LCJpbnZvaWNlX2lkIjoiSU5WLTI2NDkiLCJ2ZW5kb3IiOiJLZXNrbyBPeWoiLCJhbW91bnQiOjM5MzQuNTcsIiR3aHkiOnsidHlwZSI6InByb2R1Y3QiLCJmYWN0b3JzIjpbeyJ0eXBlIjoiYmFzZVAiLCJ2YWx1ZSI6MC4wMTMzMzMzMzMzMzMzMzMzMzQsInByb3Bvc2l0aW9uIjp7Imludm9pY2VfaWQiOnsiJGhhcyI6IklOVi0yNjQ5In19fSx7InR5cGUiOiJwcm9kdWN0IiwiZmFjdG9ycyI6W3sidHlwZSI6Im5vcm1hbGl6ZXIiLCJuYW1lIjoiZXhjbHVzaXZlbmVzcyIsInZhbHVlIjoxLjA3MTEzMDI1OTI4NTA0NX0seyJ0eXBlIjoibm9ybWFsaXplciIsIm5hbWUiOiJ0cnVlRmFsc2VFeGNsdXNpdmVuZXNzIiwidmFsdWUiOjAuOTgyNDA4MTM3Nzg5NzkwN31dfSx7InR5cGUiOiJyZWxhdGVkUHJvcG9zaXRpb25MaWZ0IiwicHJvcG9zaXRpb24iOnsiJGFuZCI6W3siZGVzY3JpcHRpb24iOnsiJGhhcyI6Imtlc2tvIn19LHsiZGVzY3JpcHRpb24iOnsiJGhhcyI6Im95aiJ9fV19LCJ2YWx1ZSI6MS43MjU0MzQ5Mzk4NDk0NTgyfV19fV19",
+        "headers": {
+          "access-control-allow-credentials": "true",
+          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
+          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
+          "access-control-allow-origin": "*",
+          "connection": "keep-alive",
+          "content-type": "application/json",
+          "date": "Wed, 22 Apr 2026 17:18:53 GMT",
+          "permissions-policy": "geolocation=(), microphone=(), camera=()",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "transfer-encoding": "chunked",
+          "x-aitoai-response-time": "24.06",
+          "x-azure-ref": "20260422T171853Z-r1578f8bfd8lt2wjhC1HELgn3c000000075g000000001u1s",
+          "x-cache": "CONFIG_NOCACHE",
+          "x-content-type-options": "nosniff",
+          "x-frame-options": "DENY",
+          "x-xss-protection": "1; mode=block"
+        },
+        "statusCode": 200
+      }
+    }
+  }
+}

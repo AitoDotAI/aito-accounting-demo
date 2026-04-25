@@ -1,0 +1,24 @@
+{
+  "test_id": "book/test_evaluate_matching.py::test_evaluate_invoice_id_from_description_and_amount",
+  "snapshots": {
+    "httpx": {
+      "hash": "sha256:e368ed4fc1e755a3fc74a5c983a92121b9183e05c934cda2993d4f6fa821c81b",
+      "state": "updated",
+      "details": {
+        "count": 1,
+        "urls": [
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_evaluate"
+        ],
+        "hashes": [
+          "5b2e6363500e754d1cfd8cf97282d528ab678926"
+        ]
+      },
+      "timestamp": 1776884363.102047
+    }
+  },
+  "result": {
+    "success": "diff",
+    "snapshotting": "updated"
+  },
+  "timestamp": 1776884363.1370828
+}

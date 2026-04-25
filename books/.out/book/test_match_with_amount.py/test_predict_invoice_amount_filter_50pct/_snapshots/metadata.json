@@ -1,0 +1,32 @@
+{
+  "test_id": "book/test_match_with_amount.py::test_predict_invoice_amount_filter_50pct",
+  "snapshots": {
+    "httpx": {
+      "hash": "sha256:ebb7d965915d754b29e1e153c46ec107d06e198315ba94a8625765fb47ed6087",
+      "state": "updated",
+      "details": {
+        "count": 5,
+        "urls": [
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict"
+        ],
+        "hashes": [
+          "07b497f36e4129626ee4d9897542a2c5b522e937",
+          "7f2dcb393835444b8a229e53600f49315214d376",
+          "c066e5d91e8a4019c0a62974fa97c6761d35e040",
+          "d941a46af02580e045d8ff042d628c3a10b1058b",
+          "f82c9d69e92f678873d18763a55b46e7beae2b55"
+        ]
+      },
+      "timestamp": 1776878332.0437553
+    }
+  },
+  "result": {
+    "success": "diff",
+    "snapshotting": "updated"
+  },
+  "timestamp": 1776878332.0441718
+}

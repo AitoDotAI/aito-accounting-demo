@@ -33,6 +33,7 @@ SCHEMAS = {
             "payment_method": {"type": "String", "nullable": False},
             "due_days": {"type": "Int", "nullable": False},
             "description": {"type": "Text", "nullable": False},
+            "invoice_date": {"type": "String", "nullable": False},
             "routed": {"type": "Boolean", "nullable": False},
             "routed_by": {"type": "String", "nullable": False},
         },
@@ -83,7 +84,7 @@ def create_schema(client: AitoClient, table_name: str, schema: dict) -> None:
 
 def upload_data(client: AitoClient, table_name: str, records: list[dict]) -> None:
     """Upload records to an Aito table in batches."""
-    batch_size = 100
+    batch_size = 1000
     total = len(records)
     for i in range(0, total, batch_size):
         batch = records[i : i + batch_size]

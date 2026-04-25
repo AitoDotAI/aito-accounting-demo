@@ -37,3 +37,7 @@ playwright-report/
 
 # Misc
 *.log
+data/invoices.json
+data/bank_transactions.json
+data/overrides.json
+data/precomputed/

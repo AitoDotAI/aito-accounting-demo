@@ -1,0 +1,38 @@
+  # _predict invoice_id with amount filter (±50%)
+  
+  
+  
+  ## TELIA FINLAND OY (€890.5)
+  
+    INV-2609     Staples Finland      €    492.91  p=0.0504  
+    INV-2630     Valio Oy             €   1162.64  p=0.0504  
+    INV-2634     Elisa Oyj            €    574.73  p=0.0504  
+  
+  
+  ## KESKO OYJ HELSINKI (€4220.0)
+  
+    INV-2649     Kesko Oyj            €   3934.57  p=0.0242  ok
+    INV-2602     Kesko Oyj            €   2530.47  p=0.0185  ok
+    INV-2802     Kesko Oyj            €   5639.38  p=0.0185  ok
+  
+  
+  ## SOK CORPORATION (€7852.0)
+  
+    INV-2674     SOK Corporation      €   5851.95  p=0.0797  ok
+    INV-2684     Kesko Oyj            €   4187.91  p=0.0797  
+    INV-2804     Kesko Oyj            €   6808.72  p=0.0797  
+  
+  
+  ## FAZER GROUP OY (€2340.0)
+  
+    INV-2678     Fazer Bakeries       €   1413.89  p=0.0664  ok
+    INV-2688     Fazer Bakeries       €   3364.53  p=0.0664  ok
+    INV-2757     Fazer Bakeries       €   2394.80  p=0.0664  ok
+  
+  
+  ## UNKNOWN TRANSFER (€550.0)
+  
+    INV-2609     Staples Finland      €    492.91  p=0.0542  
+    INV-2634     Elisa Oyj            €    574.73  p=0.0542  
+    INV-2643     Elisa Oyj            €    497.56  p=0.0542  
+  
