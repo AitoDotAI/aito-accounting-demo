@@ -134,6 +134,22 @@ def upload_data(client: AitoClient, table_name: str, records: list[dict]) -> Non
             print(f"  Uploaded {uploaded}/{total} records to '{table_name}'")
 
 
+def optimize_table(client: AitoClient, table_name: str) -> None:
+    """Optimize an Aito table for faster query performance.
+
+    Aito's optimize endpoint compacts the table's index, which speeds up
+    _predict, _relate, and _evaluate queries. Should be run after bulk
+    uploads when the table won't change for a while.
+    """
+    print(f"  Optimizing '{table_name}'...")
+    try:
+        # Aito's optimize endpoint requires an empty JSON body
+        client._request("POST", f"/data/{table_name}/optimize", json={})
+    except AitoError as exc:
+        # Optimize is best-effort — don't fail upload if it errors
+        print(f"    optimize warning: {exc}")
+
+
 def delete_table(client: AitoClient, table_name: str) -> None:
     """Delete a table and its data from Aito."""
     print(f"  Deleting table '{table_name}'...")
@@ -170,13 +186,20 @@ def run(reset: bool = False) -> None:
     print("\nUploading data...")
     fixture_names = ["customers", "corporate_entities", "employees", "invoices", "bank_transactions", "overrides"]
     total_records = 0
+    uploaded_tables = []
     for table_name in fixture_names:
         try:
             records = load_fixture(table_name)
             upload_data(client, table_name, records)
             total_records += len(records)
+            uploaded_tables.append(table_name)
         except FileNotFoundError:
             print(f"  Skipping '{table_name}' (no fixture file)")
+
+    # Optimize tables for faster query performance after bulk upload
+    print("\nOptimizing tables...")
+    for table_name in uploaded_tables:
+        optimize_table(client, table_name)
 
     print(f"\nDone. Loaded {total_records} total records.")
 

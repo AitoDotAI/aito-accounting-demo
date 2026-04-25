@@ -13,8 +13,10 @@ Commands:
   Data pipeline:
     fetch-companies   Download Finnish companies from PRH YTJ API
     generate-data     Generate fixture data (--small / --medium / default 1M)
-    load-data         Upload fixture data to Aito
+    load-data         Upload fixture data to Aito (and optimize tables)
     reset-data        Drop all tables and reload from fixtures
+    optimize          Optimize Aito tables for faster queries
+    warm-cache        Pre-warm API cache for top customers
     precompute        Pre-compute predictions for demo views
 
   Development:
@@ -82,6 +84,25 @@ cmd_fetch_companies() {
   echo "Downloading Finnish companies from PRH YTJ API..."
   cd "$SCRIPT_DIR"
   uv run python data/fetch_companies.py
+}
+
+cmd_optimize() {
+  echo "Optimizing Aito tables..."
+  cd "$SCRIPT_DIR"
+  uv run python -c "
+from src.config import load_config
+from src.aito_client import AitoClient
+from src.data_loader import optimize_table, SCHEMAS
+client = AitoClient(load_config())
+for table_name in SCHEMAS:
+    optimize_table(client, table_name)
+print('Done.')
+"
+}
+
+cmd_warm_cache() {
+  cd "$SCRIPT_DIR"
+  uv run python scripts/warm_cache.py "$@"
 }
 
 cmd_load_data() {
@@ -208,6 +229,8 @@ case "${1:-help}" in
   screenshots)     cmd_screenshots ;;
   test)            cmd_test ;;
   fetch-companies) cmd_fetch_companies ;;
+  optimize)        cmd_optimize ;;
+  warm-cache)      cmd_warm_cache "${@:2}" ;;
   book)            cmd_book ;;
   book-update)     cmd_book_update ;;
   book-capture)    cmd_book_capture ;;
