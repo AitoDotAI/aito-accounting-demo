@@ -30,6 +30,9 @@ from src.rate_limit import check_rate_limit
 config = load_config()
 aito = AitoClient(config)
 
+# Initialize two-layer cache: in-memory L1 + Aito-persistent L2
+cache.init(aito)
+
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 

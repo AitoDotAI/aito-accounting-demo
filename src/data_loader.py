@@ -101,7 +101,7 @@ SCHEMAS = {
 }
 
 # Table deletion order — linked tables first
-DELETE_ORDER = ["overrides", "bank_transactions", "invoices", "employees", "customers", "corporate_entities"]
+DELETE_ORDER = ["overrides", "bank_transactions", "invoices", "employees", "customers", "corporate_entities", "cache_entries"]
 
 
 def load_fixture(name: str) -> list[dict]:
