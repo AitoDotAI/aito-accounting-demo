@@ -42,3 +42,6 @@ data/bank_transactions.json
 data/overrides.json
 data/precomputed/
 data/corporate_entities_raw.json
+data/customers.json
+data/employees.json
+data/corporate_entities.json

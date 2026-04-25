@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Generate realistic Finnish accounting data at scale.
+"""Generate multi-tenant Finnish accounting data at scale.
 
-Produces 100K+ invoices with temporal patterns, Zipf vendor
-distribution, log-normal amounts, and proportional bank
-transactions and overrides.
+Produces ~1M invoices across 256 customers with geometric size
+distribution. Each customer has its own employees, GL code mappings,
+and approver assignments. Vendors come from real PRH company data.
 
 Usage:
-    python data/generate_fixtures.py              # 100K invoices
-    python data/generate_fixtures.py --small      # 1K invoices (fast dev)
-    python data/generate_fixtures.py --count 50000
+    python data/generate_fixtures.py              # full 1M
+    python data/generate_fixtures.py --small      # ~8K invoices (fast dev)
+    python data/generate_fixtures.py --medium     # ~100K invoices
 """
 
 import argparse
@@ -22,171 +22,456 @@ random.seed(42)
 
 DATA_DIR = Path(__file__).parent
 
-# ── Vendor definitions ──────────────────────────────────────────────
-# Tier 1: High-frequency recurring vendors (60% of invoices)
-# Tier 2: Medium-frequency quarterly/monthly (30%)
-# Tier 3: Long-tail rare vendors (10%)
+# ── Constants ─────────────────────────────────────────────────────
 
-VENDORS_TIER1 = [
-    {"vendor": "Telia Finland", "country": "FI", "category": "telecom", "gl_code": "6200", "cost_centre": "CC-100", "approver": "Mikael H.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 1200, "amount_std": 400, "frequency": "monthly"},
-    {"vendor": "Elisa Oyj", "country": "FI", "category": "telecom", "gl_code": "6200", "cost_centre": "CC-100", "approver": "Mikael H.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 800, "amount_std": 300, "frequency": "monthly"},
-    {"vendor": "Kesko Oyj", "country": "FI", "category": "supplies", "gl_code": "4400", "cost_centre": "CC-210", "approver": "Sanna L.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 4500, "amount_std": 2000, "frequency": "weekly"},
-    {"vendor": "SOK Corporation", "country": "FI", "category": "supplies", "gl_code": "4400", "cost_centre": "CC-210", "approver": "Sanna L.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 6000, "amount_std": 3000, "frequency": "weekly"},
-    {"vendor": "Fazer Bakeries", "country": "FI", "category": "food_bev", "gl_code": "4100", "cost_centre": "CC-210", "approver": "Sanna L.", "vat_pct": 14, "payment_method": "SEPA Credit Transfer", "due_days": 14, "amount_mean": 2000, "amount_std": 800, "frequency": "weekly"},
-    {"vendor": "Valio Oy", "country": "FI", "category": "food_bev", "gl_code": "4100", "cost_centre": "CC-210", "approver": "Sanna L.", "vat_pct": 14, "payment_method": "SEPA Credit Transfer", "due_days": 14, "amount_mean": 1500, "amount_std": 600, "frequency": "weekly"},
-    {"vendor": "ISS Palvelut", "country": "FI", "category": "facilities", "gl_code": "5100", "cost_centre": "CC-300", "approver": "Tiina M.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 5000, "amount_std": 1500, "frequency": "monthly"},
-    {"vendor": "Securitas Oy", "country": "FI", "category": "facilities", "gl_code": "5100", "cost_centre": "CC-300", "approver": "Tiina M.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 3500, "amount_std": 1000, "frequency": "monthly"},
-    {"vendor": "AWS EMEA", "country": "IE", "category": "cloud", "gl_code": "6100", "cost_centre": "CC-400", "approver": "Mikael H.", "vat_pct": 24, "payment_method": "Credit Card", "due_days": 0, "amount_mean": 2500, "amount_std": 1500, "frequency": "monthly"},
-    {"vendor": "Microsoft Ireland", "country": "IE", "category": "software", "gl_code": "6100", "cost_centre": "CC-400", "approver": "Mikael H.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 3000, "amount_std": 2000, "frequency": "monthly"},
+DEPARTMENTS = ["Finance", "Operations", "Sales", "IT", "HR", "Procurement"]
+ROLES = ["CEO", "Director", "Manager", "Supervisor", "Employee"]
+BANKS = ["OP Bank", "Nordea", "Danske Bank", "Handelsbanken", "S-Pankki"]
+
+CATEGORIES = [
+    "telecom", "supplies", "food_bev", "office", "it_equipment",
+    "facilities", "maintenance", "software", "cloud", "logistics",
+    "insurance", "consulting",
 ]
 
-VENDORS_TIER2 = [
-    {"vendor": "Hartwall Oy", "country": "FI", "category": "food_bev", "gl_code": "4100", "cost_centre": "CC-210", "approver": "Sanna L.", "vat_pct": 14, "payment_method": "SEPA Credit Transfer", "due_days": 14, "amount_mean": 3000, "amount_std": 2000, "frequency": "biweekly"},
-    {"vendor": "Kone Oyj", "country": "FI", "category": "maintenance", "gl_code": "5200", "cost_centre": "CC-300", "approver": "Tiina M.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 12000, "amount_std": 5000, "frequency": "quarterly"},
-    {"vendor": "Wärtsilä Oyj", "country": "FI", "category": "maintenance", "gl_code": "5200", "cost_centre": "CC-300", "approver": "Tiina M.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 45, "amount_mean": 20000, "amount_std": 10000, "frequency": "quarterly"},
-    {"vendor": "Staples Finland", "country": "FI", "category": "office", "gl_code": "4500", "cost_centre": "CC-100", "approver": "Mikael H.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 14, "amount_mean": 150, "amount_std": 100, "frequency": "weekly"},
-    {"vendor": "Lyreco Oy", "country": "FI", "category": "office", "gl_code": "4500", "cost_centre": "CC-100", "approver": "Mikael H.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 14, "amount_mean": 120, "amount_std": 80, "frequency": "biweekly"},
-    {"vendor": "Verkkokauppa.com", "country": "FI", "category": "it_equipment", "gl_code": "6100", "cost_centre": "CC-400", "approver": "Mikael H.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 14, "amount_mean": 1200, "amount_std": 800, "frequency": "monthly"},
-    {"vendor": "Dustin Finland", "country": "FI", "category": "it_equipment", "gl_code": "6100", "cost_centre": "CC-400", "approver": "Mikael H.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 2000, "amount_std": 1500, "frequency": "monthly"},
-    {"vendor": "SAP SE", "country": "DE", "category": "software", "gl_code": "6100", "cost_centre": "CC-400", "approver": "Tiina M.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 15000, "amount_std": 10000, "frequency": "quarterly"},
-    {"vendor": "Coor Service Management", "country": "FI", "category": "facilities", "gl_code": "5100", "cost_centre": "CC-300", "approver": "Tiina M.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 4000, "amount_std": 1500, "frequency": "monthly"},
-    {"vendor": "Lindström Oy", "country": "FI", "category": "facilities", "gl_code": "5100", "cost_centre": "CC-300", "approver": "Tiina M.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 2500, "amount_std": 800, "frequency": "monthly"},
-    {"vendor": "Fonecta Oy", "country": "FI", "category": "telecom", "gl_code": "6200", "cost_centre": "CC-100", "approver": "Mikael H.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 500, "amount_std": 200, "frequency": "monthly"},
-    {"vendor": "DNA Oyj", "country": "FI", "category": "telecom", "gl_code": "6200", "cost_centre": "CC-100", "approver": "Mikael H.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 600, "amount_std": 250, "frequency": "monthly"},
-    {"vendor": "Paulig Oy", "country": "FI", "category": "food_bev", "gl_code": "4100", "cost_centre": "CC-210", "approver": "Sanna L.", "vat_pct": 14, "payment_method": "SEPA Credit Transfer", "due_days": 14, "amount_mean": 800, "amount_std": 400, "frequency": "biweekly"},
-    {"vendor": "Atria Oyj", "country": "FI", "category": "food_bev", "gl_code": "4100", "cost_centre": "CC-210", "approver": "Sanna L.", "vat_pct": 14, "payment_method": "SEPA Credit Transfer", "due_days": 14, "amount_mean": 2500, "amount_std": 1200, "frequency": "weekly"},
-    {"vendor": "Caverion Oyj", "country": "FI", "category": "maintenance", "gl_code": "5200", "cost_centre": "CC-300", "approver": "Tiina M.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 8000, "amount_std": 4000, "frequency": "quarterly"},
-    {"vendor": "Bravida Finland", "country": "FI", "category": "maintenance", "gl_code": "5200", "cost_centre": "CC-300", "approver": "Tiina M.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 6000, "amount_std": 3000, "frequency": "quarterly"},
-    {"vendor": "Visma Solutions", "country": "FI", "category": "software", "gl_code": "6100", "cost_centre": "CC-400", "approver": "Mikael H.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 2000, "amount_std": 800, "frequency": "monthly"},
-    {"vendor": "Google Ireland", "country": "IE", "category": "cloud", "gl_code": "6100", "cost_centre": "CC-400", "approver": "Mikael H.", "vat_pct": 24, "payment_method": "Credit Card", "due_days": 0, "amount_mean": 1500, "amount_std": 1000, "frequency": "monthly"},
-    {"vendor": "Gigantti Oy", "country": "FI", "category": "it_equipment", "gl_code": "6100", "cost_centre": "CC-400", "approver": "Mikael H.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 14, "amount_mean": 800, "amount_std": 500, "frequency": "monthly"},
-    {"vendor": "PostNord Oy", "country": "FI", "category": "logistics", "gl_code": "4600", "cost_centre": "CC-210", "approver": "Sanna L.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 14, "amount_mean": 400, "amount_std": 200, "frequency": "weekly"},
-    {"vendor": "Posti Group", "country": "FI", "category": "logistics", "gl_code": "4600", "cost_centre": "CC-210", "approver": "Sanna L.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 14, "amount_mean": 350, "amount_std": 150, "frequency": "weekly"},
-    {"vendor": "If Vakuutus", "country": "FI", "category": "insurance", "gl_code": "5300", "cost_centre": "CC-100", "approver": "Tiina M.", "vat_pct": 0, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 8000, "amount_std": 3000, "frequency": "quarterly"},
-    {"vendor": "Fennia Oy", "country": "FI", "category": "insurance", "gl_code": "5300", "cost_centre": "CC-100", "approver": "Tiina M.", "vat_pct": 0, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 5000, "amount_std": 2000, "frequency": "quarterly"},
-    {"vendor": "KPMG Finland", "country": "FI", "category": "consulting", "gl_code": "5400", "cost_centre": "CC-100", "approver": "Tiina M.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 15000, "amount_std": 8000, "frequency": "quarterly"},
-    {"vendor": "PwC Finland", "country": "FI", "category": "consulting", "gl_code": "5400", "cost_centre": "CC-100", "approver": "Tiina M.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 12000, "amount_std": 6000, "frequency": "quarterly"},
-]
-
-VENDORS_TIER3 = [
-    {"vendor": "Rautakirja Oy", "country": "FI", "category": "office", "gl_code": "4500", "cost_centre": "CC-100", "approver": "Mikael H.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 14, "amount_mean": 80, "amount_std": 40, "frequency": "rare"},
-    {"vendor": "Murata Electronics", "country": "JP", "category": "it_equipment", "gl_code": "6100", "cost_centre": "CC-400", "approver": "Tiina M.", "vat_pct": 24, "payment_method": "Wire Transfer", "due_days": 60, "amount_mean": 25000, "amount_std": 15000, "frequency": "rare"},
-    {"vendor": "Siemens AG", "country": "DE", "category": "maintenance", "gl_code": "5200", "cost_centre": "CC-300", "approver": "Tiina M.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 45, "amount_mean": 30000, "amount_std": 15000, "frequency": "rare"},
-    {"vendor": "ABB Oy", "country": "FI", "category": "maintenance", "gl_code": "5200", "cost_centre": "CC-300", "approver": "Tiina M.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 18000, "amount_std": 8000, "frequency": "rare"},
-    {"vendor": "Schneider Electric", "country": "FR", "category": "maintenance", "gl_code": "5200", "cost_centre": "CC-300", "approver": "Tiina M.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 45, "amount_mean": 22000, "amount_std": 10000, "frequency": "rare"},
-    {"vendor": "Oracle Finland", "country": "FI", "category": "software", "gl_code": "6100", "cost_centre": "CC-400", "approver": "Tiina M.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 20000, "amount_std": 12000, "frequency": "rare"},
-    {"vendor": "Salesforce UK", "country": "GB", "category": "software", "gl_code": "6100", "cost_centre": "CC-400", "approver": "Mikael H.", "vat_pct": 24, "payment_method": "Credit Card", "due_days": 0, "amount_mean": 5000, "amount_std": 3000, "frequency": "rare"},
-    {"vendor": "Slack Technologies", "country": "IE", "category": "software", "gl_code": "6100", "cost_centre": "CC-400", "approver": "Mikael H.", "vat_pct": 24, "payment_method": "Credit Card", "due_days": 0, "amount_mean": 800, "amount_std": 300, "frequency": "rare"},
-    {"vendor": "Hetzner GmbH", "country": "DE", "category": "cloud", "gl_code": "6100", "cost_centre": "CC-400", "approver": "Mikael H.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 14, "amount_mean": 500, "amount_std": 300, "frequency": "rare"},
-    {"vendor": "DigitalOcean", "country": "US", "category": "cloud", "gl_code": "6100", "cost_centre": "CC-400", "approver": "Mikael H.", "vat_pct": 24, "payment_method": "Credit Card", "due_days": 0, "amount_mean": 300, "amount_std": 200, "frequency": "rare"},
-    {"vendor": "Manpower Finland", "country": "FI", "category": "consulting", "gl_code": "5400", "cost_centre": "CC-100", "approver": "Tiina M.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 8000, "amount_std": 4000, "frequency": "rare"},
-    {"vendor": "Adecco Finland", "country": "FI", "category": "consulting", "gl_code": "5400", "cost_centre": "CC-100", "approver": "Tiina M.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 14, "amount_mean": 6000, "amount_std": 3000, "frequency": "rare"},
-    {"vendor": "Otava Oy", "country": "FI", "category": "office", "gl_code": "4500", "cost_centre": "CC-100", "approver": "Mikael H.", "vat_pct": 10, "payment_method": "SEPA Credit Transfer", "due_days": 14, "amount_mean": 200, "amount_std": 100, "frequency": "rare"},
-    {"vendor": "Sanoma Oyj", "country": "FI", "category": "office", "gl_code": "4500", "cost_centre": "CC-100", "approver": "Mikael H.", "vat_pct": 10, "payment_method": "SEPA Credit Transfer", "due_days": 14, "amount_mean": 300, "amount_std": 150, "frequency": "rare"},
-    {"vendor": "Tikkurila Oyj", "country": "FI", "category": "supplies", "gl_code": "4400", "cost_centre": "CC-210", "approver": "Sanna L.", "vat_pct": 24, "payment_method": "SEPA Credit Transfer", "due_days": 30, "amount_mean": 1500, "amount_std": 800, "frequency": "rare"},
-]
-
-ALL_VENDORS = VENDORS_TIER1 + VENDORS_TIER2 + VENDORS_TIER3
-
-# GL code labels
-GL_LABELS = {
-    "4100": "COGS", "4400": "Supplies", "4500": "Office", "4600": "Logistics",
-    "5100": "Facilities", "5200": "Maintenance", "5300": "Insurance",
-    "5400": "Consulting", "6100": "IT & Software", "6200": "Telecom",
+GL_CODES = {
+    "telecom": ("6200", "Telecom"),
+    "supplies": ("4400", "Supplies & Materials"),
+    "food_bev": ("4100", "COGS"),
+    "office": ("4500", "Office Expenses"),
+    "it_equipment": ("6100", "IT & Software"),
+    "facilities": ("5100", "Facilities"),
+    "maintenance": ("5200", "Maintenance"),
+    "software": ("6100", "IT & Software"),
+    "cloud": ("6100", "IT & Software"),
+    "logistics": ("4600", "Logistics"),
+    "insurance": ("5300", "Insurance"),
+    "consulting": ("5400", "Professional Services"),
 }
 
-DESCRIPTIONS = {
-    "telecom": ["Monthly subscription", "Mobile plan", "Broadband service", "Data plan", "Phone service"],
-    "supplies": ["Grocery supplies", "Retail products", "Store inventory", "Wholesale order", "Materials"],
-    "food_bev": ["Bakery products", "Dairy delivery", "Beverages", "Catering order", "Food supplies"],
-    "maintenance": ["Equipment service", "Annual maintenance", "Spare parts", "Technical inspection", "Repair work"],
-    "office": ["Office supplies", "Printer paper", "Stationery", "Desk accessories", "Books"],
-    "it_equipment": ["Laptop purchase", "Monitor order", "Peripherals", "Network equipment", "Accessories"],
-    "facilities": ["Cleaning services", "Security monthly", "Building maintenance", "Waste management"],
-    "software": ["License renewal", "SaaS subscription", "Enterprise license", "Support contract"],
-    "cloud": ["Cloud hosting", "Compute resources", "Storage fees", "CDN services"],
-    "logistics": ["Shipping", "Courier service", "Freight", "Parcel delivery"],
-    "insurance": ["Property insurance", "Liability coverage", "Fleet insurance", "Risk premium"],
-    "consulting": ["Advisory services", "Audit fees", "Project consulting", "Strategy review"],
+COST_CENTRES = {
+    "Finance": "CC-100", "Operations": "CC-200", "Sales": "CC-300",
+    "IT": "CC-400", "HR": "CC-500", "Procurement": "CC-600",
 }
 
-APPROVERS = ["Mikael H.", "Sanna L.", "Tiina M."]
+PAYMENT_METHODS = ["SEPA Credit Transfer", "SEPA Credit Transfer", "SEPA Credit Transfer", "Credit Card", "Wire Transfer"]
 
 # Date range: 24 months
 START_DATE = date(2024, 5, 1)
 END_DATE = date(2026, 4, 30)
 TOTAL_DAYS = (END_DATE - START_DATE).days
 
+# ── Invoice description templates ─────────────────────────────────
+# Category-specific English templates with {vendor} and {ref} slots.
+# Each category has many templates for variety.
+
+TEMPLATES = {
+    "telecom": [
+        "Monthly mobile subscription - {ref}",
+        "Broadband service - office line {ref}",
+        "Data plan renewal - corporate account",
+        "Phone service contract Q{q} - {ref}",
+        "VoIP service monthly fee",
+        "Mobile fleet management - {count} devices",
+        "Internet connectivity - main office",
+        "Telecommunications service agreement",
+        "SIM card order - new employees",
+        "Conference call service - monthly",
+    ],
+    "supplies": [
+        "Wholesale order - retail products {ref}",
+        "Store inventory replenishment Q{q}",
+        "Grocery supplies - weekly delivery",
+        "Materials order - {ref}",
+        "Packaging materials - bulk order",
+        "Raw materials procurement - production",
+        "Supply chain order #{ref}",
+        "Warehouse restocking - standard items",
+        "Consumables order - operations",
+        "Production materials - batch {ref}",
+    ],
+    "food_bev": [
+        "Bakery products - weekly delivery",
+        "Dairy supply - regular order {ref}",
+        "Catering order - staff meeting",
+        "Beverage supply Q{q}",
+        "Food service contract - cafeteria",
+        "Fresh produce delivery - week {week}",
+        "Coffee and beverages - office supply",
+        "Lunch service - corporate dining",
+        "Snack vending restocking",
+        "Catering - client event {ref}",
+    ],
+    "office": [
+        "Office supplies - standard order",
+        "Printer paper and toner - Q{q}",
+        "Stationery order - {ref}",
+        "Desk accessories and ergonomics",
+        "Filing and storage supplies",
+        "Presentation materials",
+        "Business cards - new employees",
+        "Whiteboard markers and supplies",
+        "Envelopes and mailing supplies",
+        "Calendar and planner order",
+    ],
+    "it_equipment": [
+        "Laptop purchase - new hire",
+        "Monitor order - {count} units",
+        "Keyboard and mouse - bulk order",
+        "Network switch replacement",
+        "Server hardware upgrade",
+        "USB-C docking stations - {count} pcs",
+        "Headset order - remote workers",
+        "Webcam and AV equipment",
+        "Printer - department {dept}",
+        "External storage drives",
+    ],
+    "facilities": [
+        "Cleaning services - monthly contract",
+        "Security service - {ref}",
+        "Building maintenance - scheduled",
+        "Waste management - monthly",
+        "HVAC maintenance - quarterly",
+        "Pest control - annual service",
+        "Elevator maintenance - Q{q}",
+        "Fire safety inspection",
+        "Window cleaning - exterior",
+        "Landscaping - seasonal",
+    ],
+    "maintenance": [
+        "Equipment service - annual maintenance",
+        "Spare parts order - {ref}",
+        "Technical inspection - production line",
+        "Preventive maintenance - Q{q}",
+        "Repair work - order {ref}",
+        "Calibration service - instruments",
+        "Machine overhaul - scheduled",
+        "Safety equipment replacement",
+        "Generator maintenance",
+        "Plumbing repair - facilities",
+    ],
+    "software": [
+        "License renewal - Enterprise Plan",
+        "SaaS subscription - {count} seats",
+        "Annual support contract - {ref}",
+        "Software upgrade - version {ver}",
+        "Development tools license",
+        "Security software - annual",
+        "CRM subscription - Q{q}",
+        "ERP module license",
+        "Cloud platform subscription",
+        "Collaboration tools - monthly",
+    ],
+    "cloud": [
+        "Cloud hosting - monthly usage",
+        "Compute resources - on-demand",
+        "Storage fees - {count} TB",
+        "CDN service - bandwidth charges",
+        "Database hosting - managed service",
+        "Container orchestration - monthly",
+        "Serverless compute charges",
+        "Data transfer - egress fees",
+        "Load balancer service",
+        "Cloud monitoring - monthly",
+    ],
+    "logistics": [
+        "Shipping - domestic parcel {ref}",
+        "Freight transport - order {ref}",
+        "Courier service - express delivery",
+        "Pallet delivery - warehouse",
+        "Return logistics - processing",
+        "International shipping - EU",
+        "Last mile delivery contract",
+        "Warehouse storage - monthly",
+        "Fleet fuel charges - {ref}",
+        "Customs clearance - import",
+    ],
+    "insurance": [
+        "Property insurance - annual premium",
+        "Liability coverage - renewal",
+        "Fleet insurance - {count} vehicles",
+        "Workers compensation - Q{q}",
+        "Business interruption coverage",
+        "Cyber liability insurance",
+        "Directors and officers liability",
+        "Professional indemnity renewal",
+        "Equipment breakdown coverage",
+        "Travel insurance - corporate",
+    ],
+    "consulting": [
+        "Advisory services - strategy review",
+        "Audit fees - annual Q{q}",
+        "Project consulting - phase {ref}",
+        "Legal services - contract review",
+        "Tax advisory - annual filing",
+        "HR consulting - recruitment",
+        "IT consulting - infrastructure",
+        "Management consulting - Q{q}",
+        "Financial advisory - M&A",
+        "Compliance review - regulatory",
+    ],
+}
+
+
+# ── Helper functions ──────────────────────────────────────────────
 
 def lognormal_amount(mean: float, std: float) -> float:
     """Generate a log-normal amount with Finnish rounding bias."""
-    # Convert mean/std to log-normal parameters
     variance = std ** 2
     mu = math.log(mean ** 2 / math.sqrt(variance + mean ** 2))
     sigma = math.sqrt(math.log(1 + variance / mean ** 2))
     amount = random.lognormvariate(mu, sigma)
-    # Finnish rounding: bias toward .00 and .50
     if random.random() < 0.3:
         amount = round(amount, 0)
     elif random.random() < 0.5:
-        amount = round(amount * 2, 0) / 2  # round to .50
+        amount = round(amount * 2, 0) / 2
     else:
         amount = round(amount, 2)
     return max(1.0, amount)
 
 
 def random_date() -> str:
-    """Generate a random date in the 24-month range."""
     days = random.randint(0, TOTAL_DAYS)
-    d = START_DATE + timedelta(days=days)
-    return d.isoformat()
+    return (START_DATE + timedelta(days=days)).isoformat()
 
 
-def pick_vendor(tier_weights=(0.60, 0.30, 0.10)):
-    """Pick a vendor using Zipf-like tier distribution."""
-    r = random.random()
-    if r < tier_weights[0]:
-        return random.choice(VENDORS_TIER1)
-    elif r < tier_weights[0] + tier_weights[1]:
-        return random.choice(VENDORS_TIER2)
-    else:
-        return random.choice(VENDORS_TIER3)
+def generate_description(category: str) -> str:
+    templates = TEMPLATES.get(category, ["Invoice - {ref}"])
+    template = random.choice(templates)
+    return template.format(
+        ref=f"{random.randint(1000, 9999)}",
+        q=random.randint(1, 4),
+        count=random.randint(2, 50),
+        week=random.randint(1, 52),
+        dept=random.choice(DEPARTMENTS),
+        ver=f"{random.randint(1, 5)}.{random.randint(0, 9)}",
+    )
 
 
-def generate_invoices(n: int = 100000) -> list[dict]:
-    """Generate n invoices with realistic patterns."""
-    invoices = []
-    unrouted_ratio = 0.12  # 12% unrouted
+# ── Customer generation ──────────────────────────────────────────
+
+def generate_customers(scale: str = "full") -> list[dict]:
+    """Generate 256 customers with geometric size distribution."""
+    tiers = {
+        "full":   [(1, 128000), (2, 64000), (4, 32000), (8, 16000), (16, 8000), (32, 4000), (64, 2000), (128, 1000)],
+        "medium": [(1, 16000), (2, 8000), (4, 4000), (8, 2000), (16, 1000), (32, 500), (64, 250), (128, 125)],
+        "small":  [(1, 2000), (2, 1000), (4, 500), (8, 250), (16, 125), (32, 64), (64, 32), (128, 16)],
+    }
+
+    tier_list = tiers[scale]
+    customers = []
+    cid = 0
+
+    tier_names = ["enterprise", "enterprise", "large", "large", "midmarket", "midmarket", "small", "small"]
+
+    for tier_idx, (count, invoice_count) in enumerate(tier_list):
+        tier_name = tier_names[tier_idx]
+        for i in range(count):
+            employee_count = max(1, invoice_count // 100)
+            customers.append({
+                "customer_id": f"CUST-{cid:04d}",
+                "name": f"Customer {cid:04d}",  # will be enriched later
+                "size_tier": tier_name,
+                "invoice_count": invoice_count,
+                "employee_count": employee_count,
+            })
+            cid += 1
+
+    total_invoices = sum(c["invoice_count"] for c in customers)
+    print(f"  {len(customers)} customers, {total_invoices:,} total invoices planned")
+    return customers
+
+
+# ── Employee generation ───────────────────────────────────────────
+
+FIRST_NAMES = [
+    "Matti", "Juha", "Mikko", "Timo", "Jari", "Antti", "Markku", "Pekka",
+    "Anna", "Maria", "Sanna", "Tiina", "Päivi", "Laura", "Hanna", "Minna",
+    "Tuomas", "Ville", "Janne", "Petri", "Eero", "Kari", "Heikki", "Tapani",
+    "Elina", "Johanna", "Katja", "Riikka", "Outi", "Merja", "Kirsi", "Pirjo",
+]
+
+LAST_NAMES = [
+    "Virtanen", "Korhonen", "Nieminen", "Mäkinen", "Hämäläinen", "Laine",
+    "Heikkinen", "Koskinen", "Järvinen", "Lehtonen", "Lehtinen", "Saarinen",
+    "Niemi", "Salminen", "Heinonen", "Heikkilä", "Kinnunen", "Salonen",
+    "Turunen", "Laitinen", "Tuominen", "Rantanen", "Karjalainen", "Jokinen",
+]
+
+
+def generate_employees(customer: dict) -> list[dict]:
+    """Generate employee hierarchy for a customer."""
+    cid = customer["customer_id"]
+    n = customer["employee_count"]
+    employees = []
 
     for i in range(n):
-        vdef = pick_vendor()
-        amount = lognormal_amount(vdef["amount_mean"], vdef["amount_std"])
-        desc = random.choice(DESCRIPTIONS.get(vdef["category"], ["Invoice"]))
+        # Role distribution based on position
+        if i == 0:
+            role = "CEO" if n > 1 else "CEO"
+        elif i < max(2, n * 0.05):
+            role = "Director"
+        elif i < max(3, n * 0.15):
+            role = "Manager"
+        elif i < max(4, n * 0.30):
+            role = "Supervisor"
+        else:
+            role = "Employee"
+
+        dept = DEPARTMENTS[i % len(DEPARTMENTS)] if n > 1 else "General"
+        fname = FIRST_NAMES[i % len(FIRST_NAMES)]
+        lname = LAST_NAMES[(i * 7 + hash(cid)) % len(LAST_NAMES)]
+
+        # Supervisor: find someone with a higher role in same dept
+        supervisor_id = None
+        if role != "CEO" and employees:
+            role_idx = ROLES.index(role)
+            candidates = [e for e in employees if ROLES.index(e["role"]) < role_idx]
+            if candidates:
+                # Prefer same department
+                dept_candidates = [e for e in candidates if e["department"] == dept]
+                sup = random.choice(dept_candidates) if dept_candidates else random.choice(candidates)
+                supervisor_id = sup["employee_id"]
+
+        employees.append({
+            "employee_id": f"{cid}-EMP-{i:04d}",
+            "customer_id": cid,
+            "name": f"{fname} {lname}",
+            "role": role,
+            "department": dept,
+            "supervisor_id": supervisor_id,
+            "active": True,
+        })
+
+    return employees
+
+
+# ── Vendor assignment per customer ────────────────────────────────
+
+def assign_vendors_to_customer(customer: dict, entities: list[dict], rng: random.Random) -> list[dict]:
+    """Assign a subset of corporate entities as vendors for this customer.
+
+    Each customer uses 20-80 vendors depending on size. Returns vendor
+    definitions with customer-specific GL code and approver mappings.
+    """
+    n_vendors = min(len(entities), max(20, customer["invoice_count"] // 500))
+    # Pick a random subset of entities
+    selected = rng.sample(entities, min(n_vendors, len(entities)))
+
+    vendors = []
+    for entity in selected:
+        # Assign a category based on industry
+        industry = (entity.get("industry") or "").lower()
+        if any(w in industry for w in ["software", "programming", "computer"]):
+            cat = "software"
+        elif any(w in industry for w in ["telecom", "communication"]):
+            cat = "telecom"
+        elif any(w in industry for w in ["clean", "facility", "security"]):
+            cat = "facilities"
+        elif any(w in industry for w in ["food", "restaurant", "cafe", "bakery", "dairy"]):
+            cat = "food_bev"
+        elif any(w in industry for w in ["transport", "freight", "logistics", "shipping"]):
+            cat = "logistics"
+        elif any(w in industry for w in ["insurance"]):
+            cat = "insurance"
+        elif any(w in industry for w in ["consult", "audit", "legal", "advisory"]):
+            cat = "consulting"
+        elif any(w in industry for w in ["construct", "building", "engineer", "maintenance"]):
+            cat = "maintenance"
+        elif any(w in industry for w in ["retail", "wholesale", "sale"]):
+            cat = "supplies"
+        elif any(w in industry for w in ["energy", "electric"]):
+            cat = "maintenance"
+        else:
+            cat = rng.choice(CATEGORIES)
+
+        gl_code, gl_label = GL_CODES[cat]
+
+        vendors.append({
+            "business_id": entity["business_id"],
+            "name": entity["name"],
+            "country": "FI",
+            "category": cat,
+            "gl_code": gl_code,
+            "amount_mean": rng.uniform(200, 20000),
+            "amount_std_ratio": rng.uniform(0.2, 0.6),
+            "vat_pct": 24 if cat != "insurance" else 0,
+            "due_days": rng.choice([14, 14, 30, 30, 30, 45]),
+        })
+
+    return vendors
+
+
+# ── Invoice generation ────────────────────────────────────────────
+
+def generate_invoices_for_customer(
+    customer: dict,
+    vendors: list[dict],
+    employees: list[dict],
+) -> tuple[list[dict], list[dict], list[dict]]:
+    """Generate invoices, bank transactions, and overrides for one customer."""
+    cid = customer["customer_id"]
+    n = customer["invoice_count"]
+    rng = random.Random(hash(cid))
+
+    # Weighted vendor selection (some vendors invoice more often)
+    vendor_weights = [rng.uniform(0.5, 3.0) for _ in vendors]
+    total_weight = sum(vendor_weights)
+    vendor_probs = [w / total_weight for w in vendor_weights]
+
+    invoices = []
+    bank_txns = []
+    overrides = []
+
+    # Find approvers (managers and above)
+    approvers = [e for e in employees if e["role"] in ("CEO", "Director", "Manager")]
+    if not approvers:
+        approvers = employees[:1]
+
+    for i in range(n):
+        # Pick vendor (weighted)
+        r = rng.random()
+        cumulative = 0
+        vendor_idx = 0
+        for j, p in enumerate(vendor_probs):
+            cumulative += p
+            if r <= cumulative:
+                vendor_idx = j
+                break
+        vdef = vendors[vendor_idx]
+
+        amount = lognormal_amount(vdef["amount_mean"], vdef["amount_mean"] * vdef["amount_std_ratio"])
+        desc = generate_description(vdef["category"])
         inv_date = random_date()
 
-        # Routing: 20% rules, 68% Aito, 12% unrouted
-        routed = random.random() >= unrouted_ratio
-        if routed:
-            routed_by = "rule" if random.random() < 0.23 else ("aito" if random.random() < 0.90 else "human")
-        else:
-            routed_by = "none"
+        # Processor and approver from employees
+        dept_employees = [e for e in employees if e["department"] in ("Finance", "Procurement")]
+        processor = rng.choice(dept_employees) if dept_employees else rng.choice(employees)
+        approver = rng.choice(approvers)
+
+        # Routing
+        routed = rng.random() >= 0.12
+        routed_by = "rule" if rng.random() < 0.20 else ("aito" if rng.random() < 0.90 else "human") if routed else "none"
 
         # Occasional GL anomaly (2%)
         gl_code = vdef["gl_code"]
-        if random.random() < 0.02:
-            gl_code = random.choice(list(GL_LABELS.keys()))
+        if rng.random() < 0.02:
+            gl_code = rng.choice(list(set(v[0] for v in GL_CODES.values())))
 
         invoice = {
-            "invoice_id": f"INV-{10000 + i}",
-            "vendor": vdef["vendor"],
+            "invoice_id": f"{cid}-INV-{i:06d}",
+            "customer_id": cid,
+            "vendor_business_id": vdef["business_id"],
+            "vendor": vdef["name"],
             "vendor_country": vdef["country"],
             "category": vdef["category"],
             "amount": amount,
             "gl_code": gl_code,
-            "cost_centre": vdef["cost_centre"],
-            "approver": vdef["approver"],
+            "cost_centre": COST_CENTRES.get(processor["department"], "CC-100"),
+            "approver": approver["name"],
+            "processor": processor["employee_id"],
             "vat_pct": vdef["vat_pct"],
-            "payment_method": vdef["payment_method"],
+            "payment_method": rng.choice(PAYMENT_METHODS),
             "due_days": vdef["due_days"],
             "description": desc,
             "invoice_date": inv_date,
@@ -195,157 +480,142 @@ def generate_invoices(n: int = 100000) -> list[dict]:
         }
         invoices.append(invoice)
 
-    return invoices
+        # Bank transaction for ~60% of routed invoices
+        if routed and rng.random() < 0.60:
+            bank_desc = vdef["name"].upper()
+            if rng.random() < 0.15:
+                bank_desc = bank_desc.split()[0]
+            elif rng.random() < 0.3:
+                bank_desc += " OY"
 
+            amt_diff = rng.choice([0, 0, 0, 0.50, -0.50, 1.00])
+            bank_txns.append({
+                "transaction_id": f"{cid}-TXN-{len(bank_txns):06d}",
+                "customer_id": cid,
+                "description": bank_desc,
+                "vendor_name": vdef["name"],
+                "amount": round(amount + amt_diff, 2),
+                "bank": rng.choice(BANKS),
+                "invoice_id": invoice["invoice_id"],
+            })
 
-def generate_bank_transactions(invoices: list[dict]) -> list[dict]:
-    """Generate bank transactions, ~60% matching invoices."""
-    transactions = []
-    routed = [inv for inv in invoices if inv["routed"]]
-    n_matched = int(len(routed) * 0.60)
-    matched = random.sample(routed, min(n_matched, len(routed)))
-
-    bank_descs = {}  # vendor -> bank description style
-
-    for inv in matched:
-        vendor = inv["vendor"]
-        if vendor not in bank_descs:
-            # Generate a bank description style for this vendor
-            parts = vendor.upper().split()
-            if random.random() < 0.2:
-                bank_descs[vendor] = parts[0]  # abbreviated
-            elif random.random() < 0.3:
-                bank_descs[vendor] = vendor.upper() + " OY"
+        # Override for ~6% of invoices
+        if rng.random() < 0.06:
+            field = rng.choice(["gl_code", "gl_code", "gl_code", "approver", "cost_centre"])
+            if field == "gl_code":
+                predicted = gl_code
+                corrected = rng.choice([c for c in set(v[0] for v in GL_CODES.values()) if c != predicted])
+            elif field == "approver":
+                predicted = approver["name"]
+                corrected = rng.choice([a["name"] for a in approvers if a["name"] != predicted]) if len(approvers) > 1 else predicted
             else:
-                bank_descs[vendor] = vendor.upper()
+                predicted = invoice["cost_centre"]
+                corrected = rng.choice([v for v in COST_CENTRES.values() if v != predicted])
 
-        bank_desc = bank_descs[vendor]
-        # Amount may differ slightly
-        amount_diff = random.choice([0, 0, 0, 0, 0.50, -0.50, 1.00, 2.00])
-        bank_amount = round(inv["amount"] + amount_diff, 2)
-        bank = random.choice(["OP Bank", "Nordea", "Danske Bank", "Handelsbanken"])
+            overrides.append({
+                "override_id": f"{cid}-OVR-{len(overrides):06d}",
+                "customer_id": cid,
+                "invoice_id": invoice["invoice_id"],
+                "field": field,
+                "predicted_value": predicted,
+                "corrected_value": corrected,
+                "confidence_was": round(rng.uniform(0.40, 0.88), 2),
+                "corrected_by": rng.choice(approvers)["name"],
+            })
 
-        txn = {
-            "transaction_id": f"TXN-{100000 + len(transactions)}",
-            "description": bank_desc,
-            "vendor_name": inv["vendor"],
-            "amount": bank_amount,
-            "bank": bank,
-            "invoice_id": inv["invoice_id"],
-        }
-        transactions.append(txn)
-
-    # Unmatched bank transactions (~5% of total)
-    n_unmatched = max(20, len(transactions) // 20)
-    unmatched_descs = [
-        "UNKNOWN PAYMENT", "MISC TRANSFER", "SALARY REFUND",
-        "INSURANCE PREMIUM", "TAX REFUND", "BANK FEE",
-        "INTEREST PAYMENT", "DIVIDEND", "CORRECTION",
-    ]
-    for i in range(n_unmatched):
-        txn = {
-            "transaction_id": f"TXN-{100000 + len(transactions)}",
-            "description": random.choice(unmatched_descs),
-            "vendor_name": None,
-            "amount": round(random.uniform(10, 5000), 2),
-            "bank": random.choice(["OP Bank", "Nordea"]),
-            "invoice_id": None,
-        }
-        transactions.append(txn)
-
-    return transactions
+    return invoices, bank_txns, overrides
 
 
-def generate_overrides(invoices: list[dict]) -> list[dict]:
-    """Generate human override records (~6% of invoices)."""
-    overrides = []
-    correctors = APPROVERS
-    n_overrides = max(20, len(invoices) // 16)
-
-    # GL code overrides (65% of overrides)
-    for _ in range(int(n_overrides * 0.65)):
-        inv = random.choice(invoices)
-        predicted = inv["gl_code"]
-        corrected = random.choice([c for c in GL_LABELS.keys() if c != predicted])
-        overrides.append({
-            "override_id": f"OVR-{1000 + len(overrides)}",
-            "invoice_id": inv["invoice_id"],
-            "field": "gl_code",
-            "predicted_value": predicted,
-            "corrected_value": corrected,
-            "confidence_was": round(random.uniform(0.45, 0.88), 2),
-            "corrected_by": random.choice(correctors),
-        })
-
-    # Approver overrides (20%)
-    for _ in range(int(n_overrides * 0.20)):
-        inv = random.choice(invoices)
-        predicted = inv["approver"]
-        corrected = random.choice([a for a in correctors if a != predicted])
-        overrides.append({
-            "override_id": f"OVR-{1000 + len(overrides)}",
-            "invoice_id": inv["invoice_id"],
-            "field": "approver",
-            "predicted_value": predicted,
-            "corrected_value": corrected,
-            "confidence_was": round(random.uniform(0.50, 0.92), 2),
-            "corrected_by": random.choice(correctors),
-        })
-
-    # Cost centre overrides (15%)
-    centres = ["CC-100", "CC-210", "CC-300", "CC-400"]
-    for _ in range(int(n_overrides * 0.15)):
-        inv = random.choice(invoices)
-        predicted = inv["cost_centre"]
-        corrected = random.choice([c for c in centres if c != predicted])
-        overrides.append({
-            "override_id": f"OVR-{1000 + len(overrides)}",
-            "invoice_id": inv["invoice_id"],
-            "field": "cost_centre",
-            "predicted_value": predicted,
-            "corrected_value": corrected,
-            "confidence_was": round(random.uniform(0.55, 0.85), 2),
-            "corrected_by": random.choice(correctors),
-        })
-
-    return overrides
-
+# ── Main ──────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--count", type=int, default=100000)
-    parser.add_argument("--small", action="store_true", help="Generate 1K invoices for fast dev")
+    parser.add_argument("--small", action="store_true", help="~8K invoices")
+    parser.add_argument("--medium", action="store_true", help="~100K invoices")
     args = parser.parse_args()
 
-    n = 1000 if args.small else args.count
+    scale = "small" if args.small else ("medium" if args.medium else "full")
 
-    print(f"Generating {n} invoices with {len(ALL_VENDORS)} vendors...")
-    invoices = generate_invoices(n)
-    bank_txns = generate_bank_transactions(invoices)
-    overrides = generate_overrides(invoices)
+    # Load corporate entities
+    entities_file = DATA_DIR / "corporate_entities_raw.json"
+    if not entities_file.exists():
+        print(f"Error: {entities_file} not found. Run: python data/fetch_companies.py")
+        return
 
-    for name, records in [("invoices", invoices), ("bank_transactions", bank_txns), ("overrides", overrides)]:
+    with open(entities_file) as f:
+        all_entities = json.load(f)
+    print(f"Loaded {len(all_entities)} corporate entities from PRH")
+
+    # Generate customers
+    print(f"\nGenerating customers ({scale} scale)...")
+    customers = generate_customers(scale)
+
+    # Generate employees
+    print("Generating employees...")
+    all_employees = []
+    for cust in customers:
+        emps = generate_employees(cust)
+        all_employees.extend(emps)
+    print(f"  {len(all_employees)} employees")
+
+    # Generate invoices per customer
+    print("Generating invoices...")
+    all_invoices = []
+    all_bank_txns = []
+    all_overrides = []
+    customer_rng = random.Random(42)
+
+    for idx, cust in enumerate(customers):
+        vendors = assign_vendors_to_customer(cust, all_entities, customer_rng)
+        emps = [e for e in all_employees if e["customer_id"] == cust["customer_id"]]
+        invoices, bank_txns, overrides = generate_invoices_for_customer(cust, vendors, emps)
+        all_invoices.extend(invoices)
+        all_bank_txns.extend(bank_txns)
+        all_overrides.extend(overrides)
+
+        if (idx + 1) % 50 == 0 or idx == len(customers) - 1:
+            print(f"  {idx+1}/{len(customers)} customers, {len(all_invoices):,} invoices so far")
+
+    # Prepare corporate entities for upload (subset that's actually used)
+    used_bids = {inv["vendor_business_id"] for inv in all_invoices}
+    corp_entities = [e for e in all_entities if e["business_id"] in used_bids]
+
+    # Save all fixtures
+    fixtures = {
+        "customers": customers,
+        "corporate_entities": corp_entities,
+        "employees": all_employees,
+        "invoices": all_invoices,
+        "bank_transactions": all_bank_txns,
+        "overrides": all_overrides,
+    }
+
+    print(f"\nSaving fixtures...")
+    for name, records in fixtures.items():
         path = DATA_DIR / f"{name}.json"
         with open(path, "w") as f:
             json.dump(records, f, indent=None, ensure_ascii=False)
         size_mb = path.stat().st_size / 1024 / 1024
-        print(f"  {name}: {len(records)} records ({size_mb:.1f} MB)")
+        print(f"  {name}: {len(records):,} records ({size_mb:.1f} MB)")
 
-    # Print vendor distribution
-    vendor_counts = {}
-    for inv in invoices:
-        vendor_counts[inv["vendor"]] = vendor_counts.get(inv["vendor"], 0) + 1
-    top10 = sorted(vendor_counts.items(), key=lambda x: -x[1])[:10]
-    print(f"\nTop 10 vendors:")
-    for v, c in top10:
-        print(f"  {v:25} {c:>6} ({c/len(invoices)*100:.1f}%)")
+    # Stats
+    print(f"\nSummary:")
+    print(f"  Customers: {len(customers)}")
+    print(f"  Corporate entities: {len(corp_entities)}")
+    print(f"  Employees: {len(all_employees)}")
+    print(f"  Invoices: {len(all_invoices):,}")
+    print(f"  Bank transactions: {len(all_bank_txns):,}")
+    print(f"  Overrides: {len(all_overrides):,}")
 
-    cat_counts = {}
-    for inv in invoices:
-        cat_counts[inv["category"]] = cat_counts.get(inv["category"], 0) + 1
-    print(f"\nCategories:")
-    for cat, c in sorted(cat_counts.items(), key=lambda x: -x[1]):
-        print(f"  {cat:20} {c:>6} ({c/len(invoices)*100:.1f}%)")
+    # Customer size distribution
+    print(f"\n  Size distribution:")
+    by_tier = {}
+    for c in customers:
+        tier = c["size_tier"]
+        by_tier[tier] = by_tier.get(tier, 0) + 1
+    for tier, count in sorted(by_tier.items()):
+        tier_invoices = sum(c["invoice_count"] for c in customers if c["size_tier"] == tier)
+        print(f"    {tier:12} {count:4} customers, {tier_invoices:>10,} invoices")
 
 
 if __name__ == "__main__":
