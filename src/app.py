@@ -41,9 +41,9 @@ def _warm_top_customers():
     def warm():
         if not aito.check_connectivity():
             return
-        # Get top customers by invoice count
+        # Get all customers, pick top 5 by invoice count
         try:
-            r = aito.search("customers", {}, limit=5)
+            r = aito.search("customers", {}, limit=300)
             top_customers = sorted(r.get("hits", []), key=lambda c: -c.get("invoice_count", 0))[:5]
         except Exception as e:
             print(f"warmup: cannot list customers: {e}")
@@ -102,6 +102,19 @@ async def rate_limit_middleware(request: Request, call_next):
 
 # ── Customer list ─────────────────────────────────────────────────
 
+@app.get("/api/cache/status")
+def cache_status(customer_id: str = Query(...)):
+    """Check whether a customer's data is warmed in cache."""
+    return {
+        "customer_id": customer_id,
+        "invoices_warm": cache.get(f"invoices:{customer_id}") is not None,
+        "quality_warm": cache.get(f"quality:{customer_id}") is not None,
+        "matching_warm": cache.get(f"matching:{customer_id}") is not None,
+        "rules_warm": cache.get(f"rules:{customer_id}") is not None,
+        "anomalies_warm": cache.get(f"anomalies:{customer_id}") is not None,
+    }
+
+
 @app.get("/api/customers")
 def list_customers():
     """List all customers with their sizes."""
@@ -119,8 +132,13 @@ def list_customers():
 
 @app.get("/api/health")
 def health():
+    cached = cache.get("health")
+    if cached:
+        return cached
     connected = aito.check_connectivity()
-    return {"status": "ok", "aito_connected": connected, "aito_url": config.aito_api_url}
+    result = {"status": "ok", "aito_connected": connected, "aito_url": config.aito_api_url}
+    cache.set("health", result, ttl=60)
+    return result
 
 
 @app.get("/api/invoices/pending")
