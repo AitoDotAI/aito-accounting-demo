@@ -9,20 +9,30 @@ Usage: ./do <command>
 
 Commands:
   help            Show this help
-  dev             Start the backend API server (port 8200)
-  frontend-dev    Start Next.js dev server (port 3000, proxies to 8200)
-  frontend-build  Build Next.js static export to frontend/out/
-  demo            Open the demo (http://localhost:8200 if backend running)
-  load-data       Upload sample data to Aito
-  reset-data      Drop and reload all Aito tables
-  generate-data   Generate fixture data (--small for 1K, default 100K)
-  precompute      Pre-compute all predictions (run after load-data)
-  screenshots     Capture screenshots of all views (needs running server)
-  test            Run the unit test suite
-  book            Run book tests (Aito examination notebooks)
-  book-update     Update book test snapshots after review
-  fmt             Format code
-  check           Run all pre-merge checks (test + fmt)
+
+  Data pipeline:
+    fetch-companies   Download Finnish companies from PRH YTJ API
+    generate-data     Generate fixture data (--small / --medium / default 1M)
+    load-data         Upload fixture data to Aito
+    reset-data        Drop all tables and reload from fixtures
+    precompute        Pre-compute predictions for demo views
+
+  Development:
+    dev               Start the backend API server (port 8200)
+    frontend-dev      Start Next.js dev server (port 3000)
+    frontend-build    Build Next.js static export
+    demo              Open the demo in browser
+
+  Testing:
+    test              Run unit tests (pytest)
+    book              Run book tests (Aito examination notebooks)
+    book-update       Update book test snapshots
+    book-capture      Capture fresh snapshots from live Aito
+
+  Other:
+    screenshots       Capture screenshots of all views
+    fmt               Format code
+    check             Run all checks (test + fmt)
 
 EOF
 }
@@ -66,6 +76,12 @@ cmd_demo() {
     echo "Backend not running. Start with: ./do dev"
     echo "Start with: ./do dev"
   fi
+}
+
+cmd_fetch_companies() {
+  echo "Downloading Finnish companies from PRH YTJ API..."
+  cd "$SCRIPT_DIR"
+  uv run python data/fetch_companies.py
 }
 
 cmd_load_data() {
@@ -168,6 +184,12 @@ cmd_book_update() {
   uv run booktest -v -u book/ "$@"
 }
 
+cmd_book_capture() {
+  echo "Capturing fresh snapshots from live Aito..."
+  cd "$SCRIPT_DIR"
+  uv run booktest -v -u -s book/ "$@"
+}
+
 cmd_check() {
   cmd_test
   cmd_fmt
@@ -185,8 +207,10 @@ case "${1:-help}" in
   precompute)      cmd_precompute ;;
   screenshots)     cmd_screenshots ;;
   test)            cmd_test ;;
+  fetch-companies) cmd_fetch_companies ;;
   book)            cmd_book ;;
   book-update)     cmd_book_update ;;
+  book-capture)    cmd_book_capture ;;
   fmt)             cmd_fmt ;;
   check)           cmd_check ;;
   *)

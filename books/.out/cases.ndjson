@@ -1,3 +1,14 @@
-{"name": "book/test_evaluate_matching.py::test_evaluate_gl_code_from_vendor_and_amount", "result": "DIFF", "duration_ms": 1856.3814163208008, "timestamp": 1776884365.2149065, "ai_review": null}
-{"name": "book/test_evaluate_matching.py::test_evaluate_invoice_id_from_description_and_amount", "result": "DIFF", "duration_ms": 2650.2063274383545, "timestamp": 1776884365.214953, "ai_review": null}
-{"name": "book/test_evaluate_matching.py::test_evaluate_vendor_name_from_description", "result": "DIFF", "duration_ms": 2057.612419128418, "timestamp": 1776884365.2149687, "ai_review": null}
+{"name": "book/test_01_data_sanity.py::test_customer_distribution", "result": "OK", "duration_ms": 45.81499099731445, "timestamp": 1777105996.624851, "ai_review": null}
+{"name": "book/test_01_data_sanity.py::test_sample_invoices", "result": "OK", "duration_ms": 153.04899215698242, "timestamp": 1777105996.8001864, "ai_review": null}
+{"name": "book/test_01_data_sanity.py::test_schema_links", "result": "OK", "duration_ms": 76.79915428161621, "timestamp": 1777105996.908052, "ai_review": null}
+{"name": "book/test_01_data_sanity.py::test_table_counts", "result": "OK", "duration_ms": 355.1912307739258, "timestamp": 1777105997.2906773, "ai_review": null}
+{"name": "book/test_02_predict.py::test_cold_start_small_customer", "result": "OK", "duration_ms": 399.3799686431885, "timestamp": 1777105997.7126613, "ai_review": null}
+{"name": "book/test_02_predict.py::test_multitenant_isolation", "result": "OK", "duration_ms": 411.6015434265137, "timestamp": 1777105998.151299, "ai_review": null}
+{"name": "book/test_02_predict.py::test_predict_approver", "result": "OK", "duration_ms": 146.0704803466797, "timestamp": 1777105998.3210046, "ai_review": null}
+{"name": "book/test_02_predict.py::test_predict_gl_code", "result": "OK", "duration_ms": 149.16467666625977, "timestamp": 1777105998.4903715, "ai_review": null}
+{"name": "book/test_03_relate.py::test_relate_category_to_gl", "result": "OK", "duration_ms": 183.56871604919434, "timestamp": 1777105998.69899, "ai_review": null}
+{"name": "book/test_03_relate.py::test_relate_vendor_to_gl", "result": "OK", "duration_ms": 187.11161613464355, "timestamp": 1777105998.910789, "ai_review": null}
+{"name": "book/test_04_match.py::test_predict_invoice_from_bank_txn", "result": "OK", "duration_ms": 190.26851654052734, "timestamp": 1777105999.1243849, "ai_review": null}
+{"name": "book/test_04_match.py::test_predict_vendor_name", "result": "OK", "duration_ms": 202.49676704406738, "timestamp": 1777105999.343746, "ai_review": null}
+{"name": "book/test_05_evaluate.py::test_evaluate_approver", "result": "OK", "duration_ms": 38.37227821350098, "timestamp": 1777105999.405893, "ai_review": null}
+{"name": "book/test_05_evaluate.py::test_evaluate_gl_code", "result": "OK", "duration_ms": 53.50756645202637, "timestamp": 1777105999.479103, "ai_review": null}

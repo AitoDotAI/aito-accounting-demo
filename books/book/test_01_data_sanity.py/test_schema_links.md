@@ -1,0 +1,18 @@
+# Schema links
+
+
+  invoices:
+    customer_id -> customers.customer_id
+    processor -> employees.employee_id
+    vendor_business_id -> corporate_entities.business_id
+  bank_transactions:
+    customer_id -> customers.customer_id
+    invoice_id -> invoices.invoice_id
+  employees:
+    customer_id -> customers.customer_id
+    supervisor_id -> employees.employee_id
+  overrides:
+    customer_id -> customers.customer_id
+    invoice_id -> invoices.invoice_id
+
+ok

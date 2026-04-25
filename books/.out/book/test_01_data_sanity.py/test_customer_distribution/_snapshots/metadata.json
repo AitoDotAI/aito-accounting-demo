@@ -1,0 +1,24 @@
+{
+  "test_id": "book/test_01_data_sanity.py::test_customer_distribution",
+  "snapshots": {
+    "httpx": {
+      "hash": "sha256:475db12cd08775df32710954814ee33a6dbe63483e3294daa64bf4f80646b013",
+      "state": "updated",
+      "details": {
+        "count": 1,
+        "urls": [
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_search"
+        ],
+        "hashes": [
+          "12dbcb04fbe590ff536021b10c82f677bebaaa92"
+        ]
+      },
+      "timestamp": 1777105996.6232758
+    }
+  },
+  "result": {
+    "success": "ok",
+    "snapshotting": "updated"
+  },
+  "timestamp": 1777105996.6244948
+}

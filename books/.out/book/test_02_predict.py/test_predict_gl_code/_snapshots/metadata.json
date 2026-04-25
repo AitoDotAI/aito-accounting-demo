@@ -1,0 +1,30 @@
+{
+  "test_id": "book/test_02_predict.py::test_predict_gl_code",
+  "snapshots": {
+    "httpx": {
+      "hash": "sha256:9017326df2ffc546987ca7b19f0d11f6025a360353c019a76ddd6f9417a469ea",
+      "state": "updated",
+      "details": {
+        "count": 4,
+        "urls": [
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_search"
+        ],
+        "hashes": [
+          "44672768c3d91dd0815b7333f0d0b4357c8111b4",
+          "5f5d0486cbc389ebe3922f3a9377c3f0f50d0d78",
+          "ef106706bbe9176bf678f9f3a8d0d4ad5a5cb198",
+          "1b06d6187d24d6de9b2d08783e01b78857c7fe26"
+        ]
+      },
+      "timestamp": 1777105998.4892328
+    }
+  },
+  "result": {
+    "success": "ok",
+    "snapshotting": "updated"
+  },
+  "timestamp": 1777105998.4900424
+}

@@ -1,0 +1,24 @@
+{
+  "test_id": "book/test_05_evaluate.py::test_evaluate_gl_code",
+  "snapshots": {
+    "httpx": {
+      "hash": "sha256:d39c48f50cbdcba72dbaee3f42d78a7e1b44fdac19e3833b8589fc6f9969882a",
+      "state": "updated",
+      "details": {
+        "count": 1,
+        "urls": [
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_evaluate"
+        ],
+        "hashes": [
+          "3e054ad1000141f2ca1396297539515329017088"
+        ]
+      },
+      "timestamp": 1777105999.478208
+    }
+  },
+  "result": {
+    "success": "ok",
+    "snapshotting": "updated"
+  },
+  "timestamp": 1777105999.478865
+}

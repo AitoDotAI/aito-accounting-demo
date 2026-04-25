@@ -1,0 +1,12 @@
+# Table record counts
+
+
+  customers                      255 records
+  corporate_entities           1,295 records
+  employees                      316 records
+  invoices                    16,144 records
+  bank_transactions            8,555 records
+  overrides                      981 records
+
+ok
+ok

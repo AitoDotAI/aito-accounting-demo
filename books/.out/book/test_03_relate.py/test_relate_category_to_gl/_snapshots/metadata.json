@@ -1,0 +1,32 @@
+{
+  "test_id": "book/test_03_relate.py::test_relate_category_to_gl",
+  "snapshots": {
+    "httpx": {
+      "hash": "sha256:a2751ac28fb0ffa2ca713a84bebae3cfff46daba010c54270a7db1d1e730a810",
+      "state": "updated",
+      "details": {
+        "count": 5,
+        "urls": [
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_relate",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_relate",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_relate",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_relate",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_relate"
+        ],
+        "hashes": [
+          "0f1beb9bea69a48f566f3f38ecc2f87ad3f25f05",
+          "2e2a602aaf5418578822856ae5c31918c6ff6a24",
+          "66f7123f7c6334f31d69dfc237bbcae4b92d382a",
+          "c4cf6c58eccb252398562123d3430762b144b9d5",
+          "f9abe9dffb99577788341f9509d9e8a809af6ab9"
+        ]
+      },
+      "timestamp": 1777105998.6982412
+    }
+  },
+  "result": {
+    "success": "ok",
+    "snapshotting": "updated"
+  },
+  "timestamp": 1777105998.698796
+}

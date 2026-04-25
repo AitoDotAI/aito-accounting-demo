@@ -52,7 +52,7 @@ class AitoClient:
                 self._url(path),
                 headers=self._headers,
                 json=json,
-                timeout=30.0,
+                timeout=120.0,
             )
         except httpx.HTTPError as exc:
             raise AitoError(
