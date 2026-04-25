@@ -41,3 +41,4 @@ data/invoices.json
 data/bank_transactions.json
 data/overrides.json
 data/precomputed/
+data/corporate_entities_raw.json

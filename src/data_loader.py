@@ -1,4 +1,4 @@
-"""Upload sample data to Aito.
+"""Upload data to Aito.
 
 Creates table schemas and uploads fixture data. Designed to be
 idempotent — safe to run multiple times.
@@ -15,13 +15,47 @@ from src.config import load_config
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
-# Aito table schemas — field types match the fixture data.
-# Aito infers relationships automatically; we just declare types.
+# Multi-tenant schema — all tables have customer_id for isolation.
+# Links connect tables for _match and _predict traversal.
 SCHEMAS = {
+    "customers": {
+        "type": "table",
+        "columns": {
+            "customer_id": {"type": "String", "nullable": False},
+            "name": {"type": "String", "nullable": False},
+            "size_tier": {"type": "String", "nullable": False},
+            "invoice_count": {"type": "Int", "nullable": False},
+            "employee_count": {"type": "Int", "nullable": False},
+        },
+    },
+    "corporate_entities": {
+        "type": "table",
+        "columns": {
+            "business_id": {"type": "String", "nullable": False},
+            "name": {"type": "Text", "nullable": False},
+            "industry_code": {"type": "String", "nullable": True},
+            "industry": {"type": "String", "nullable": True},
+            "city": {"type": "String", "nullable": True},
+        },
+    },
+    "employees": {
+        "type": "table",
+        "columns": {
+            "employee_id": {"type": "String", "nullable": False},
+            "customer_id": {"type": "String", "nullable": False, "link": "customers.customer_id"},
+            "name": {"type": "String", "nullable": False},
+            "role": {"type": "String", "nullable": False},
+            "department": {"type": "String", "nullable": False},
+            "supervisor_id": {"type": "String", "nullable": True, "link": "employees.employee_id"},
+            "active": {"type": "Boolean", "nullable": False},
+        },
+    },
     "invoices": {
         "type": "table",
         "columns": {
             "invoice_id": {"type": "String", "nullable": False},
+            "customer_id": {"type": "String", "nullable": False, "link": "customers.customer_id"},
+            "vendor_business_id": {"type": "String", "nullable": False, "link": "corporate_entities.business_id"},
             "vendor": {"type": "String", "nullable": False},
             "vendor_country": {"type": "String", "nullable": False},
             "category": {"type": "String", "nullable": False},
@@ -29,6 +63,7 @@ SCHEMAS = {
             "gl_code": {"type": "String", "nullable": False},
             "cost_centre": {"type": "String", "nullable": False},
             "approver": {"type": "String", "nullable": False},
+            "processor": {"type": "String", "nullable": False, "link": "employees.employee_id"},
             "vat_pct": {"type": "Int", "nullable": False},
             "payment_method": {"type": "String", "nullable": False},
             "due_days": {"type": "Int", "nullable": False},
@@ -42,6 +77,7 @@ SCHEMAS = {
         "type": "table",
         "columns": {
             "transaction_id": {"type": "String", "nullable": False},
+            "customer_id": {"type": "String", "nullable": False, "link": "customers.customer_id"},
             "description": {"type": "Text", "nullable": False},
             "vendor_name": {"type": "Text", "nullable": True},
             "amount": {"type": "Decimal", "nullable": False},
@@ -53,6 +89,7 @@ SCHEMAS = {
         "type": "table",
         "columns": {
             "override_id": {"type": "String", "nullable": False},
+            "customer_id": {"type": "String", "nullable": False, "link": "customers.customer_id"},
             "invoice_id": {"type": "String", "nullable": False, "link": "invoices.invoice_id"},
             "field": {"type": "String", "nullable": False},
             "predicted_value": {"type": "String", "nullable": False},
@@ -62,6 +99,9 @@ SCHEMAS = {
         },
     },
 }
+
+# Table deletion order — linked tables first
+DELETE_ORDER = ["overrides", "bank_transactions", "invoices", "employees", "customers", "corporate_entities"]
 
 
 def load_fixture(name: str) -> list[dict]:
@@ -89,7 +129,9 @@ def upload_data(client: AitoClient, table_name: str, records: list[dict]) -> Non
     for i in range(0, total, batch_size):
         batch = records[i : i + batch_size]
         client._request("POST", f"/data/{table_name}/batch", json=batch)
-        print(f"  Uploaded {min(i + batch_size, total)}/{total} records to '{table_name}'")
+        uploaded = min(i + batch_size, total)
+        if uploaded % 10000 == 0 or uploaded == total:
+            print(f"  Uploaded {uploaded}/{total} records to '{table_name}'")
 
 
 def delete_table(client: AitoClient, table_name: str) -> None:
@@ -117,21 +159,26 @@ def run(reset: bool = False) -> None:
 
     if reset:
         print("\nResetting — deleting existing tables...")
-        # Delete cache table first, then linked tables, then base tables
-        delete_table(client, "prediction_cache")
-        for table_name in reversed(list(SCHEMAS.keys())):
+        for table_name in DELETE_ORDER:
             delete_table(client, table_name)
 
     print("\nCreating schemas...")
     for table_name, schema in SCHEMAS.items():
         create_schema(client, table_name, schema)
 
+    # Load and upload each table that has fixture data
     print("\nUploading data...")
-    for table_name in SCHEMAS:
-        records = load_fixture(table_name)
-        upload_data(client, table_name, records)
+    fixture_names = ["customers", "corporate_entities", "employees", "invoices", "bank_transactions", "overrides"]
+    total_records = 0
+    for table_name in fixture_names:
+        try:
+            records = load_fixture(table_name)
+            upload_data(client, table_name, records)
+            total_records += len(records)
+        except FileNotFoundError:
+            print(f"  Skipping '{table_name}' (no fixture file)")
 
-    print(f"\nDone. Loaded {sum(len(load_fixture(t)) for t in SCHEMAS)} total records.")
+    print(f"\nDone. Loaded {total_records} total records.")
 
 
 if __name__ == "__main__":
