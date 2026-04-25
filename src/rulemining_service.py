@@ -130,7 +130,7 @@ def extract_candidates_from_relate(
     return candidates
 
 
-def mine_rules(client: AitoClient) -> dict:
+def mine_rules(client: AitoClient, customer_id: str | None = None) -> dict:
     """Mine rule candidates from the invoices table.
 
     Runs _relate for each unique value of each condition field,
@@ -149,11 +149,14 @@ def mine_rules(client: AitoClient) -> dict:
 
         # Get relate results for known values
         # We use _relate with specific field values to get clean patterns
-        values = _get_field_values(client, field)
+        values = _get_field_values(client, field, customer_id=customer_id)
 
         for value in values:
             try:
-                result = client.relate("invoices", {field: value}, "gl_code")
+                where = {field: value}
+                if customer_id:
+                    where["customer_id"] = customer_id
+                result = client.relate("invoices", where, "gl_code")
                 candidates = extract_candidates_from_relate(field, value, result)
                 all_candidates.extend(candidates)
             except AitoError:
@@ -185,14 +188,11 @@ def mine_rules(client: AitoClient) -> dict:
     }
 
 
-def _get_field_values(client: AitoClient, field: str) -> list[str]:
-    """Get distinct values for a field by sampling records.
-
-    In a production system this would be a proper distinct query.
-    Here we sample enough records to cover the demo dataset.
-    """
+def _get_field_values(client: AitoClient, field: str, customer_id: str | None = None) -> list[str]:
+    """Get distinct values for a field by sampling records."""
     try:
-        result = client.search("invoices", {}, limit=100)
+        where = {"customer_id": customer_id} if customer_id else {}
+        result = client.search("invoices", where, limit=100)
         values = set()
         for hit in result.get("hits", []):
             v = hit.get(field)

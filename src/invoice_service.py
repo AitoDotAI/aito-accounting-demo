@@ -202,6 +202,8 @@ def predict_invoice(client: AitoClient, invoice: dict) -> InvoicePrediction:
         )
 
     where = {"vendor": vendor, "amount": amount}
+    if "customer_id" in invoice:
+        where["customer_id"] = invoice["customer_id"]
     if "category" in invoice:
         where["category"] = invoice["category"]
 
@@ -252,8 +254,10 @@ def predict_invoice(client: AitoClient, invoice: dict) -> InvoicePrediction:
     )
 
 
-def predict_batch(client: AitoClient, invoices: list[dict]) -> list[InvoicePrediction]:
+def predict_batch(client: AitoClient, invoices: list[dict], customer_id: str | None = None) -> list[InvoicePrediction]:
     """Predict GL code and approver for a batch of invoices."""
+    if customer_id:
+        invoices = [{**inv, "customer_id": customer_id} for inv in invoices]
     return [predict_invoice(client, inv) for inv in invoices]
 
 

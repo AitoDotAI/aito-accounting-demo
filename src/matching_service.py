@@ -104,7 +104,7 @@ def match_bank_txn_to_invoice(
     try:
         result = client._request("POST", "/_predict", json={
             "from": "bank_transactions",
-            "where": {"description": txn["description"], "amount": txn["amount"]},
+            "where": {k: v for k, v in [("customer_id", txn.get("customer_id")), ("description", txn["description"]), ("amount", txn["amount"])] if v is not None},
             "predict": "invoice_id",
             "select": ["$p", "invoice_id", "vendor", "amount", "$why"],
             "limit": 20,
@@ -217,41 +217,37 @@ def _build_explanation(txn: dict, invoice: dict, aito_p: float, aito_why: dict |
     return factors
 
 
-def match_all(client: AitoClient) -> dict:
-    """Run matching for all demo invoice/bank transaction pairs."""
+def match_all(client: AitoClient, customer_id: str | None = None) -> dict:
+    """Match bank transactions to invoices for a customer."""
+    # Fetch bank transactions and open invoices from Aito
+    try:
+        where = {"customer_id": customer_id} if customer_id else {}
+        txn_result = client.search("bank_transactions", where, limit=20)
+        inv_result = client.search("invoices", {**where, "routed": False}, limit=50)
+        if not inv_result["hits"]:
+            inv_result = client.search("invoices", where, limit=50)
+    except AitoError:
+        return {"pairs": [], "metrics": {"matched": 0, "suggested": 0, "unmatched": 0, "total": 0, "avg_confidence": 0, "match_rate": 0}}
+
+    bank_txns = [{"txn_id": t.get("transaction_id"), "description": t["description"], "amount": t["amount"], "bank": t.get("bank", ""), "customer_id": customer_id} for t in txn_result["hits"]]
+    open_invoices = [{"invoice_id": inv["invoice_id"], "vendor": inv["vendor"], "amount": inv["amount"]} for inv in inv_result["hits"]]
+
     matched_invoices: dict[str, MatchPair] = {}
-    used_txns: set[str] = set()
+    remaining = list(open_invoices)
 
-    # For each bank transaction, find the best matching open invoice
-    remaining_invoices = list(DEMO_OPEN_INVOICES)
-
-    for txn in DEMO_BANK_TXNS:
-        pair = match_bank_txn_to_invoice(client, txn, remaining_invoices)
+    for txn in bank_txns[:15]:  # limit to avoid long queries
+        pair = match_bank_txn_to_invoice(client, txn, remaining)
         if pair and pair.invoice_id not in matched_invoices:
             matched_invoices[pair.invoice_id] = pair
-            used_txns.add(txn["txn_id"])
-            remaining_invoices = [
-                inv for inv in remaining_invoices
-                if inv["invoice_id"] != pair.invoice_id
-            ]
+            remaining = [inv for inv in remaining if inv["invoice_id"] != pair.invoice_id]
 
-    # Build final pairs list in invoice order
-    pairs = []
-    for inv in DEMO_OPEN_INVOICES:
-        if inv["invoice_id"] in matched_invoices:
-            pairs.append(matched_invoices[inv["invoice_id"]])
-        else:
-            pairs.append(MatchPair(
-                invoice_id=inv["invoice_id"],
-                invoice_vendor=inv["vendor"],
-                invoice_amount=inv["amount"],
-                bank_txn_id=None,
-                bank_description=None,
-                bank_amount=None,
-                bank_name=None,
-                confidence=0.0,
-                status="unmatched",
-            ))
+    pairs = list(matched_invoices.values())
+    # Add unmatched invoices
+    for inv in open_invoices:
+        if inv["invoice_id"] not in matched_invoices:
+            pairs.append(MatchPair(invoice_id=inv["invoice_id"], invoice_vendor=inv["vendor"], invoice_amount=inv["amount"], bank_txn_id=None, bank_description=None, bank_amount=None, bank_name=None, confidence=0.0, status="unmatched"))
+            if len(pairs) >= 20:
+                break
 
     matched = sum(1 for p in pairs if p.status == "matched")
     suggested = sum(1 for p in pairs if p.status == "suggested")
@@ -261,11 +257,6 @@ def match_all(client: AitoClient) -> dict:
 
     return {
         "pairs": [p.to_dict() for p in pairs],
-        "unmatched_txns": [
-            {"txn_id": t["txn_id"], "description": t["description"],
-             "amount": t["amount"], "bank": t["bank"]}
-            for t in DEMO_BANK_TXNS if t["txn_id"] not in used_txns
-        ],
         "metrics": {
             "matched": matched,
             "suggested": suggested,

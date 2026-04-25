@@ -58,6 +58,8 @@ def scan_invoice(client: AitoClient, invoice: dict) -> AnomalyFlag | None:
     invoice_id = invoice["invoice_id"]
 
     where = {"vendor": vendor, "amount": amount}
+    if "customer_id" in invoice:
+        where["customer_id"] = invoice["customer_id"]
     if "category" in invoice:
         where["category"] = invoice["category"]
 
@@ -183,11 +185,18 @@ DEMO_SCAN_INVOICES = [
 ]
 
 
-def scan_all(client: AitoClient) -> dict:
-    """Scan all demo invoices and return flagged anomalies."""
-    flags = []
+def scan_all(client: AitoClient, customer_id: str | None = None) -> dict:
+    """Scan invoices for anomalies for a customer."""
+    # Fetch a sample of invoices for this customer
+    try:
+        where = {"customer_id": customer_id} if customer_id else {}
+        result = client.search("invoices", where, limit=30)
+        scan_invoices = result.get("hits", [])
+    except AitoError:
+        scan_invoices = []
 
-    for invoice in DEMO_SCAN_INVOICES:
+    flags = []
+    for invoice in scan_invoices:
         flag = scan_invoice(client, invoice)
         if flag is not None:
             flags.append(flag)
