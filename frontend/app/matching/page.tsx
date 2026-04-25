@@ -119,6 +119,21 @@ export default function MatchingPage() {
                 </tr>
               </thead>
               <tbody>
+                {!data && !error && Array.from({ length: 6 }).map((_, i) => (
+                  <tr key={`skel-${i}`}>
+                    <td style={{ padding: "12px 20px" }}>
+                      <div className="skeleton" style={{ height: 14, width: "75%", marginBottom: 6 }} />
+                      <div className="skeleton" style={{ height: 11, width: "40%" }} />
+                    </td>
+                    <td style={{ textAlign: "center", borderLeft: "1px solid var(--border2)", borderRight: "1px solid var(--border2)" }}>
+                      <div className="skeleton" style={{ height: 18, width: 18, borderRadius: "50%", margin: "0 auto" }} />
+                    </td>
+                    <td style={{ padding: "12px 20px" }}>
+                      <div className="skeleton" style={{ height: 14, width: "65%", marginBottom: 6 }} />
+                      <div className="skeleton" style={{ height: 11, width: "35%" }} />
+                    </td>
+                  </tr>
+                ))}
                 {(data?.pairs ?? []).map((p) => {
                   const rowClass = p.status === "matched" ? "matched" : p.status === "suggested" ? "suggested" : "";
                   const isExpanded = expanded === p.invoice_id;

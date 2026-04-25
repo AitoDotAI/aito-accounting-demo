@@ -52,7 +52,7 @@ def main():
     parser.add_argument("--top", type=int, default=5, help="Warm top N customers (default 5)")
     parser.add_argument("--all", action="store_true", help="Warm all customers")
     parser.add_argument("--workers", type=int, default=3, help="Parallel customers")
-    parser.add_argument("--full", action="store_true", help="Include matching/rules/anomalies (slow)")
+    parser.add_argument("--fast", action="store_true", help="Only invoices+quality (skip matching/rules/anomalies)")
     args = parser.parse_args()
 
     # Check API is up
@@ -68,9 +68,9 @@ def main():
     customers = list_customers(top=top)
     print(f"Warming {len(customers)} customers (parallel: {args.workers})...")
 
-    # Always warm fast endpoints; --full adds slow ones
+    # Default: warm everything. --fast skips slow endpoints.
     endpoints = ["/api/invoices/pending", "/api/quality/overview"]
-    if args.full:
+    if not args.fast:
         endpoints += ["/api/matching/pairs", "/api/anomalies/scan", "/api/rules/candidates"]
 
     print(f"Endpoints per customer: {endpoints}")

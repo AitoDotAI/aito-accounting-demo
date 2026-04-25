@@ -51,9 +51,10 @@ def _warm_top_customers():
 
         from src.invoice_service import predict_invoice, compute_metrics
 
-        def warm_one(cust):
+        def warm_one(cust, deep=False):
             cid = cust["customer_id"]
             try:
+                # Fast: invoices + quality (always)
                 result = aito.search("invoices", {"customer_id": cid}, limit=20)
                 with ThreadPoolExecutor(max_workers=8) as pool:
                     preds = list(pool.map(
@@ -63,13 +64,26 @@ def _warm_top_customers():
                 data = {"invoices": [p.to_dict() for p in preds], "metrics": compute_metrics(preds)}
                 cache.set(f"invoices:{cid}", data)
                 cache.set(f"quality:{cid}", get_quality_overview(aito, customer_id=cid))
-                print(f"  {cid}: cached ({len(preds)} predictions)")
+
+                # Deep: matching + anomalies + rules (only for top customers)
+                if deep:
+                    cache.set(f"matching:{cid}", match_all(aito, customer_id=cid))
+                    cache.set(f"anomalies:{cid}", scan_all(aito, customer_id=cid))
+                    cache.set(f"rules:{cid}", mine_rules(aito, customer_id=cid))
+                    print(f"  {cid}: cached (deep)")
+                else:
+                    print(f"  {cid}: cached (fast)")
             except Exception as e:
                 print(f"  {cid} error: {e}")
 
-        # Warm all top customers in parallel (each one parallelizes internally)
+        # Warm top 3 deeply (all views), customers 4-5 fast only
         with ThreadPoolExecutor(max_workers=5) as pool:
-            list(pool.map(warm_one, top_customers))
+            futures = []
+            for i, cust in enumerate(top_customers):
+                deep = i < 3
+                futures.append(pool.submit(warm_one, cust, deep))
+            for f in futures:
+                f.result()
 
     threading.Thread(target=warm, daemon=True).start()
 

@@ -101,7 +101,17 @@ export default function AnomaliesPage() {
                 <div className="anomaly-amount" style={{ marginLeft: 16 }}>{fmtAmount(f.amount)}</div>
               </div>
             ))}
-            {!data && <div style={{ padding: 24, textAlign: "center", color: "var(--text3)" }}>Scanning...</div>}
+            {!data && !error && Array.from({ length: 5 }).map((_, i) => (
+              <div key={`skel-${i}`} style={{ display: "flex", alignItems: "center", padding: 16, borderBottom: "1px solid var(--border2)", gap: 16 }}>
+                <div className="skeleton" style={{ width: 14, height: 14, borderRadius: "50%" }} />
+                <div style={{ flex: 1 }}>
+                  <div className="skeleton" style={{ height: 14, width: "60%", marginBottom: 6 }} />
+                  <div className="skeleton" style={{ height: 11, width: "85%" }} />
+                </div>
+                <div className="skeleton" style={{ height: 18, width: 60, borderRadius: 12 }} />
+                <div className="skeleton" style={{ height: 14, width: 80 }} />
+              </div>
+            ))}
             {data && data.flags.length === 0 && <div style={{ padding: 24, textAlign: "center", color: "var(--text3)" }}>No anomalies detected</div>}
           </div>
         </div>

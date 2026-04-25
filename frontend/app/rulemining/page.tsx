@@ -110,7 +110,17 @@ export default function RuleMiningPage() {
                 </div>
               </div>
             ))}
-            {!data && !error && <div style={{ padding: 24, textAlign: "center", color: "var(--text3)" }}>Loading...</div>}
+            {!data && !error && Array.from({ length: 6 }).map((_, i) => (
+              <div key={`skel-${i}`} style={{ display: "flex", alignItems: "center", padding: 14, borderBottom: "1px solid var(--border2)", gap: 16 }}>
+                <div style={{ flex: 1 }}>
+                  <div className="skeleton" style={{ height: 14, width: "55%", marginBottom: 6 }} />
+                  <div className="skeleton" style={{ height: 11, width: "75%" }} />
+                </div>
+                <div className="skeleton" style={{ height: 16, width: 80 }} />
+                <div className="skeleton" style={{ height: 18, width: 60, borderRadius: 12 }} />
+                <div className="skeleton" style={{ height: 24, width: 100, borderRadius: 4 }} />
+              </div>
+            ))}
             {error && <ErrorState />}
           </div>
         </div>
