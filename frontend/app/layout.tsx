@@ -1,16 +1,17 @@
-import "./globals.css";
+"use client";
 
-export const metadata = {
-  title: "Predictive Ledger — Aito Demo",
-};
+import "./globals.css";
+import { CustomerProvider } from "@/lib/customer-context";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <div className="app">
-          {children}
-        </div>
+        <CustomerProvider>
+          <div className="app">
+            {children}
+          </div>
+        </CustomerProvider>
       </body>
     </html>
   );

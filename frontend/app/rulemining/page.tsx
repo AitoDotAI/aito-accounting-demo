@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Nav from "@/components/shell/Nav";
+import { useCustomer } from "@/lib/customer-context";
 import ErrorState from "@/components/shell/ErrorState";
 import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
@@ -55,12 +56,14 @@ function supportClass(ratio: number) {
 }
 
 export default function RuleMiningPage() {
+  const { customerId } = useCustomer();
   const [data, setData] = useState<RulesResponse | null>(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    apiFetch<RulesResponse>("/api/rules/candidates")
+    setData(null); setLive(false); setError(false);
+    apiFetch<RulesResponse>(`/api/rules/candidates?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
       .catch(() => setError(true));
   }, []);

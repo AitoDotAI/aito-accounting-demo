@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Nav from "@/components/shell/Nav";
+import { useCustomer } from "@/lib/customer-context";
 import ErrorState from "@/components/shell/ErrorState";
 import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
@@ -50,12 +51,14 @@ const SEVERITY_BADGE: Record<string, React.ReactNode> = {
 };
 
 export default function AnomaliesPage() {
+  const { customerId } = useCustomer();
   const [data, setData] = useState<AnomalyResponse | null>(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    apiFetch<AnomalyResponse>("/api/anomalies/scan")
+    setData(null); setLive(false); setError(false);
+    apiFetch<AnomalyResponse>(`/api/anomalies/scan?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
       .catch(() => setError(true));
   }, []);

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Nav from "@/components/shell/Nav";
+import { useCustomer } from "@/lib/customer-context";
 import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
 import ConfidenceBar from "@/components/prediction/ConfidenceBar";
@@ -33,12 +34,13 @@ interface RulesData {
 }
 
 export default function RulePerformancePage() {
+  const { customerId } = useCustomer();
   const [data, setData] = useState<RulesData | null>(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    apiFetch<RulesData>("/api/quality/rules")
+    apiFetch<RulesData>(`/api/quality/rules?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
       .catch(() => setError(true));
   }, []);

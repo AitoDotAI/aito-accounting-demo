@@ -8,6 +8,7 @@ import ConfidenceBar from "@/components/prediction/ConfidenceBar";
 import PredictionBadge from "@/components/prediction/PredictionBadge";
 import WhyTooltip from "@/components/prediction/WhyTooltip";
 import ErrorState from "@/components/shell/ErrorState";
+import { useCustomer } from "@/lib/customer-context";
 import { apiFetch, fmtAmount } from "@/lib/api";
 import type { InvoicesResponse, InvoicePrediction, AitoPanelConfig } from "@/lib/types";
 
@@ -40,15 +41,17 @@ function sourceBadge(source: string) {
 }
 
 export default function InvoicesPage() {
+  const { customerId } = useCustomer();
   const [data, setData] = useState<InvoicesResponse | null>(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    apiFetch<InvoicesResponse>("/api/invoices/pending")
+    setData(null); setLive(false); setError(false);
+    apiFetch<InvoicesResponse>(`/api/invoices/pending?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
       .catch(() => setError(true));
-  }, []);
+  }, [customerId]);
 
   const metrics = data?.metrics;
   const invoices = data?.invoices ?? [];

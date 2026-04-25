@@ -5,6 +5,7 @@ import Nav from "@/components/shell/Nav";
 import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
 import PredictedField from "@/components/prediction/PredictedField";
+import { useCustomer } from "@/lib/customer-context";
 import { apiFetch } from "@/lib/api";
 import type { AitoPanelConfig } from "@/lib/types";
 
@@ -48,6 +49,7 @@ interface PredictResponse {
 }
 
 export default function FormFillPage() {
+  const { customerId } = useCustomer();
   const [userValues, setUserValues] = useState<Record<string, string>>({});
   const [predictions, setPredictions] = useState<FieldPrediction[]>([]);
   const [loading, setLoading] = useState(false);
@@ -58,7 +60,7 @@ export default function FormFillPage() {
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    apiFetch<{ vendors: string[] }>("/api/formfill/vendors")
+    apiFetch<{ vendors: string[] }>(`/api/formfill/vendors?customer_id=${customerId}`)
       .then((d) => setVendors(d.vendors))
       .catch(() => setVendors(["Kesko Oyj", "Telia Finland", "Fazer Bakeries", "SOK Corporation"]));
   }, []);
@@ -92,7 +94,7 @@ export default function FormFillPage() {
       const data = await apiFetch<PredictResponse>("/api/formfill/predict", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(where),
+        body: JSON.stringify({...where, customer_id: customerId}),
         signal: controller.signal,
       });
       setPredictions(data.fields);

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Nav from "@/components/shell/Nav";
+import { useCustomer } from "@/lib/customer-context";
 import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
 import ErrorState from "@/components/shell/ErrorState";
@@ -42,12 +43,13 @@ function badgeClass(accuracy: number): string {
 }
 
 export default function PredictionQualityPage() {
+  const { customerId } = useCustomer();
   const [data, setData] = useState<PredictionData | null>(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    apiFetch<PredictionData>("/api/quality/predictions")
+    apiFetch<PredictionData>(`/api/quality/predictions?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
       .catch(() => setError(true));
   }, []);

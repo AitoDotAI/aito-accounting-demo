@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Nav from "@/components/shell/Nav";
+import { useCustomer } from "@/lib/customer-context";
 import ErrorState from "@/components/shell/ErrorState";
 import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
@@ -33,12 +34,14 @@ interface QualityData {
 }
 
 export default function OverridesPage() {
+  const { customerId } = useCustomer();
   const [data, setData] = useState<QualityData | null>(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    apiFetch<QualityData>("/api/quality/overview")
+    setData(null); setLive(false); setError(false);
+    apiFetch<QualityData>(`/api/quality/overview?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
       .catch(() => setError(true));
   }, []);

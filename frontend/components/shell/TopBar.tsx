@@ -1,3 +1,5 @@
+import CustomerSelector from "./CustomerSelector";
+
 interface TopBarProps {
   breadcrumb: string;
   title: string;
@@ -20,6 +22,7 @@ export default function TopBar({ breadcrumb, title, subtitle, actions, live }: T
         </>
       )}
       <div className="topbar-right">
+        <CustomerSelector />
         {live && <span className="live-dot">Live</span>}
         {actions}
       </div>

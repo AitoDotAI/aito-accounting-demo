@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Nav from "@/components/shell/Nav";
+import { useCustomer } from "@/lib/customer-context";
 import ErrorState from "@/components/shell/ErrorState";
 import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
@@ -75,13 +76,15 @@ function connectorBadge(pair: MatchPair) {
 const SIGNAL_COLOR: Record<string, string> = { strong: "var(--green)", partial: "var(--amber)", weak: "var(--red)" };
 
 export default function MatchingPage() {
+  const { customerId } = useCustomer();
   const [data, setData] = useState<MatchResponse | null>(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
-    apiFetch<MatchResponse>("/api/matching/pairs")
+    setData(null); setLive(false); setError(false);
+    apiFetch<MatchResponse>(`/api/matching/pairs?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
       .catch(() => setError(true));
   }, []);
