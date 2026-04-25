@@ -21,7 +21,7 @@ export default function CustomerSelector() {
         .catch(() => {});
     };
     check();
-    const interval = setInterval(check, 2000);
+    const interval = setInterval(check, 5000);
     return () => { cancelled = true; clearInterval(interval); };
   }, [customerId]);
 

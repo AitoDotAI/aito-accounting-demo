@@ -61,7 +61,7 @@ export default function AnomaliesPage() {
     apiFetch<AnomalyResponse>(`/api/anomalies/scan?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
       .catch(() => setError(true));
-  }, []);
+  }, [customerId]);
 
   const m = data?.metrics;
 

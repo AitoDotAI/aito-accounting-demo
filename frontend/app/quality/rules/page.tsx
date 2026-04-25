@@ -43,7 +43,7 @@ export default function RulePerformancePage() {
     apiFetch<RulesData>(`/api/quality/rules?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
       .catch(() => setError(true));
-  }, []);
+  }, [customerId]);
 
   const rules = data?.rules ?? [];
   const avgPrecision = rules.length > 0

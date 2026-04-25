@@ -52,7 +52,7 @@ export default function PredictionQualityPage() {
     apiFetch<PredictionData>(`/api/quality/predictions?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
       .catch(() => setError(true));
-  }, []);
+  }, [customerId]);
 
   return (
     <>

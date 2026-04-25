@@ -50,7 +50,7 @@ export default function QualityOverviewPage() {
     apiFetch<QualityData>(`/api/quality/overview?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
       .catch(() => setError(true));
-  }, []);
+  }, [customerId]);
 
   const a = data?.automation;
 
@@ -85,9 +85,9 @@ export default function QualityOverviewPage() {
             <div className="quality-card">
               <div className="qc-header"><span className="qc-title">Override summary</span></div>
               <div className="qc-body">
-                <div style={{ fontSize: 24, fontWeight: 600, fontFamily: "'IBM Plex Mono', monospace", marginBottom: 12 }}>{data?.overrides.total ?? "--"}</div>
+                <div style={{ fontSize: 24, fontWeight: 600, fontFamily: "'IBM Plex Mono', monospace", marginBottom: 12 }}>{data?.overrides?.total ?? "--"}</div>
                 <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 12 }}>total overrides</div>
-                {data && Object.entries(data.overrides.by_field).sort(([,a],[,b]) => b - a).map(([field, count]) => (
+                {data?.overrides?.by_field && Object.entries(data.overrides.by_field).sort(([,a],[,b]) => b - a).map(([field, count]) => (
                   <div key={field} className="bar-row">
                     <div className="bar-label">{field}</div>
                     <div className="bar-track"><div className="bar-fill bar-fill-gold" style={{ width: `${(count / data.overrides.total) * 100}%` }} /></div>

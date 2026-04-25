@@ -44,7 +44,7 @@ export default function OverridesPage() {
     apiFetch<QualityData>(`/api/quality/overview?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
       .catch(() => setError(true));
-  }, []);
+  }, [customerId]);
 
   const o = data?.overrides;
   const patterns = data?.override_patterns ?? [];

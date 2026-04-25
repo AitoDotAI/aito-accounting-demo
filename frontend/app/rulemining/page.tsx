@@ -66,7 +66,7 @@ export default function RuleMiningPage() {
     apiFetch<RulesResponse>(`/api/rules/candidates?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
       .catch(() => setError(true));
-  }, []);
+  }, [customerId]);
 
   const m = data?.metrics;
 

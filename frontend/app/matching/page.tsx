@@ -87,7 +87,7 @@ export default function MatchingPage() {
     apiFetch<MatchResponse>(`/api/matching/pairs?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
       .catch(() => setError(true));
-  }, []);
+  }, [customerId]);
 
   const m = data?.metrics;
 
