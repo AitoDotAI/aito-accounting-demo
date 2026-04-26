@@ -1,0 +1,30 @@
+{
+  "test_id": "book/test_07_help.py::test_help_search_top_articles_for_invoices_page",
+  "snapshots": {
+    "httpx": {
+      "hash": "sha256:13ce370381c3617b02d7568291645c99036499bbbd78c00e472e92b179011409",
+      "state": "intact",
+      "details": {
+        "count": 4,
+        "urls": [
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_search",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_search"
+        ],
+        "hashes": [
+          "a5c6bf5839b441edd274a4aa9e112f47ceeaf1a5",
+          "eae53f941d74325e92216dc29932965f283b0c81",
+          "7c8e368bf29d378ed41a0ee8f28ca7b2caefcc3b",
+          "c9b942c949c1125bd787d7d8f0fb5a7f974330a8"
+        ]
+      },
+      "timestamp": 1777210389.0994012
+    }
+  },
+  "result": {
+    "success": "ok",
+    "snapshotting": "intact"
+  },
+  "timestamp": 1777210389.0995755
+}

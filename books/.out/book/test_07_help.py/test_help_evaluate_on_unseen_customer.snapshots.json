@@ -1,0 +1,94 @@
+{
+  "httpx": {
+    "4b24c3e91b505849be68cfea8985edfe43dac73b": {
+      "request": {
+        "hash": "4b24c3e91b505849be68cfea8985edfe43dac73b",
+        "method": "POST",
+        "url": "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_search"
+      },
+      "response": {
+        "content": "eyJvZmZzZXQiOjAsInRvdGFsIjoxOTIsImhpdHMiOlt7ImN1c3RvbWVyX2lkIjoiQ1VTVC0wMDYzIiwiZW1wbG95ZWVfY291bnQiOjEsImludm9pY2VfY291bnQiOjMyLCJuYW1lIjoiQ3VzdG9tZXIgMDA2MyIsInNpemVfdGllciI6InNtYWxsIn0seyJjdXN0b21lcl9pZCI6IkNVU1QtMDA2NCIsImVtcGxveWVlX2NvdW50IjoxLCJpbnZvaWNlX2NvdW50IjozMiwibmFtZSI6IkN1c3RvbWVyIDAwNjQiLCJzaXplX3RpZXIiOiJzbWFsbCJ9LHsiY3VzdG9tZXJfaWQiOiJDVVNULTAwNjUiLCJlbXBsb3llZV9jb3VudCI6MSwiaW52b2ljZV9jb3VudCI6MzIsIm5hbWUiOiJDdXN0b21lciAwMDY1Iiwic2l6ZV90aWVyIjoic21hbGwifSx7ImN1c3RvbWVyX2lkIjoiQ1VTVC0wMDY2IiwiZW1wbG95ZWVfY291bnQiOjEsImludm9pY2VfY291bnQiOjMyLCJuYW1lIjoiQ3VzdG9tZXIgMDA2NiIsInNpemVfdGllciI6InNtYWxsIn0seyJjdXN0b21lcl9pZCI6IkNVU1QtMDA2NyIsImVtcGxveWVlX2NvdW50IjoxLCJpbnZvaWNlX2NvdW50IjozMiwibmFtZSI6IkN1c3RvbWVyIDAwNjciLCJzaXplX3RpZXIiOiJzbWFsbCJ9XX0=",
+        "headers": {
+          "access-control-allow-credentials": "true",
+          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
+          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
+          "access-control-allow-origin": "*",
+          "connection": "keep-alive",
+          "content-length": "578",
+          "content-type": "application/json",
+          "date": "Sun, 26 Apr 2026 13:32:10 GMT",
+          "permissions-policy": "geolocation=(), microphone=(), camera=()",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "transfer-encoding": "chunked",
+          "x-aitoai-response-time": "19.30",
+          "x-azure-ref": "20260426T133210Z-r1578f8bfd8pnft7hC1HELm6yg0000000nq000000000b66q",
+          "x-cache": "CONFIG_NOCACHE",
+          "x-content-type-options": "nosniff",
+          "x-frame-options": "DENY",
+          "x-xss-protection": "1; mode=block"
+        },
+        "statusCode": 200
+      }
+    },
+    "55284e30dd68a99bcbea94481814cc5505a83c5d": {
+      "request": {
+        "hash": "55284e30dd68a99bcbea94481814cc5505a83c5d",
+        "method": "POST",
+        "url": "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_search"
+      },
+      "response": {
+        "content": "eyJvZmZzZXQiOjAsInRvdGFsIjozMiwiaGl0cyI6W119",
+        "headers": {
+          "access-control-allow-credentials": "true",
+          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
+          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
+          "access-control-allow-origin": "*",
+          "connection": "keep-alive",
+          "content-length": "33",
+          "content-type": "application/json",
+          "date": "Sun, 26 Apr 2026 13:32:11 GMT",
+          "permissions-policy": "geolocation=(), microphone=(), camera=()",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "transfer-encoding": "chunked",
+          "x-aitoai-response-time": "266.25",
+          "x-azure-ref": "20260426T133210Z-r1578f8bfd8lt2wjhC1HELgn3c0000000tt0000000005p99",
+          "x-cache": "CONFIG_NOCACHE",
+          "x-content-type-options": "nosniff",
+          "x-frame-options": "DENY",
+          "x-xss-protection": "1; mode=block"
+        },
+        "statusCode": 200
+      }
+    },
+    "df151a0c6efa29c778975945439f8f88ef0603c1": {
+      "request": {
+        "hash": "df151a0c6efa29c778975945439f8f88ef0603c1",
+        "method": "POST",
+        "url": "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_search"
+      },
+      "response": {
+        "content": "eyJvZmZzZXQiOjAsInRvdGFsIjowLCJoaXRzIjpbXX0=",
+        "headers": {
+          "access-control-allow-credentials": "true",
+          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
+          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
+          "access-control-allow-origin": "*",
+          "connection": "keep-alive",
+          "content-length": "32",
+          "content-type": "application/json",
+          "date": "Sun, 26 Apr 2026 13:32:11 GMT",
+          "permissions-policy": "geolocation=(), microphone=(), camera=()",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "transfer-encoding": "chunked",
+          "x-aitoai-response-time": "4.31",
+          "x-azure-ref": "20260426T133211Z-r1578f8bfd8zzd9fhC1HELdh5n0000000mv000000000adks",
+          "x-cache": "CONFIG_NOCACHE",
+          "x-content-type-options": "nosniff",
+          "x-frame-options": "DENY",
+          "x-xss-protection": "1; mode=block"
+        },
+        "statusCode": 200
+      }
+    }
+  }
+}

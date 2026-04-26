@@ -1,8 +1,8 @@
 {
-  "test_id": "book/test_06_template_and_log.py::test_prediction_log_schema_exists",
+  "test_id": "book/test_07_help.py::test_help_schema_exists",
   "snapshots": {
     "httpx": {
-      "hash": "sha256:4e14a1c4c134f61a4b3fbb1a5f52b79e5e7bbbcc55f66d2ccad65951895ad3ce",
+      "hash": "sha256:e42bb7a5cc7a5d1b32ab77405f429774aedef0a79601809cce308eebb9f69677",
       "state": "intact",
       "details": {
         "count": 1,
@@ -13,12 +13,12 @@
           "c9161422bb74acbcb9feb02f2fe58b6a035b638b"
         ]
       },
-      "timestamp": 1777210388.9401073
+      "timestamp": 1777210389.0365903
     }
   },
   "result": {
     "success": "ok",
     "snapshotting": "intact"
   },
-  "timestamp": 1777210388.9402688
+  "timestamp": 1777210389.0367277
 }

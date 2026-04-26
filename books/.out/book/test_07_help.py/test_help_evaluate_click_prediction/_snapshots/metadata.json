@@ -1,8 +1,8 @@
 {
-  "test_id": "book/test_05_evaluate.py::test_evaluate_approver",
+  "test_id": "book/test_07_help.py::test_help_evaluate_click_prediction",
   "snapshots": {
     "httpx": {
-      "hash": "sha256:5c660f460ccfbc762e60646a838c1c7ad56c7e8118b1a6c4318ee360b45187ee",
+      "hash": "sha256:392e9cf4ff92eb8fb83e9f7b34deb133d7fbb9eed80bde20ca40aa7c226ed4f6",
       "state": "intact",
       "details": {
         "count": 1,
@@ -10,15 +10,15 @@
           "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_evaluate"
         ],
         "hashes": [
-          "3978b71930757e42d90d7b0e806841ff2e7d6796"
+          "1dd0a3aa2d83e9fab5bc0a48571abed3211e49ab"
         ]
       },
-      "timestamp": 1777210388.6241746
+      "timestamp": 1777210388.9658701
     }
   },
   "result": {
     "success": "ok",
     "snapshotting": "intact"
   },
-  "timestamp": 1777210388.6243362
+  "timestamp": 1777210388.9660306
 }

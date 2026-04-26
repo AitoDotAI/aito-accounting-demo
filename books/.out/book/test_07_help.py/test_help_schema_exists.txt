@@ -1,0 +1,27 @@
+  # Help schema
+  
+  
+  
+  ## help_articles
+  
+    article_id         String  
+    body               Text    
+    category           String  
+    customer_id        String  
+    page_context       String  
+    tags               Text    
+    title              Text    
+  
+  ok
+  
+  ## help_impressions
+  
+    article_id         String  
+    clicked            Boolean 
+    customer_id        String  
+    impression_id      String  
+    page               String  
+    query              Text    
+    timestamp          Int     
+  
+  ok
