@@ -61,6 +61,12 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 .metric[style*="cursor: pointer"]:hover{border-color:var(--gold-mid)}
 .metric.metric-active{border-color:var(--gold-dark);box-shadow:0 0 0 2px rgba(216,188,112,.3)}
 .metric.metric-active::before{opacity:1;background:var(--gold-dark)}
+
+/* DATA-FLOW TOUR */
+.tour-highlight{position:relative;outline:2px dashed var(--gold-dark);outline-offset:2px;border-radius:6px}
+.tour-badge{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--gold-dark);color:#f5e8c0;font-size:10px;font-weight:700;font-family:'IBM Plex Mono',monospace;margin-right:6px;vertical-align:middle}
+.tour-step{padding:8px 10px;border-left:3px solid var(--gold-dark);background:var(--surface2);border-radius:0 4px 4px 0;font-size:11.5px;line-height:1.5;margin-bottom:6px}
+.tour-step strong{color:var(--gold-dark);margin-right:4px}
 .metric-label{font-size:10.5px;color:var(--text3);font-weight:500;text-transform:uppercase;letter-spacing:.6px}
 .metric-value{font-size:24px;font-weight:600;color:var(--text);margin-top:5px;line-height:1;font-family:'IBM Plex Mono',monospace}
 .metric-sub{font-size:11px;margin-top:5px}

@@ -21,8 +21,8 @@ front-page library and reuse compatible terminology, branding, and CTA flow.
 
 ## Active
 
-- [ ] **#4 Data-flow tour** — toggle on each page that overlays which
-  Aito calls produce which UI elements. Builds evaluator trust.
+(nothing in flight — pick the next big-impact item from Polish or
+Story sections below)
 
 ## Todo (priority order)
 
@@ -99,6 +99,11 @@ front-page library and reuse compatible terminology, branding, and CTA flow.
   cards for top recurring vendors (template per vendor with GL,
   approver, support count); one click fills all fields including
   vendor; new `/api/formfill/templates` endpoint
+- [x] **#4 Data-flow tour** — "Data flow" toggle in TopBar shows
+  numbered badges next to UI elements, matched to a "Data flow on
+  this page" section in AitoPanel. Each step says what the call
+  produces. Implemented on Invoices, Form Fill, Matching, Rule
+  Mining, Anomalies.
 
 ### Foundation (earlier)
 - [x] 100K invoices, pre-computed predictions architecture

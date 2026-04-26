@@ -29,6 +29,13 @@ const PANEL_CONFIG: AitoPanelConfig = {
     { label: "API reference: _predict", url: "https://aito.ai/docs/api/#post-api-v1-predict" },
     { label: "Smart form fill docs", url: "https://aito.ai/docs" },
   ],
+  flow_steps: [
+    { n: 1, produces: "Quick-start templates", call: "_search top vendors then predict_template per vendor" },
+    { n: 2, produces: "Vendor dropdown", call: "_search distinct vendor WHERE customer_id" },
+    { n: 3, produces: "Each predicted field", call: "_predict <field> WHERE customer_id + filled fields" },
+    { n: 4, produces: "$why factors per field", call: "_predict … select [$p, feature, $why]" },
+    { n: 5, produces: "Submission log", call: "POST /data/prediction_log/batch (predicted vs accepted)" },
+  ],
 };
 
 interface FieldPrediction {

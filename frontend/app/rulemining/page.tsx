@@ -27,6 +27,12 @@ const PANEL: AitoPanelConfig = {
   links: [
     { label: "API reference: _relate", url: "https://aito.ai/docs/api/#post-api-v1-relate" },
   ],
+  flow_steps: [
+    { n: 1, produces: "Distinct field values", call: "_search invoices LIMIT 100; collect values per condition field" },
+    { n: 2, produces: "Each pattern row", call: "_relate WHERE customer_id, field=value → gl_code" },
+    { n: 3, produces: "Support, lift, strength", call: "From _relate response: fOnCondition / fCondition, lift" },
+    { n: 4, produces: "Drill-down (matching invoices)", call: "_search invoices WHERE customer_id, field=value LIMIT 50" },
+  ],
 };
 
 interface RuleCandidate {

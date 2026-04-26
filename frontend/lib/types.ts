@@ -48,10 +48,21 @@ export interface AitoPanelStat {
   label: string;
 }
 
+export interface AitoFlowStep {
+  /** Step number shown in the tour badge */
+  n: number;
+  /** Short description: what does this Aito call produce on the page */
+  produces: string;
+  /** Aito API call summary, e.g. "_predict gl_code WHERE customer_id, vendor" */
+  call: string;
+}
+
 export interface AitoPanelConfig {
   operation: string;
   stats: AitoPanelStat[];
   description: string;
   query: string;
   links: { label: string; url: string }[];
+  /** Optional: ordered narrative of which Aito calls produce which UI parts */
+  flow_steps?: AitoFlowStep[];
 }

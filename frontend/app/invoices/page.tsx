@@ -8,6 +8,7 @@ import ConfidenceBar from "@/components/prediction/ConfidenceBar";
 import PredictionBadge from "@/components/prediction/PredictionBadge";
 import WhyTooltip from "@/components/prediction/WhyTooltip";
 import ErrorState from "@/components/shell/ErrorState";
+import TourBadge from "@/components/shell/TourBadge";
 import { useCustomer } from "@/lib/customer-context";
 import { apiFetch, fmtAmount } from "@/lib/api";
 import type { InvoicesResponse, InvoicePrediction, AitoPanelConfig } from "@/lib/types";
@@ -22,15 +23,22 @@ const PANEL_CONFIG: AitoPanelConfig = {
   ],
   description:
     'GL code assignment and approver routing via <code style="font-size:11px;color:var(--aito-accent)">_predict</code>. ' +
-    "Rules handle known patterns (Telia, Elisa). Aito fills the gap for remaining vendors.",
+    "Mined per-customer rules handle high-precision patterns; Aito fills the gap for remaining vendors.",
   query: JSON.stringify(
-    { from: "invoices", where: { vendor: "Kesko Oyj", amount: 4220 }, predict: "gl_code", select: ["$p", "feature", "$why"] },
+    { from: "invoices", where: { customer_id: "CUST-0000", vendor: "Kesko Oyj", amount: 4220 }, predict: "gl_code", select: ["$p", "feature", "$why"] },
     null,
     2,
   ),
   links: [
     { label: "API reference: _predict", url: "https://aito.ai/docs/api/#post-api-v1-predict" },
     { label: "Benchmark: 45.6% vs 33.4%", url: "https://aito.ai/blog/why-aito-predicts-accurately-with-little-data/" },
+  ],
+  flow_steps: [
+    { n: 1, produces: "Pending invoice list", call: "_search WHERE customer_id, routed=false LIMIT 20" },
+    { n: 2, produces: "Mined rules (vendor → GL)", call: "_relate vendor → gl_code; rules where support_ratio ≥ 0.95" },
+    { n: 3, produces: "GL prediction per invoice", call: "_predict gl_code WHERE customer_id, vendor, amount, category" },
+    { n: 4, produces: "Approver prediction", call: "_predict approver WHERE customer_id, vendor, amount, category" },
+    { n: 5, produces: "Touchless rate", call: "Client-side: share of predictions ≥ 0.85 confidence" },
   ],
 };
 
@@ -122,7 +130,7 @@ export default function InvoicesPage() {
               style={{ cursor: "pointer" }}
               title="Click to filter to touchless invoices"
             >
-              <div className="metric-label">Touchless rate</div>
+              <div className="metric-label"><TourBadge n={5} />Touchless rate</div>
               <div className="metric-value">{metrics ? `${touchlessPct(allInvoices)}%` : "--"}</div>
               <div className="metric-sub metric-neutral">
                 Predicted at &ge; 0.85 confidence
@@ -172,7 +180,7 @@ export default function InvoicesPage() {
 
           <div className="card">
             <div className="card-header">
-              <span className="card-title">Pending invoices</span>
+              <span className="card-title"><TourBadge n={1} />Pending invoices</span>
               <span className="card-hint">Click a prediction to see alternatives</span>
             </div>
             <table className="table">
@@ -184,8 +192,8 @@ export default function InvoicesPage() {
                   <th>Vendor</th>
                   <th>Net</th>
                   <th>VAT</th>
-                  <th>Approver</th>
-                  <th>GL Code</th>
+                  <th><TourBadge n={4} />Approver</th>
+                  <th><TourBadge n={3} />GL Code</th>
                   <th>Conf.</th>
                   <th>Source</th>
                 </tr>

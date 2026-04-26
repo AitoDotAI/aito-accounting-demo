@@ -27,6 +27,13 @@ const PANEL: AitoPanelConfig = {
   links: [
     { label: "API reference: _predict", url: "https://aito.ai/docs/api/#post-api-v1-predict" },
   ],
+  flow_steps: [
+    { n: 1, produces: "Sample of invoices to scan", call: "_search invoices WHERE customer_id LIMIT 15" },
+    { n: 2, produces: "Per-invoice GL prediction", call: "_predict gl_code WHERE customer_id, vendor, amount, category" },
+    { n: 3, produces: "Per-invoice approver prediction", call: "_predict approver WHERE customer_id, vendor, amount, category" },
+    { n: 4, produces: "Anomaly score (1 - max p)", call: "Client-side: low confidence on either field → flag" },
+    { n: 5, produces: "Reason + recommendation per cluster", call: "Client-side: classify into gl_mismatch/unfamiliar/approver" },
+  ],
 };
 
 interface AnomalyFlag {

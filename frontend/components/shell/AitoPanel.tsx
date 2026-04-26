@@ -1,6 +1,7 @@
 "use client";
 
 import { useCustomer } from "@/lib/customer-context";
+import { useTour } from "@/lib/tour-context";
 import type { AitoPanelConfig, AitoPanelStat } from "@/lib/types";
 
 interface AitoPanelProps {
@@ -18,6 +19,7 @@ function resolveStat(stat: AitoPanelStat, ctx: { invoices: number; employees: nu
 
 export default function AitoPanel({ config, lastQuery, lastResponseMs }: AitoPanelProps) {
   const { currentCustomer, customers } = useCustomer();
+  const { tourOn } = useTour();
   const totalInvoices = customers.reduce((sum, c) => sum + (c.invoice_count || 0), 0);
   const ctx = {
     invoices: currentCustomer?.invoice_count ?? totalInvoices,
@@ -46,6 +48,21 @@ export default function AitoPanel({ config, lastQuery, lastResponseMs }: AitoPan
           </div>
         ))}
       </div>
+
+      {tourOn && config.flow_steps && config.flow_steps.length > 0 && (
+        <div className="aito-section">
+          <div className="aito-section-title" style={{ color: "var(--gold-dark)" }}>Data flow on this page</div>
+          {config.flow_steps.map((step) => (
+            <div key={step.n} className="tour-step">
+              <span className="tour-badge">{step.n}</span>
+              <strong>{step.produces}</strong>
+              <div style={{ marginTop: 2, fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, color: "var(--text3)" }}>
+                {step.call}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="aito-section">
         <div className="aito-section-title">This view</div>

@@ -28,6 +28,12 @@ const PANEL: AitoPanelConfig = {
   links: [
     { label: "API reference: _predict", url: "https://aito.ai/docs/api/#post-api-v1-predict" },
   ],
+  flow_steps: [
+    { n: 1, produces: "Open invoices list", call: "_search invoices WHERE customer_id LIMIT 20" },
+    { n: 2, produces: "Bank transactions list", call: "_search bank_transactions WHERE customer_id LIMIT 10" },
+    { n: 3, produces: "Best matching invoice per txn", call: "_predict invoice_id WHERE customer_id, description, amount" },
+    { n: 4, produces: "$why explanation per match", call: "Same _predict, select [$p, $why]; expanded on click" },
+  ],
 };
 
 interface MatchExplanation {
