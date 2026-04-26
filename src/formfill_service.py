@@ -59,26 +59,27 @@ def predict_template(client: AitoClient, customer_id: str, vendor: str) -> dict 
     # Count joint occurrences
     from collections import Counter
 
-    def key_of(inv: dict) -> tuple:
-        return (
-            inv.get("gl_code"),
-            inv.get("approver"),
-            inv.get("cost_centre"),
-            inv.get("vat_pct"),
-            inv.get("payment_method"),
-            inv.get("due_days"),
-            inv.get("category"),
-        )
+    # Use the high-signal classification fields as the template key.
+    # Other fields (vat, payment, due, category) have lower variation
+    # so we resolve them as the most-common value within the matched set.
+    def core_key(inv: dict) -> tuple:
+        return (inv.get("gl_code"), inv.get("approver"), inv.get("cost_centre"))
 
-    counts = Counter(key_of(inv) for inv in hits)
+    counts = Counter(core_key(inv) for inv in hits)
     if not counts:
         return None
 
-    (gl, approver, cc, vat, pay, due, cat), n = counts.most_common(1)[0]
+    (gl, approver, cc), n = counts.most_common(1)[0]
     confidence = n / len(hits)
 
-    if confidence < 0.30:  # too noisy to call it a template
+    if confidence < 0.20:  # too noisy to call it a template
         return None
+
+    # Resolve secondary fields by most-common value within the matched template
+    matched = [inv for inv in hits if core_key(inv) == (gl, approver, cc)]
+    def mode_of(field: str):
+        c = Counter(inv.get(field) for inv in matched if inv.get(field) is not None)
+        return c.most_common(1)[0][0] if c else None
 
     return {
         "vendor": vendor,
@@ -90,10 +91,10 @@ def predict_template(client: AitoClient, customer_id: str, vendor: str) -> dict 
             "gl_label": GL_LABELS.get(gl, gl) if gl else None,
             "approver": approver,
             "cost_centre": cc,
-            "vat_pct": vat,
-            "payment_method": pay,
-            "due_days": due,
-            "category": cat,
+            "vat_pct": mode_of("vat_pct"),
+            "payment_method": mode_of("payment_method"),
+            "due_days": mode_of("due_days"),
+            "category": mode_of("category"),
         },
     }
 
