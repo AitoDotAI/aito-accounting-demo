@@ -22,6 +22,7 @@ const TIER_ORDER = ["enterprise", "large", "midmarket", "small"] as const;
 export default function CustomerSelector() {
   const { customerId, setCustomerId, customers, currentCustomer } = useCustomer();
   const [warm, setWarm] = useState(false);
+  const [warmIds, setWarmIds] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const ref = useRef<HTMLDivElement | null>(null);
@@ -41,6 +42,13 @@ export default function CustomerSelector() {
     const interval = setInterval(check, 5000);
     return () => { cancelled = true; clearInterval(interval); };
   }, [customerId]);
+
+  // One-shot fetch on mount: which customers have precomputed JSON?
+  useEffect(() => {
+    apiFetch<{ customer_ids: string[] }>("/api/cache/warm_customers")
+      .then((d) => setWarmIds(new Set(d.customer_ids)))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -189,9 +197,18 @@ export default function CustomerSelector() {
                     onMouseEnter={(e) => { if (c.customer_id !== customerId) (e.currentTarget as HTMLDivElement).style.background = "var(--surface2)"; }}
                     onMouseLeave={(e) => { if (c.customer_id !== customerId) (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
                   >
-                    <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-                      <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: "var(--gold-dark)" }}>{c.customer_id}</span>
-                      <span style={{ fontSize: 10, color: "var(--text3)" }}>{c.employee_count} employees</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                      <span
+                        title={warmIds.has(c.customer_id) ? "Cached — instant load" : "Cold — first load may take 10-20s"}
+                        style={{
+                          width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
+                          background: warmIds.has(c.customer_id) ? "#6ab87a" : "#d49b4a",
+                        }}
+                      />
+                      <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                        <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: "var(--gold-dark)" }}>{c.customer_id}</span>
+                        <span style={{ fontSize: 10, color: "var(--text3)" }}>{c.employee_count} employees</span>
+                      </div>
                     </div>
                     <span style={{ fontSize: 11, color: "var(--text2)", whiteSpace: "nowrap" }}>
                       {c.invoice_count.toLocaleString()} inv

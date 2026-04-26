@@ -161,15 +161,45 @@ async def validate_customer_middleware(request: Request, call_next):
 
 @app.get("/api/cache/status")
 def cache_status(customer_id: str = Query(...)):
-    """Check whether a customer's data is warmed in cache."""
+    """Check whether a customer's data is precomputed (instant) or
+    will fall back to live Aito (slow)."""
     return {
         "customer_id": customer_id,
-        "invoices_warm": cache.get(f"invoices:{customer_id}") is not None,
-        "quality_warm": cache.get(f"quality:{customer_id}") is not None,
-        "matching_warm": cache.get(f"matching:{customer_id}") is not None,
-        "rules_warm": cache.get(f"rules:{customer_id}") is not None,
-        "anomalies_warm": cache.get(f"anomalies:{customer_id}") is not None,
+        "invoices_warm": (
+            precomputed.has(customer_id, "invoices_pending")
+            or cache.get(f"invoices:{customer_id}") is not None
+        ),
+        "quality_warm": (
+            precomputed.has(customer_id, "quality_overview")
+            or cache.get(f"quality:{customer_id}") is not None
+        ),
+        "matching_warm": (
+            precomputed.has(customer_id, "matching_pairs")
+            or cache.get(f"matching:{customer_id}") is not None
+        ),
+        "rules_warm": (
+            precomputed.has(customer_id, "rules_candidates")
+            or cache.get(f"rules:{customer_id}") is not None
+        ),
+        "anomalies_warm": (
+            precomputed.has(customer_id, "anomalies_scan")
+            or cache.get(f"anomalies:{customer_id}") is not None
+        ),
     }
+
+
+@app.get("/api/cache/warm_customers")
+def warm_customers():
+    """Customer ids that have precomputed JSON (instant load).
+
+    Drives the dot indicator in the customer dropdown so a developer
+    evaluator can see at a glance which customers will be fast.
+    """
+    base = _PROJECT_ROOT / "data" / "precomputed"
+    if not base.is_dir():
+        return {"customer_ids": []}
+    ids = sorted(p.name for p in base.iterdir() if p.is_dir())
+    return {"customer_ids": ids}
 
 
 _KNOWN_CUSTOMER_IDS: set[str] | None = None
