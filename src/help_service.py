@@ -110,6 +110,56 @@ def search_help(
     return [by_id[aid] for aid in ranked_ids[:limit] if aid in by_id]
 
 
+def related_articles(
+    client: AitoClient,
+    article_id: str,
+    customer_id: str,
+    limit: int = 4,
+) -> list[dict]:
+    """Articles users tend to click next after viewing `article_id`.
+
+    The signal: every impression carries `prev_article_id`. Aito's
+    `_recommend WHERE prev_article_id = X, customer_id = Y, goal:
+    {clicked: true}` ranks article_ids by predicted P(click) given
+    that the user just clicked X. This is the standard "users who
+    read this also read" pattern, modelled directly through Aito.
+
+    Filtered to the customer's eligibility set (global "*" + own
+    internal articles) and to exclude the source article itself.
+    """
+    try:
+        eligible_global = client.search("help_articles", {"customer_id": "*"}, limit=200).get("hits", [])
+        eligible_own = client.search("help_articles", {"customer_id": customer_id}, limit=50).get("hits", [])
+    except AitoError:
+        return []
+    by_id = {a["article_id"]: a for a in eligible_global + eligible_own}
+
+    try:
+        result = client._request("POST", "/_recommend", json={
+            "from": "help_impressions",
+            "where": {"prev_article_id": article_id, "customer_id": customer_id},
+            "recommend": "article_id",
+            "goal": {"clicked": True},
+            "limit": limit * 5,  # over-fetch to allow filtering
+        })
+    except AitoError:
+        result = {"hits": []}
+
+    out = []
+    for hit in result.get("hits", []):
+        aid = hit.get("article_id")
+        if not aid or aid == article_id:
+            continue
+        if aid not in by_id:
+            continue
+        art = dict(by_id[aid])
+        art["score"] = round(float(hit.get("$p", 0)), 3)
+        out.append(art)
+        if len(out) >= limit:
+            break
+    return out
+
+
 def log_impression(
     client: AitoClient,
     article_id: str,
@@ -117,8 +167,14 @@ def log_impression(
     page: str,
     query: str = "",
     clicked: bool = False,
+    prev_article_id: str | None = None,
 ) -> None:
-    """Record that an article was shown (or clicked) for ranking."""
+    """Record that an article was shown (or clicked) for ranking.
+
+    `prev_article_id`, if given, is the article the user was viewing
+    immediately before this one — drives the related-articles
+    ranking on subsequent calls.
+    """
     row = {
         "impression_id": f"IMP-{uuid.uuid4().hex[:12]}",
         "article_id": article_id,
@@ -127,6 +183,7 @@ def log_impression(
         "query": query,
         "clicked": clicked,
         "timestamp": int(time.time()),
+        "prev_article_id": prev_article_id,
     }
     try:
         client._request("POST", "/data/help_impressions", json=row)

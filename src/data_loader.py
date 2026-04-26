@@ -148,6 +148,11 @@ SCHEMAS = {
             "query": {"type": "Text", "nullable": True, "analyzer": "english"},
             "clicked": {"type": "Boolean", "nullable": False},
             "timestamp": {"type": "Int", "nullable": False},
+            # The article the user was viewing immediately before this
+            # impression, if any. Drives "related articles" — _recommend
+            # WHERE prev_article_id=A surfaces what users tend to click
+            # next from A.
+            "prev_article_id": {"type": "String", "nullable": True, "link": "help_articles.article_id"},
         },
     },
     "rule_revisions": {

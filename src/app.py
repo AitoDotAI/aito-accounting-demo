@@ -683,8 +683,25 @@ def help_impression(body: dict):
         page=body.get("page", ""),
         query=body.get("query", ""),
         clicked=bool(body.get("clicked", False)),
+        prev_article_id=body.get("prev_article_id") or None,
     )
     return {"ok": True}
+
+
+@app.get("/api/help/related")
+def help_related(
+    article_id: str = Query(...),
+    customer_id: str = Query(...),
+    limit: int = 4,
+):
+    """Articles users tend to click next from this one.
+
+    Powered by `_recommend WHERE prev_article_id=…, goal: clicked=true`
+    against help_impressions. Filtered to the customer's eligibility
+    set (global + own internal).
+    """
+    from src.help_service import related_articles
+    return {"articles": related_articles(aito, article_id, customer_id, limit=limit)}
 
 
 @app.get("/api/schema")

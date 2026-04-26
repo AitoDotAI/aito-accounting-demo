@@ -42,6 +42,12 @@ export default function HelpDrawer() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [related, setRelated] = useState<Record<string, Article[]>>({});
+  const [relatedLoading, setRelatedLoading] = useState<string | null>(null);
+  // Track the last clicked article so impressions on next-loaded
+  // articles can carry prev_article_id (matches the synthesised
+  // session model in help_impressions).
+  const lastClickedRef = useRef<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastImpressionPage = useRef<string>("");
 
@@ -86,8 +92,11 @@ export default function HelpDrawer() {
   };
 
   const onArticleClick = (a: Article) => {
-    setExpanded(expanded === a.article_id ? null : a.article_id);
-    // Log click for CTR ranking
+    const opening = expanded !== a.article_id;
+    setExpanded(opening ? a.article_id : null);
+
+    // Log the click; carry prev_article_id if the user came from
+    // another article in this session.
     apiFetch("/api/help/impression", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -97,8 +106,24 @@ export default function HelpDrawer() {
         page: pathname || "",
         query,
         clicked: true,
+        prev_article_id: lastClickedRef.current,
       }),
     }).catch(() => {});
+
+    if (opening) {
+      lastClickedRef.current = a.article_id;
+      // Fetch related articles for the newly expanded one (cached
+      // per article_id, so repeated open/close is cheap).
+      if (!related[a.article_id]) {
+        setRelatedLoading(a.article_id);
+        apiFetch<{ articles: Article[] }>(
+          `/api/help/related?article_id=${encodeURIComponent(a.article_id)}&customer_id=${encodeURIComponent(customerId)}&limit=4`,
+        )
+          .then((r) => setRelated((prev) => ({ ...prev, [a.article_id]: r.articles })))
+          .catch(() => setRelated((prev) => ({ ...prev, [a.article_id]: [] })))
+          .finally(() => setRelatedLoading(null));
+      }
+    }
   };
 
   return (
@@ -235,6 +260,47 @@ export default function HelpDrawer() {
                           Tags: <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{a.tags}</span>
                         </div>
                       )}
+
+                      {/* Related articles via _recommend WHERE prev_article_id */}
+                      <div style={{ marginTop: 14, paddingTop: 10, borderTop: "1px solid var(--border2)" }}>
+                        <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", marginBottom: 6 }}>
+                          Users who read this also read
+                        </div>
+                        {relatedLoading === a.article_id && (
+                          <div style={{ fontSize: 11, color: "var(--text3)", padding: "4px 0" }}>Loading…</div>
+                        )}
+                        {relatedLoading !== a.article_id && (related[a.article_id] ?? []).length === 0 && (
+                          <div style={{ fontSize: 11, color: "var(--text3)", padding: "4px 0" }}>No related articles yet — clicks from this one are sparse.</div>
+                        )}
+                        {(related[a.article_id] ?? []).map((r) => (
+                          <div
+                            key={r.article_id}
+                            onClick={(e) => { e.stopPropagation(); onArticleClick(r); }}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                              padding: "5px 0",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <span style={{
+                              fontSize: 9,
+                              fontWeight: 700,
+                              padding: "1px 5px",
+                              border: `1px solid ${CATEGORY_COLOR[r.category] || "var(--border)"}`,
+                              color: CATEGORY_COLOR[r.category] || "var(--text3)",
+                              borderRadius: 3,
+                              flexShrink: 0,
+                            }}>
+                              {(CATEGORY_LABEL[r.category] || r.category).split(" ")[0]}
+                            </span>
+                            <span style={{ fontSize: 12, color: "var(--text2)", lineHeight: 1.4 }}>
+                              {r.title}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>

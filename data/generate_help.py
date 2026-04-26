@@ -255,36 +255,91 @@ def main():
     impression_id = 0
     timestamp_base = 1714000000  # ~mid-2024
 
-    # Density: 80 impressions per (customer, page). With ~25 eligible
-    # articles per customer this gives ~3 impressions per (customer,
-    # page, article) — enough for Aito's _recommend to find a signal
-    # above per-(article) noise. Click bias is the same.
+    # Sessions of 3 impressions each: imp1 has no prev, imp2 follows
+    # imp1 (prev_article_id = imp1.article_id) with bias toward
+    # tag-overlapping articles, imp3 follows imp2 similarly.
+    #
+    # This gives Aito's _recommend the signal to learn "users who
+    # clicked A next clicked B" — the related-articles ranking.
+    #
+    # ~27 sessions × 9 pages × 20 customers = 4,860 sessions →
+    # ~14,580 impressions, similar to the prior single-shot setup.
+
+    def tag_overlap(a: dict, b: dict) -> int:
+        ta = set((a.get("tags") or "").split())
+        tb = set((b.get("tags") or "").split())
+        return len(ta & tb)
+
+    def click_prob(article: dict, page: str, cid: str) -> float:
+        p = 0.15
+        if article.get("page_context") == page:
+            p += 0.35
+        if article["category"] == "app":
+            p += 0.10
+        if article["category"] == "internal" and article["customer_id"] == cid:
+            p += 0.20
+        return min(0.85, p)
+
+    def pick_next(prev: dict, available: list[dict], rng: random.Random) -> dict:
+        # Weight each candidate by tag overlap + page_context match
+        weights = []
+        for art in available:
+            if art["article_id"] == prev["article_id"]:
+                weights.append(0)
+                continue
+            w = 1.0
+            w += tag_overlap(prev, art) * 3.0
+            if art.get("page_context") == prev.get("page_context") and prev.get("page_context"):
+                w += 4.0
+            if art["category"] == prev["category"]:
+                w += 1.5
+            weights.append(w)
+        total = sum(weights)
+        if total <= 0:
+            return rng.choice(available)
+        r = rng.random() * total
+        for art, w in zip(available, weights):
+            r -= w
+            if r <= 0:
+                return art
+        return available[-1]
+
+    SESSIONS_PER_PAGE = 27
+
     for cust in customers:
         cid = cust["customer_id"]
         available = [a for a in articles if a["customer_id"] in ("*", cid)]
         for page in pages:
-            for _ in range(80):
-                article = rng.choice(available)
-                # Click likelihood: 15% baseline, +35% if page_context matches,
-                # +10% if app, +20% if own-customer internal
-                p_click = 0.15
-                if article.get("page_context") == page:
-                    p_click += 0.35
-                if article["category"] == "app":
-                    p_click += 0.10
-                if article["category"] == "internal" and article["customer_id"] == cid:
-                    p_click += 0.20
-                clicked = rng.random() < min(0.85, p_click)
-                impressions.append({
-                    "impression_id": f"IMP-{impression_id:08d}",
-                    "article_id": article["article_id"],
-                    "customer_id": cid,
-                    "page": page,
-                    "query": "",
-                    "clicked": clicked,
-                    "timestamp": timestamp_base + impression_id * 60,
-                })
-                impression_id += 1
+            for _ in range(SESSIONS_PER_PAGE):
+                # Session of 3 sequential impressions
+                prev_article = None
+                for step in range(3):
+                    if prev_article is None:
+                        art = rng.choice(available)
+                    else:
+                        art = pick_next(prev_article, available, rng)
+                    p_click = click_prob(art, page, cid)
+                    # Bonus: if prev_article was clicked and shares tags,
+                    # this one is more likely to be clicked too (user is
+                    # genuinely exploring a topic).
+                    if prev_article and tag_overlap(prev_article, art) >= 2:
+                        p_click = min(0.90, p_click + 0.15)
+                    clicked = rng.random() < p_click
+
+                    impressions.append({
+                        "impression_id": f"IMP-{impression_id:08d}",
+                        "article_id": art["article_id"],
+                        "customer_id": cid,
+                        "page": page,
+                        "query": "",
+                        "clicked": clicked,
+                        "timestamp": timestamp_base + impression_id * 60,
+                        "prev_article_id": prev_article["article_id"] if prev_article else None,
+                    })
+                    impression_id += 1
+                    # Only "follow" from a clicked article — non-clicks
+                    # break the session
+                    prev_article = art if clicked else None
 
     # Save
     with open(DATA_DIR / "help_articles.json", "w") as f:
