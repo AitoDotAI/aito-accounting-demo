@@ -193,11 +193,18 @@ def nav_badges(customer_id: str = Query(...)):
 
 @app.get("/api/health")
 def health():
+    from src.rate_limit import DEMO_MODE, MAX_REQUESTS
     cached = cache.get("health")
     if cached:
         return cached
     connected = aito.check_connectivity()
-    result = {"status": "ok", "aito_connected": connected, "aito_url": config.aito_api_url}
+    result = {
+        "status": "ok",
+        "aito_connected": connected,
+        "aito_url": config.aito_api_url,
+        "demo_mode": DEMO_MODE,
+        "rate_limit_per_minute": MAX_REQUESTS,
+    }
     cache.set("health", result, ttl=60)
     return result
 

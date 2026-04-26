@@ -81,6 +81,7 @@ az containerapp create \
       AITO_INSTANCE_NAME=$AITO_INSTANCE_NAME \
       AITO_API_KEY=secretref:aito-api-key \
       DEMO_MODE=true \
+      DEMO_MAX_REQUESTS=30 \
   --min-replicas 0 \
   --max-replicas 2
 
@@ -114,11 +115,15 @@ Then:
 
 ## Rate limiting
 
-The repo's `src/rate_limit.py` defaults to per-IP token bucket.
-Behind Container Apps the remote IP is the ingress proxy, so the
-limit is effectively a global cap. For a public demo, drop it to
-30 req/min — the only live Aito-calling endpoint is `/api/formfill`,
-everything else serves precomputed JSON.
+The container respects two env vars set above:
+- **`DEMO_MAX_REQUESTS=30`** — drops the per-IP cap from the default
+  60/min. Behind Container Apps the remote IP is the ingress proxy,
+  so this is effectively a global cap. Form Fill is the only live
+  Aito-calling endpoint; everything else serves precomputed JSON, so
+  30/min is comfortable headroom for one CTO clicking around.
+- **`DEMO_MODE=true`** — surfaced via `/api/health` so a future
+  client banner ("Demo instance — predictions on a fixed dataset")
+  can render without a hardcoded check.
 
 ## Custom domain (optional)
 
