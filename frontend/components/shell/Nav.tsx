@@ -24,6 +24,7 @@ const NAV_ITEMS: { section: string; items: NavItem[] }[] = [
     { href: "/quality/overview", label: "System Overview" },
     { href: "/quality/rules", label: "Rule Performance" },
     { href: "/quality/predictions", label: "Prediction Quality" },
+    { href: "/quality/evaluations", label: "Evaluations Matrix" },
     { href: "/quality/overrides", label: "Human Overrides" },
   ]},
   { section: "Setup", items: [

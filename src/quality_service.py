@@ -439,6 +439,102 @@ def get_weekly_override_counts(client: AitoClient, customer_id: str, weeks: int 
     return [{"weeks_ago": w, "count": counts[w]} for w in range(weeks - 1, -1, -1)]
 
 
+def compute_evaluations_matrix(client: AitoClient, customer_id: str) -> dict:
+    """Run Aito _evaluate on every prediction task the system performs.
+
+    One row per task: GL code, approver, payment-matching invoice_id,
+    help-article click. Each runs in parallel to keep response time
+    bounded. The output mirrors what an auditor wants to see —
+    "show me, in one table, what your system actually achieves on
+    held-out data, per task, with the baseline."
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    cid = {"customer_id": customer_id}
+
+    tasks = [
+        {
+            "task": "GL code",
+            "from_table": "invoices",
+            "predict": "gl_code",
+            "where_eval": {**cid, "vendor": {"$get": "vendor"},
+                           "amount": {"$get": "amount"},
+                           "category": {"$get": "category"}},
+            "test_source": {"from": "invoices", "where": cid, "limit": 50},
+            "operator": "_predict",
+            "context": "Predict GL code from vendor + amount + category",
+        },
+        {
+            "task": "Approver",
+            "from_table": "invoices",
+            "predict": "approver",
+            "where_eval": {**cid, "vendor": {"$get": "vendor"},
+                           "amount": {"$get": "amount"},
+                           "category": {"$get": "category"}},
+            "test_source": {"from": "invoices", "where": cid, "limit": 50},
+            "operator": "_predict",
+            "context": "Predict approver from vendor + amount + category",
+        },
+        {
+            "task": "Bank-txn match",
+            "from_table": "bank_transactions",
+            "predict": "vendor_name",
+            "where_eval": {**cid, "description": {"$get": "description"},
+                           "amount": {"$get": "amount"}},
+            "test_source": {"from": "bank_transactions", "where": cid, "limit": 50},
+            "operator": "_predict",
+            "context": "Predict vendor_name from bank-transaction description + amount",
+        },
+        {
+            "task": "Help click",
+            "from_table": "help_impressions",
+            "predict": "clicked",
+            "where_eval": {**cid,
+                           "page": {"$get": "page"},
+                           "article_id": {"$get": "article_id"}},
+            "test_source": {"from": "help_impressions", "where": cid, "limit": 100},
+            "operator": "_recommend (same model)",
+            "context": "Predict click from page + article_id (drives _recommend ranking)",
+        },
+    ]
+
+    def evaluate_one(t: dict) -> dict:
+        try:
+            r = client._request("POST", "/_evaluate", json={
+                "testSource": t["test_source"],
+                "evaluate": {
+                    "from": t["from_table"],
+                    "where": t["where_eval"],
+                    "predict": t["predict"],
+                },
+            })
+        except AitoError as exc:
+            return {**t, "error": str(exc),
+                    "accuracy": 0, "baseAccuracy": 0,
+                    "accuracyGain": 0, "testSamples": 0, "geomMeanP": 0}
+        return {
+            **t,
+            "accuracy": round(r.get("accuracy", 0) * 100, 1),
+            "baseAccuracy": round(r.get("baseAccuracy", 0) * 100, 1),
+            "accuracyGain": round(r.get("accuracyGain", 0) * 100, 1),
+            "testSamples": r.get("testSamples", 0),
+            "geomMeanP": round(r.get("geomMeanP", 0), 4),
+            "meanRank": round(r.get("meanRank", 0), 2),
+        }
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(evaluate_one, tasks))
+
+    # Strip the where/test_source we don't want to ship to frontend
+    for r in results:
+        r.pop("where_eval", None)
+        r.pop("test_source", None)
+        r.pop("from_table", None)
+        r.pop("predict", None)
+
+    return {"evaluations": results}
+
+
 def compute_rule_performance(client: AitoClient, customer_id: str | None = None) -> dict:
     """Mine deterministic rules from _relate, then replay them on the
     customer's invoices and report precision, coverage, owner, last review."""

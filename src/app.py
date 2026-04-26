@@ -344,6 +344,19 @@ def quality_overview(customer_id: str = Query(...)):
     return result
 
 
+@app.get("/api/quality/evaluations")
+def quality_evaluations(customer_id: str = Query(...)):
+    """Run Aito _evaluate on every prediction task (parallel)."""
+    cache_key = f"evaluations:{customer_id}"
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+    from src.quality_service import compute_evaluations_matrix
+    result = compute_evaluations_matrix(aito, customer_id=customer_id)
+    cache.set(cache_key, result, ttl=600)
+    return result
+
+
 @app.get("/api/quality/predictions")
 def quality_predictions(customer_id: str = Query(...)):
     """Real prediction accuracy via Aito _evaluate, with rules-only baseline.
