@@ -18,10 +18,13 @@ REVIEW_THRESHOLD = 0.50
 
 GL_LABELS = {
     "4100": "COGS",
-    "4400": "Supplies",
-    "4500": "Office",
+    "4400": "Materials & Supplies",
+    "4500": "Office Expenses",
+    "4600": "Logistics",
     "5100": "Facilities",
     "5200": "Maintenance",
+    "5300": "Insurance",
+    "5400": "Professional Services",
     "6100": "IT & Software",
     "6200": "Telecom",
 }
