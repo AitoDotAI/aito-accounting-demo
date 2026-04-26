@@ -32,26 +32,10 @@ These came out of running the demo past a simulated r/accounting
 thread. Most are sharp but small. Listed in rough order of how often
 the same complaint would surface in real conversations.
 
-- [ ] **#19 "Reference implementation, not a product" notice** —
-  the headline banner currently reads like product marketing. Add a
-  small "Reference implementation for developers building on Aito —
-  not a packaged product" line under the gold strip, or expand the
-  banner copy. **(15 min)**
-
-- [ ] **#20 Reword "Zero training"** — multiple commenters read it
-  as vapor-marketing. Replace with something concrete:
-  "Predicts directly from indexed data — no separate model file".
-  Affects every AitoPanel stat block plus the headline banner.
-  **(20 min)**
-
-- [ ] **#21 "Illustrative GL chart" disclaimer** — GL codes 4400 /
-  5100 / 6200 are made-up numbers, not real Finnish Liikekirjuri /
-  FAS. A real auditor noticing this loses trust. Add a small
-  "Illustrative chart of accounts" tooltip or footer line on every
-  view that displays GL codes. **(15 min)**
-  - Stretch: actually re-map fixtures to Liikekirjuri numbering
-    (4000s materiaalit, 5000s henkilöstökulut, 6000s liiketoiminnan
-    muut kulut, 7000s poistot). **(half day, requires regen)**
+- [ ] **#21-stretch Liikekirjuri numbering** — replace illustrative
+  GL codes with actual Finnish Liikekirjuri (4000s materiaalit,
+  5000s henkilöstökulut, 6000s liiketoiminnan muut kulut). Requires
+  data regen. **(half day)**
 
 - [ ] **#22 Rule-change audit trail** — current Quality/Rules has
   Owner + Last reviewed but no history of changes. SOX teams need
@@ -219,6 +203,21 @@ the same complaint would surface in real conversations.
   mine_rules_for_customer (per-customer mined rules with support and
   lift), prediction_log schema (verifies the audit table exists with
   expected columns). 17/17 booktests pass.
+
+### r/accounting feedback fixes
+- [x] **#19 "Reference implementation, not a product" notice** — headline
+  banner now reads "Predictive Ledger · reference implementation for
+  developers building on Aito.ai (not a packaged product) · multi-tenant
+  AP demo: …".
+- [x] **#20 Reword "Zero training"** — "Zero / Training" stat replaced
+  with "Indexed / Model" across all 9 page panels. Headline banner now
+  ends with "no separate model file" (concrete) instead of "zero training"
+  (marketing-y). aito-cheatsheet.md updated for consistency.
+- [x] **#21 Illustrative GL chart disclaimer** — `GL_DISCLAIMER`
+  constant added to gl-labels.ts. AitoPanel "Verify yourself" section
+  shows a footer note: "GL codes (4100, 5300, 6200…) are illustrative
+  — real Finnish Liikekirjuri uses different numbering. Chosen for
+  demo readability."
 
 ### Polish
 - [x] **#8 Progressive skeletons** — new `/api/invoices/raw` endpoint

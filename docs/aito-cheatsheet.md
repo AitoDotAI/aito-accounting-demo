@@ -182,8 +182,9 @@ match known patterns.
   condition vs the base rate. lift=6.5 means 6.5x more likely.
 - **fs (frequency statistics)** — raw counts in `_relate` responses.
   `fOnCondition/f` gives exact support ratios.
-- **Zero training** — Aito queries run immediately on ingested data.
-  No model training step, no pipeline, no waiting.
+- **No separate model file** — Aito predicts directly from indexed data.
+  Indexing happens on ingest; there is no model training step, no
+  pipeline, no waiting. Add a row, the next prediction reflects it.
 
 ## Gotchas
 

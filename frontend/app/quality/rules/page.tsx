@@ -12,7 +12,7 @@ import type { AitoPanelConfig } from "@/lib/types";
 
 const PANEL: AitoPanelConfig = {
   operation: "_predict (replay)",
-  stats: [{ value: "--", label: "Rules" }, { value: "--", label: "Avg precision" }, { value: "Zero", label: "Training" }, { value: "100K", label: "Records" }],
+  stats: [{ value: "--", label: "Rules" }, { value: "--", label: "Avg precision" }, { value: "Indexed", label: "Model" }, { value: "100K", label: "Records" }],
   description: "Rule precision measured by replaying each rule against the full 100K invoice dataset and comparing to actual GL codes.",
   query: JSON.stringify({ from: "invoices", where: { vendor: "Telia Finland" }, predict: "gl_code" }, null, 2),
   links: [{ label: "Rule evaluation docs", url: "https://aito.ai/docs" }],

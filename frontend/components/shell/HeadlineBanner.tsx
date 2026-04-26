@@ -45,10 +45,12 @@ export default function HeadlineBanner() {
       }}
     >
       <span>
-        <strong>Predictive Ledger</strong> · multi-tenant AP automation on
-        Aito.ai · {totalLabel} in <em>one</em> shared instance · same{" "}
+        <strong>Predictive Ledger</strong> · reference implementation
+        for developers building on Aito.ai (not a packaged product) ·
+        multi-tenant AP demo: {totalLabel} in <em>one</em> shared instance ·
+        same{" "}
         <code style={{ background: "rgba(13,21,32,.1)", padding: "1px 5px", borderRadius: 3, fontFamily: "'IBM Plex Mono', monospace", fontSize: 11 }}>_predict</code>{" "}
-        operator, scoped per customer · zero training
+        operator, scoped per customer · no separate model file
       </span>
       <button
         onClick={dismiss}

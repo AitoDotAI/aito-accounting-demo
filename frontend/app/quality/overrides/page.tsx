@@ -16,7 +16,7 @@ const PANEL: AitoPanelConfig = {
     { value: "_relate", label: "Operation" },
     { value: "Live", label: "Predictions" },
     { value: "$invoices", label: "Records" },
-    { value: "Zero", label: "Training" },
+    { value: "Indexed", label: "Model" },
   ],
   description:
     'Every override is fed through <code style="font-size:11px;color:var(--aito-accent)">_relate</code> to find emerging patterns. ' +

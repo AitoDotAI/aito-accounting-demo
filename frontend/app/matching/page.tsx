@@ -16,7 +16,7 @@ const PANEL: AitoPanelConfig = {
     { value: "_predict", label: "Operation" },
     { value: "Live", label: "Predictions" },
     { value: "$invoices", label: "Invoices" },
-    { value: "Zero", label: "Training" },
+    { value: "Indexed", label: "Model" },
   ],
   description:
     '<code style="font-size:11px;color:var(--aito-accent)">_predict invoice_id</code> traverses the schema link from bank_transactions to invoices, returning full invoice rows ranked by association. ' +

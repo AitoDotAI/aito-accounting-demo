@@ -15,7 +15,7 @@ const PANEL: AitoPanelConfig = {
     { value: "78%", label: "Automation" },
     { value: "63%", label: "Aito share" },
     { value: "$invoices", label: "Records" },
-    { value: "Zero", label: "Training" },
+    { value: "Indexed", label: "Model" },
   ],
   description: "Quality overview aggregates from the invoices and overrides tables. Automation breakdown computed from routed_by field.",
   query: JSON.stringify({ from: "invoices", where: {}, limit: 300 }, null, 2),

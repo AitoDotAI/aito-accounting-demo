@@ -15,7 +15,7 @@ const PANEL: AitoPanelConfig = {
     { value: "Inverse", label: "Approach" },
     { value: "Live", label: "Predictions" },
     { value: "$invoices", label: "Records" },
-    { value: "Zero", label: "Training" },
+    { value: "Indexed", label: "Model" },
   ],
   description:
     'Anomaly detection uses inverse prediction: low <code style="font-size:11px;color:var(--aito-accent)">$p</code> on predictable fields = anomaly signal. ' +

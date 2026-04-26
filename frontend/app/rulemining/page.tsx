@@ -16,7 +16,7 @@ const PANEL: AitoPanelConfig = {
     { value: "30", label: "Patterns" },
     { value: "25", label: "Strong" },
     { value: "$invoices", label: "Records" },
-    { value: "Zero", label: "Training" },
+    { value: "Indexed", label: "Model" },
   ],
   description:
     'Rule candidates from <code style="font-size:11px;color:var(--aito-accent)">_relate</code> on the invoice table. ' +

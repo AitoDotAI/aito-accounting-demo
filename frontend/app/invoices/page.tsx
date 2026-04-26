@@ -20,7 +20,7 @@ const PANEL_CONFIG: AitoPanelConfig = {
     { value: "_predict", label: "Operation" },
     { value: "Live", label: "Predictions" },
     { value: "$invoices", label: "Records" },
-    { value: "Zero", label: "Training" },
+    { value: "Indexed", label: "Model" },
   ],
   description:
     'GL code assignment and approver routing via <code style="font-size:11px;color:var(--aito-accent)">_predict</code>. ' +

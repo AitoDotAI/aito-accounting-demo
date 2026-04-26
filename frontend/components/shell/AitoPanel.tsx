@@ -89,8 +89,9 @@ export default function AitoPanel({ config, lastQuery, lastResponseMs }: AitoPan
       <div className="aito-section">
         <div className="aito-section-title">Verify yourself</div>
         <div style={{ fontSize: 11, color: "var(--text3)", lineHeight: 1.5, marginBottom: 8 }}>
-          Every claim on this page traces back to an Aito query. No model file,
-          no training step. Inspect the live schema and run your own queries:
+          Every claim on this page traces back to an Aito query. No
+          separate model file — Aito predicts directly from its index.
+          Inspect the live schema and run your own queries:
         </div>
         <div className="aito-links">
           <a className="aito-link" href="/api/schema" target="_blank" rel="noreferrer">
@@ -99,6 +100,11 @@ export default function AitoPanel({ config, lastQuery, lastResponseMs }: AitoPan
           <a className="aito-link" href="https://aito.ai/docs/api/" target="_blank" rel="noreferrer">
             Query API reference →
           </a>
+        </div>
+        <div style={{ marginTop: 10, padding: "6px 8px", background: "var(--surface)", border: "1px solid var(--border2)", borderRadius: 4, fontSize: 10, color: "var(--text3)", lineHeight: 1.5 }}>
+          <strong>Note:</strong> GL codes (4100, 5300, 6200…) are
+          illustrative — real Finnish Liikekirjuri uses different
+          numbering. Chosen for demo readability.
         </div>
       </div>
 

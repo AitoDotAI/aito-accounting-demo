@@ -16,7 +16,7 @@ const PANEL_CONFIG: AitoPanelConfig = {
     { value: "0.95", label: "Avg confidence" },
     { value: "6", label: "Fields" },
     { value: "$invoices", label: "Records" },
-    { value: "Zero", label: "Training" },
+    { value: "Indexed", label: "Model" },
   ],
   description:
     'Type in any field \u2014 all other fields predict automatically via <code style="font-size:11px;color:var(--aito-accent)">_predict</code>. ' +

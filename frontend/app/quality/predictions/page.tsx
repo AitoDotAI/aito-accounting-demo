@@ -11,7 +11,7 @@ import type { AitoPanelConfig } from "@/lib/types";
 
 const PANEL: AitoPanelConfig = {
   operation: "_predict · _evaluate",
-  stats: [{ value: "--", label: "Accuracy" }, { value: "--", label: "High-conf" }, { value: "--", label: "Dangerous" }, { value: "Zero", label: "Training" }],
+  stats: [{ value: "--", label: "Accuracy" }, { value: "--", label: "High-conf" }, { value: "--", label: "Dangerous" }, { value: "Indexed", label: "Model" }],
   description: "Real prediction accuracy computed by predicting GL codes and approvers on a sample of invoices and comparing to ground truth.",
   query: JSON.stringify({ from: "invoices", where: { vendor: { $get: "vendor" }, amount: { $get: "amount" } }, predict: "gl_code" }, null, 2),
   links: [{ label: "Confidence thresholds", url: "https://aito.ai/docs" }],
