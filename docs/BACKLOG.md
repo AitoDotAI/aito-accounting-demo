@@ -21,17 +21,98 @@ front-page library and reuse compatible terminology, branding, and CTA flow.
 
 ## Active
 
-(nothing in flight — pick the next big-impact item from Polish or
-Story sections below)
+(nothing in flight — top of the new "r/accounting feedback" section
+below has 11 items in priority order)
 
 ## Todo (priority order)
 
-### Polish
-(all shipped — see Done)
+### From simulated r/accounting feedback (real-accountant lens)
+
+These came out of running the demo past a simulated r/accounting
+thread. Most are sharp but small. Listed in rough order of how often
+the same complaint would surface in real conversations.
+
+- [ ] **#19 "Reference implementation, not a product" notice** —
+  the headline banner currently reads like product marketing. Add a
+  small "Reference implementation for developers building on Aito —
+  not a packaged product" line under the gold strip, or expand the
+  banner copy. **(15 min)**
+
+- [ ] **#20 Reword "Zero training"** — multiple commenters read it
+  as vapor-marketing. Replace with something concrete:
+  "Predicts directly from indexed data — no separate model file".
+  Affects every AitoPanel stat block plus the headline banner.
+  **(20 min)**
+
+- [ ] **#21 "Illustrative GL chart" disclaimer** — GL codes 4400 /
+  5100 / 6200 are made-up numbers, not real Finnish Liikekirjuri /
+  FAS. A real auditor noticing this loses trust. Add a small
+  "Illustrative chart of accounts" tooltip or footer line on every
+  view that displays GL codes. **(15 min)**
+  - Stretch: actually re-map fixtures to Liikekirjuri numbering
+    (4000s materiaalit, 5000s henkilöstökulut, 6000s liiketoiminnan
+    muut kulut, 7000s poistot). **(half day, requires regen)**
+
+- [ ] **#22 Rule-change audit trail** — current Quality/Rules has
+  Owner + Last reviewed but no history of changes. SOX teams need
+  "show me the rule set as of 2025-Q3 and the diff to 2025-Q4". Add:
+  - `rule_revisions` table: rule_id, customer_id, vendor, gl_code,
+    approver, support_ratio, lift, valid_from, valid_to
+  - "Compare to date" picker on Quality/Rules
+  - Export as JSON/CSV
+  **(2-3 days; high value for SOX/audit conversations)**
+
+- [ ] **#23 Multi-currency support** — currently EUR everywhere.
+  At least: add a `currency` field to invoices, show the symbol in
+  amount columns, group bank transactions by currency. Most
+  multi-tenant SaaS customers have entities in 4+ currencies.
+  **(1 day; hidden assumption that bites in real demos)**
+
+- [ ] **#24 Bank export format variants** — current bank
+  descriptions use one generic format. Real OP / Nordea / Aktia /
+  Danske / S-Pankki have distinct layouts:
+  - OP: `<vendor> / VIITE <num> / PVM <date>`
+  - Nordea: `<vendor> <date> Saaja <iban>`
+  - Aktia: tab-separated fields with a different field order
+  Generate per-vendor in `vendor_to_bank_desc()` and have one
+  "messy bank" view that mixes them.
+  **(half day; the kind of detail accountants notice in 30 seconds)**
+
+- [ ] **#25 Fraud category in anomalies** — Anomalies clusters
+  currently: gl_mismatch / unfamiliar / approver. Real risk
+  managers want a "potential fraud" cluster with its own visual
+  treatment (red icon, escalation language) even if the demo data
+  triggers it via synthetic signals (round-number amount + new
+  vendor + amount > €10K). **(half day; lands the risk-manager
+  conversation)**
+
+- [ ] **#26 Drift over time** — the cynical old partner's question:
+  "what does this look like at 90 days?" The Quality/Rules view
+  has a Drifting/Stale status but no time series. Add:
+  - Sparkline per rule showing precision over the last 90 days
+  - Override count per week, plotted, with annotations on when new
+    rule candidates emerged
+  - "Stale rules" section that auto-flags rules unused for 30+ days
+  **(1-2 days; this is the question that decides repeat sales)**
+
+- [ ] **#27 Multi-entity per customer** — currently 1 customer = 1
+  legal entity. Real SaaS customers consolidate multiple entities.
+  Add an `entity_id` field; predictions can scope by either
+  customer_id or (customer_id, entity_id). **(1 day; common
+  enterprise blocker)**
+
+- [ ] **#28 Batch override workflow** — overrides are currently
+  shown as historical signal only. Add a "select N invoices, apply
+  GL X" batch action on the Invoices page. **(half day)**
+
+- [ ] **#29 Webhook / integration stub** — at minimum, a
+  `/api/integrations` page describing how the prediction_log table
+  could feed an outbound webhook to NetSuite / Dynamics / Procountor.
+  Not a real integration, but a credible architectural sketch.
+  **(half day; closes the "can it talk to my ERP" objection)**
 
 ### Architecture / hygiene
-- [ ] **#12 Aito client retry / circuit breaker**
-- [ ] **#13 Two-layer cache write race** — per-key lock around compute+set
+(empty — see Done)
 
 ### Story / messaging (towards public release)
 (all shipped — see Done)
