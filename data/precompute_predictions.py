@@ -139,6 +139,21 @@ EMPTY_PREDICTION_ACCURACY = {
     "rules_total_accuracy": 0, "geom_mean_p": 0,
     "confidence_table": [], "accuracy_by_type": [], "total_evaluated": 0,
 }
+EMPTY_MATCHING = {
+    "pairs": [],
+    "metrics": {"matched": 0, "suggested": 0, "unmatched": 0, "total": 0,
+                "avg_confidence": 0, "match_rate": 0},
+}
+EMPTY_ANOMALIES = {
+    "flags": [],
+    "metrics": {"total": 0, "high": 0, "medium": 0, "low": 0, "scanned": 0},
+}
+EMPTY_QUALITY_OVERVIEW = {
+    "automation": {"total": 0, "rule": 0, "aito": 0, "human": 0, "none": 0,
+                   "rule_pct": 0, "aito_pct": 0, "human_pct": 0, "automation_rate": 0},
+    "overrides": {"total": 0, "by_field": {}, "rate_pct": 0},
+    "override_patterns": [],
+}
 
 
 def precompute_one_customer(
@@ -163,25 +178,31 @@ def precompute_one_customer(
         # Rules are reused across the invoice/accuracy precomputes
         mined_rules = mine_rules_for_customer(client, customer_id)
 
+    # Predictions are the headline feature — done for everyone.
     sizes["invoices_pending"] = save(
         customer_id, "invoices_pending",
         precompute_invoices_pending(client, customer_id, invoices_for_customer, mined_rules),
     )
-    sizes["matching_pairs"] = save(
-        customer_id, "matching_pairs", precompute_matching(client, customer_id),
-    )
-    sizes["anomalies_scan"] = save(
-        customer_id, "anomalies_scan", precompute_anomalies(client, customer_id),
-    )
-    sizes["quality_overview"] = save(
-        customer_id, "quality_overview", precompute_quality_overview(client, customer_id),
-    )
 
     if lite:
+        # "Just signed up" persona: predictions only, empty everything else.
+        # All views render realistic empty states for these.
+        sizes["matching_pairs"] = save(customer_id, "matching_pairs", EMPTY_MATCHING)
+        sizes["anomalies_scan"] = save(customer_id, "anomalies_scan", EMPTY_ANOMALIES)
+        sizes["quality_overview"] = save(customer_id, "quality_overview", EMPTY_QUALITY_OVERVIEW)
         sizes["rules_candidates"] = save(customer_id, "rules_candidates", EMPTY_RULES_CANDIDATES)
         sizes["prediction_accuracy"] = save(customer_id, "prediction_accuracy", EMPTY_PREDICTION_ACCURACY)
         sizes["rule_performance"] = save(customer_id, "rule_performance", EMPTY_RULE_PERFORMANCE)
     else:
+        sizes["matching_pairs"] = save(
+            customer_id, "matching_pairs", precompute_matching(client, customer_id),
+        )
+        sizes["anomalies_scan"] = save(
+            customer_id, "anomalies_scan", precompute_anomalies(client, customer_id),
+        )
+        sizes["quality_overview"] = save(
+            customer_id, "quality_overview", precompute_quality_overview(client, customer_id),
+        )
         sizes["rules_candidates"] = save(
             customer_id, "rules_candidates", precompute_rules(client, customer_id),
         )
