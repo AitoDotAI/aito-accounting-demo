@@ -206,6 +206,7 @@ export default function FormFillPage() {
   }, []);
 
   const [submitMsg, setSubmitMsg] = useState<string | null>(null);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
   const handleSubmit = useCallback(async () => {
     // Build the per-field log: every field that was either user-entered or
     // had a prediction. accepted = user kept the predicted value.
@@ -324,10 +325,19 @@ export default function FormFillPage() {
               </button>
             </div>
           )}
-          {predictedCount > 0 && (
+          {predictedCount > 0 && !bannerDismissed && (
             <div style={{ background: "var(--gold-light)", border: "1px solid #d8bc70", borderRadius: 8, padding: "10px 16px", fontSize: "12.5px", color: "var(--gold-dark)", display: "flex", alignItems: "center", gap: 8 }}>
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.3"/><path d="M7 4v3.5L9 9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
-              Aito predicted {predictedCount} fields. Click <strong style={{ margin: "0 2px" }}>?</strong> to see why each prediction was made.
+              <span style={{ flex: 1 }}>
+                Aito predicted {predictedCount} fields. Click <strong style={{ margin: "0 2px" }}>?</strong> to see why each prediction was made.
+              </span>
+              <button
+                onClick={() => setBannerDismissed(true)}
+                title="Got it"
+                style={{ background: "transparent", border: "none", color: "var(--gold-dark)", cursor: "pointer", fontSize: 16, fontWeight: 700, padding: "0 4px", lineHeight: 1, opacity: 0.6 }}
+              >
+                ×
+              </button>
             </div>
           )}
 

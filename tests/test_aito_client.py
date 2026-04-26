@@ -42,10 +42,12 @@ class TestGetSchema:
             make_client().get_schema()
 
     def test_raises_on_connection_error(self, httpx_mock):
-        httpx_mock.add_exception(
-            httpx.ConnectError("Connection refused"),
-            url="https://test.aito.app/db/demo/api/v1/schema",
-        )
+        # Client retries once on connection error before giving up
+        for _ in range(2):
+            httpx_mock.add_exception(
+                httpx.ConnectError("Connection refused"),
+                url="https://test.aito.app/db/demo/api/v1/schema",
+            )
 
         with pytest.raises(AitoError, match="Connection refused"):
             make_client().get_schema()
@@ -61,10 +63,12 @@ class TestCheckConnectivity:
         assert make_client().check_connectivity() is True
 
     def test_returns_false_when_unreachable(self, httpx_mock):
-        httpx_mock.add_exception(
-            httpx.ConnectError("Connection refused"),
-            url="https://test.aito.app/db/demo/api/v1/schema",
-        )
+        # Client retries once on connection error before giving up
+        for _ in range(2):
+            httpx_mock.add_exception(
+                httpx.ConnectError("Connection refused"),
+                url="https://test.aito.app/db/demo/api/v1/schema",
+            )
 
         assert make_client().check_connectivity() is False
 
@@ -104,11 +108,13 @@ class TestPredict:
         assert "$p" in body["select"]
 
     def test_predict_raises_on_server_error(self, httpx_mock):
-        httpx_mock.add_response(
-            url="https://test.aito.app/db/demo/api/v1/_predict",
-            status_code=500,
-            text="Internal Server Error",
-        )
+        # Client retries once on 5xx before giving up
+        for _ in range(2):
+            httpx_mock.add_response(
+                url="https://test.aito.app/db/demo/api/v1/_predict",
+                status_code=500,
+                text="Internal Server Error",
+            )
 
         with pytest.raises(AitoError, match="500"):
             make_client().predict(

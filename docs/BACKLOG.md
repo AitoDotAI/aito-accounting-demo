@@ -27,10 +27,7 @@ Story sections below)
 ## Todo (priority order)
 
 ### Polish
-
-- [ ] **#8 Progressive skeletons** — render structure first, fill predictions in
-- [ ] **#9 Form Fill banner**: collapse after first display
-- [ ] **#10 Anomaly recommendation buttons** — make them do something
+(all shipped — see Done)
 
 ### Architecture / hygiene
 - [ ] **#12 Aito client retry / circuit breaker**
@@ -141,6 +138,31 @@ Story sections below)
   mine_rules_for_customer (per-customer mined rules with support and
   lift), prediction_log schema (verifies the audit table exists with
   expected columns). 17/17 booktests pass.
+
+### Polish
+- [x] **#8 Progressive skeletons** — new `/api/invoices/raw` endpoint
+  returns search-only invoice rows in ~1s. The Invoices page fetches
+  raw first (paints id, date, due, vendor, amount, VAT) then overlays
+  full predictions when `/api/invoices/pending` returns. Inline
+  per-row skeletons in the prediction columns until full data lands.
+- [x] **#9 Form Fill banner collapse** — "Aito predicted N fields"
+  banner is dismissible via × button; once dismissed it stays gone
+  for the session.
+- [x] **#10 Anomaly recommendation buttons** — every recommended-
+  action block now has working "Mark triaged" (toggles row to
+  faded/checked state) and "Copy details" (copies invoice id +
+  description + recommendation to clipboard for ticket/email).
+
+### Architecture / hardening
+- [x] **#12 Aito client retry + circuit breaker** — `_request` now
+  retries once on 5xx and connection errors with 200ms backoff. After
+  3 consecutive failures the breaker opens for 30s and subsequent
+  calls fail-fast with a helpful error instead of waiting for
+  timeouts. State is per-client-instance; success resets the counter.
+- [x] **#13 Cache write race** — `cache.compute_lock(key)` returns a
+  per-key threading.Lock; concurrent misses for the same key block on
+  the same lock, so only one compute runs. Wrapped around the
+  invoices and mined-rules cache paths.
 
 ### Foundation (earlier)
 - [x] 100K invoices, pre-computed predictions architecture

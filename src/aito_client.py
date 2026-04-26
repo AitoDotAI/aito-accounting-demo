@@ -37,6 +37,18 @@ class AitoClient:
             "x-api-key": config.aito_api_key,
             "content-type": "application/json",
         }
+        # Circuit breaker state — fail fast after 3 consecutive failures
+        self._breaker_failures: int = 0
+        self._breaker_open_until: float = 0.0
+        self._breaker_last_error: str = ""
+
+    def _record_failure(self, error: str) -> None:
+        """Record a failure; trip the breaker after 3 in a row."""
+        import time as _time
+        self._breaker_failures += 1
+        self._breaker_last_error = error
+        if self._breaker_failures >= 3:
+            self._breaker_open_until = _time.monotonic() + 30.0
 
     def _url(self, path: str) -> str:
         return f"{self._base_url}/api/v1{path}"
@@ -44,28 +56,65 @@ class AitoClient:
     def _request(self, method: str, path: str, json: dict | None = None) -> Any:
         """Make an HTTP request to Aito and return the parsed JSON response.
 
-        Raises AitoError on non-2xx status or connection failure.
-        """
-        try:
-            response = httpx.request(
-                method,
-                self._url(path),
-                headers=self._headers,
-                json=json,
-                timeout=120.0,
-            )
-        except httpx.HTTPError as exc:
-            raise AitoError(
-                f"Aito request failed: {method} {path}: {exc}"
-            ) from exc
+        Includes:
+        - One retry on transient failures (5xx or connection error) with
+          200ms backoff. Idempotent operations only — POST is also
+          retried because Aito's _predict / _relate / _search are pure.
+        - Circuit breaker: after 3 consecutive failures the breaker
+          opens for 30 seconds; subsequent calls fail-fast with a
+          helpful AitoError instead of waiting for timeouts.
 
-        if response.status_code >= 400:
+        Raises AitoError on non-2xx status, connection failure, or
+        when the circuit breaker is open.
+        """
+        import time as _time
+
+        # Circuit breaker check
+        if self._breaker_open_until > _time.monotonic():
             raise AitoError(
-                f"Aito returned {response.status_code} for {method} {path}: "
-                f"{response.text[:500]}",
-                status_code=response.status_code,
-                body=response.text,
+                f"Aito client circuit breaker is open (last error: "
+                f"{self._breaker_last_error}). Will retry automatically; "
+                f"wait a few seconds.",
+                status_code=503,
             )
+
+        last_exc: AitoError | None = None
+        for attempt in range(2):  # original + 1 retry
+            try:
+                response = httpx.request(
+                    method,
+                    self._url(path),
+                    headers=self._headers,
+                    json=json,
+                    timeout=120.0,
+                )
+            except httpx.HTTPError as exc:
+                last_exc = AitoError(f"Aito request failed: {method} {path}: {exc}")
+                if attempt == 0:
+                    _time.sleep(0.2)
+                    continue
+                self._record_failure(str(exc))
+                raise last_exc from exc
+
+            if response.status_code >= 500 and attempt == 0:
+                # Transient server error — retry once
+                _time.sleep(0.2)
+                continue
+
+            if response.status_code >= 400:
+                err = AitoError(
+                    f"Aito returned {response.status_code} for {method} {path}: "
+                    f"{response.text[:500]}",
+                    status_code=response.status_code,
+                    body=response.text,
+                )
+                if response.status_code >= 500:
+                    self._record_failure(f"5xx: {response.status_code}")
+                raise err
+
+            # Success — reset breaker
+            self._breaker_failures = 0
+            break
 
         return response.json()
 

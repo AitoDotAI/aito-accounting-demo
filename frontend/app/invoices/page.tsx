@@ -89,9 +89,22 @@ export default function InvoicesPage() {
 
   useEffect(() => {
     setData(null); setLive(false); setError(false);
+    let stillCurrent = true;
+    // Progressive load: paint the rows first (raw list, ~200ms), then
+    // overlay full predictions when they arrive (~10s on cold customer).
+    apiFetch<{ invoices: InvoicePrediction[] }>(`/api/invoices/raw?customer_id=${customerId}`)
+      .then((d) => {
+        if (!stillCurrent) return;
+        if (data === null) {
+          // Show raw list as placeholder (no predictions yet)
+          setData({ invoices: d.invoices, metrics: null as any });
+        }
+      })
+      .catch(() => {});
     apiFetch<InvoicesResponse>(`/api/invoices/pending?customer_id=${customerId}`)
-      .then((d) => { setData(d); setLive(true); })
-      .catch(() => setError(true));
+      .then((d) => { if (stillCurrent) { setData(d); setLive(true); } })
+      .catch(() => { if (stillCurrent) setError(true); });
+    return () => { stillCurrent = false; };
   }, [customerId]);
 
   const metrics = data?.metrics;
@@ -209,7 +222,7 @@ export default function InvoicesPage() {
                   <tr><td colSpan={10}><ErrorState /></td></tr>
                 )}
                 {invoices.map((inv) => (
-                  <InvoiceRow key={inv.invoice_id} inv={inv} />
+                  <InvoiceRow key={inv.invoice_id} inv={inv} predicting={!live} />
                 ))}
               </tbody>
             </table>
@@ -221,7 +234,29 @@ export default function InvoicesPage() {
   );
 }
 
-function InvoiceRow({ inv }: { inv: InvoicePrediction }) {
+function InvoiceRow({ inv, predicting }: { inv: InvoicePrediction; predicting: boolean }) {
+  if (predicting) {
+    const due = dueLabel(inv);
+    const dueColor = due.tone === "red" ? "var(--red)" : due.tone === "amber" ? "var(--amber)" : "var(--text3)";
+    return (
+      <tr>
+        <td className="mono" style={{ color: "var(--gold-dark)" }}>{inv.invoice_id}</td>
+        <td className="mono" style={{ fontSize: 11, color: "var(--text3)" }}>{fmtShortDate(inv.invoice_date)}</td>
+        <td className="mono" style={{ fontSize: 11, fontWeight: due.tone === "neutral" ? 400 : 600, color: dueColor }}>{due.text}</td>
+        <td>{inv.vendor}</td>
+        <td className="mono">{fmtAmount(inv.amount)}</td>
+        <td className="mono" style={{ fontSize: 11, color: "var(--text3)" }}>{inv.vat_pct != null ? `${inv.vat_pct}%` : "—"}</td>
+        <td><div className="skeleton" style={{ height: 14, width: "70%" }} /></td>
+        <td><div className="skeleton" style={{ height: 14, width: "60%" }} /></td>
+        <td><div className="skeleton" style={{ height: 14, width: "70%" }} /></td>
+        <td><div className="skeleton" style={{ height: 14, width: 40 }} /></td>
+      </tr>
+    );
+  }
+  return <InvoiceRowFull inv={inv} />;
+}
+
+function InvoiceRowFull({ inv }: { inv: InvoicePrediction }) {
   const glAlts = inv.gl_alternatives;
   const approverAlts = inv.approver_alternatives;
   const glWhyFactors = glAlts?.[0]?.why ?? [];

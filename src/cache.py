@@ -11,6 +11,7 @@ that serves predictions also persists the prediction cache.
 """
 
 import json
+import threading
 import time
 from typing import Any
 
@@ -18,6 +19,33 @@ from src.aito_client import AitoClient, AitoError
 
 _l1: dict[str, tuple[float, Any]] = {}
 _aito: AitoClient | None = None
+
+# Per-key compute locks: when one request misses both L1 and L2 and
+# starts computing, concurrent requests for the same key block on the
+# same lock instead of triggering N independent computes.
+#
+# Usage:
+#   with compute_lock(key):
+#       cached = cache.get(key)
+#       if cached: return cached
+#       result = expensive_compute()
+#       cache.set(key, result)
+_locks_mutex = threading.Lock()
+_locks: dict[str, threading.Lock] = {}
+
+
+def compute_lock(key: str) -> threading.Lock:
+    """Return a per-key lock so concurrent misses share one compute.
+
+    Caller must check the cache *inside* the lock to avoid duplicate
+    work after the lock is acquired.
+    """
+    with _locks_mutex:
+        lock = _locks.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _locks[key] = lock
+        return lock
 
 DEFAULT_TTL = 3600  # 1 hour — demo data doesn't change
 

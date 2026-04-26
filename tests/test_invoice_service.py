@@ -133,10 +133,12 @@ class TestPredictInvoice:
         """If Aito is unreachable, invoice goes to review."""
         import httpx as httpx_lib
 
-        httpx_mock.add_exception(
-            httpx_lib.ConnectError("Connection refused"),
-            url="https://test.aito.app/db/demo/api/v1/_predict",
-        )
+        # Client retries once on connection error before giving up
+        for _ in range(2):
+            httpx_mock.add_exception(
+                httpx_lib.ConnectError("Connection refused"),
+                url="https://test.aito.app/db/demo/api/v1/_predict",
+            )
 
         client = AitoClient(TEST_CONFIG)
         result = predict_invoice(client, {

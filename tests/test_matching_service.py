@@ -96,10 +96,12 @@ class TestMatchBankTxnToInvoice:
 
     def test_aito_error_returns_none(self, httpx_mock):
         """If Aito fails, return None."""
-        httpx_mock.add_exception(
-            httpx.ConnectError("Connection refused"),
-            url="https://test.aito.app/db/demo/api/v1/_predict",
-        )
+        # Client retries once on connection error before giving up
+        for _ in range(2):
+            httpx_mock.add_exception(
+                httpx.ConnectError("Connection refused"),
+                url="https://test.aito.app/db/demo/api/v1/_predict",
+            )
 
         client = AitoClient(TEST_CONFIG)
         pair = match_bank_txn_to_invoice(

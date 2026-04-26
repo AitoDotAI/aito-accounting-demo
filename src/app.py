@@ -170,6 +170,43 @@ def health():
     return result
 
 
+@app.get("/api/invoices/raw")
+def invoices_raw(customer_id: str = Query(...), per_page: int = 20):
+    """Bare invoice list — no predictions. Fast (~200ms vs ~10s).
+
+    Used to paint the table structure immediately while the heavier
+    /api/invoices/pending endpoint computes predictions in the
+    background. Progressive rendering: structure first, then values.
+    """
+    from src.date_window import shift_iso
+    try:
+        result = aito.search("invoices", {"customer_id": customer_id}, limit=per_page)
+    except AitoError as exc:
+        return {"invoices": [], "error": str(exc)}
+
+    rows = []
+    for hit in result.get("hits", []):
+        rows.append({
+            "invoice_id": hit.get("invoice_id"),
+            "vendor": hit.get("vendor"),
+            "amount": hit.get("amount"),
+            "invoice_date": shift_iso(hit.get("invoice_date")),
+            "due_days": hit.get("due_days"),
+            "vat_pct": hit.get("vat_pct"),
+            # Placeholder fields so the UI can render rows
+            "approver": None,
+            "approver_confidence": 0,
+            "gl_code": None,
+            "gl_label": None,
+            "gl_confidence": 0,
+            "source": "review",
+            "confidence": 0,
+            "gl_alternatives": [],
+            "approver_alternatives": [],
+        })
+    return {"invoices": rows}
+
+
 @app.get("/api/invoices/pending")
 def invoices_pending(customer_id: str = Query(...), page: int = 1, per_page: int = 20):
     """Predict GL code and approver for pending invoices."""
@@ -178,33 +215,42 @@ def invoices_pending(customer_id: str = Query(...), page: int = 1, per_page: int
     if cached:
         data = cached
     else:
-        # Fetch only one page worth of invoices — lazy loading
-        try:
-            result = aito.search("invoices", {"customer_id": customer_id}, limit=per_page)
-            sample_invoices = result.get("hits", [])
-        except AitoError:
-            return {"invoices": [], "metrics": {}, "error": "Could not fetch invoices"}
+        # Per-key lock prevents N concurrent misses from doing N
+        # independent computes. The first request computes; the rest
+        # block, then read the freshly-cached value.
+        with cache.compute_lock(cache_key):
+            cached = cache.get(cache_key)
+            if cached:
+                data = cached
+            else:
+                try:
+                    result = aito.search("invoices", {"customer_id": customer_id}, limit=per_page)
+                    sample_invoices = result.get("hits", [])
+                except AitoError:
+                    return {"invoices": [], "metrics": {}, "error": "Could not fetch invoices"}
 
-        # Mine the customer's rules once and cache. Rules short-circuit
-        # high-precision patterns so we hit Aito only for novel invoices.
-        rules_key = f"mined_rules:{customer_id}"
-        rules = cache.get(rules_key)
-        if rules is None:
-            from src.quality_service import mine_rules_for_customer
-            rules = mine_rules_for_customer(aito, customer_id)
-            cache.set(rules_key, rules, ttl=1800)
+                # Mine the customer's rules once and cache.
+                rules_key = f"mined_rules:{customer_id}"
+                rules = cache.get(rules_key)
+                if rules is None:
+                    with cache.compute_lock(rules_key):
+                        rules = cache.get(rules_key)
+                        if rules is None:
+                            from src.quality_service import mine_rules_for_customer
+                            rules = mine_rules_for_customer(aito, customer_id)
+                            cache.set(rules_key, rules, ttl=1800)
 
-        # Parallelize predictions for faster response
-        from concurrent.futures import ThreadPoolExecutor
-        from src.invoice_service import predict_invoice
-        with ThreadPoolExecutor(max_workers=8) as pool:
-            predictions = list(pool.map(
-                lambda inv: predict_invoice(aito, {**inv, "customer_id": customer_id}, rules=rules),
-                sample_invoices,
-            ))
-        metrics = compute_metrics(predictions)
-        data = {"invoices": [p.to_dict() for p in predictions], "metrics": metrics}
-        cache.set(cache_key, data, ttl=300)
+                # Parallelize predictions for faster response
+                from concurrent.futures import ThreadPoolExecutor
+                from src.invoice_service import predict_invoice
+                with ThreadPoolExecutor(max_workers=8) as pool:
+                    predictions = list(pool.map(
+                        lambda inv: predict_invoice(aito, {**inv, "customer_id": customer_id}, rules=rules),
+                        sample_invoices,
+                    ))
+                metrics = compute_metrics(predictions)
+                data = {"invoices": [p.to_dict() for p in predictions], "metrics": metrics}
+                cache.set(cache_key, data, ttl=300)
 
     invoices = data.get("invoices", [])
     total = len(invoices)

@@ -116,7 +116,9 @@ class TestScanInvoice:
 
     def test_aito_error_returns_none(self, httpx_mock):
         """If Aito fails, don't flag — we can't assess."""
-        httpx_mock.add_exception(httpx.ConnectError("refused"))
+        # Client retries once on connection error before giving up
+        for _ in range(2):
+            httpx_mock.add_exception(httpx.ConnectError("refused"))
 
         client = AitoClient(TEST_CONFIG)
         result = scan_invoice(client, {

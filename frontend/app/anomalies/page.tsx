@@ -144,8 +144,19 @@ export default function AnomaliesPage() {
 }
 
 function FlagRow({ f }: { f: AnomalyFlag }) {
+  const [triaged, setTriaged] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const copyToClipboard = () => {
+    const text = `Anomaly on ${f.invoice_id} (${f.vendor})\n${f.title}\n\n${f.description}\n\nRecommended: ${f.recommendation}`;
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    });
+  };
+
   return (
-    <div className="anomaly-row" style={{ alignItems: "flex-start" }}>
+    <div className="anomaly-row" style={{ alignItems: "flex-start", opacity: triaged ? 0.5 : 1, transition: "opacity .2s" }}>
       <div className={`anomaly-icon ${f.severity}`}>
         {f.severity === "high" ? (
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2L1 12h12L7 2z" stroke="#8b1a1a" strokeWidth="1.3"/><path d="M7 6v3M7 10.5v.5" stroke="#8b1a1a" strokeWidth="1.3" strokeLinecap="round"/></svg>
@@ -157,9 +168,46 @@ function FlagRow({ f }: { f: AnomalyFlag }) {
         <div className="anomaly-title">{f.title}</div>
         <div className="anomaly-sub">{f.description}</div>
         {f.recommendation && (
-          <div style={{ marginTop: 6, padding: "6px 10px", background: "var(--surface2)", borderLeft: "3px solid var(--gold-mid)", borderRadius: 3, fontSize: "11.5px", color: "var(--text2)" }}>
-            <strong style={{ color: "var(--gold-dark)", marginRight: 6 }}>Recommended:</strong>
-            {f.recommendation}
+          <div style={{ marginTop: 6, padding: "8px 10px", background: "var(--surface2)", borderLeft: "3px solid var(--gold-mid)", borderRadius: 3, fontSize: "11.5px", color: "var(--text2)" }}>
+            <div style={{ marginBottom: 6 }}>
+              <strong style={{ color: "var(--gold-dark)", marginRight: 6 }}>Recommended:</strong>
+              {f.recommendation}
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button
+                onClick={() => setTriaged(!triaged)}
+                style={{
+                  fontSize: 11,
+                  padding: "3px 10px",
+                  borderRadius: 3,
+                  border: "1px solid " + (triaged ? "var(--green)" : "var(--border)"),
+                  background: triaged ? "var(--green-bg)" : "var(--surface)",
+                  color: triaged ? "#2a8a3a" : "var(--text2)",
+                  cursor: "pointer",
+                  fontWeight: 500,
+                  fontFamily: "inherit",
+                }}
+              >
+                {triaged ? "✓ Triaged" : "Mark triaged"}
+              </button>
+              <button
+                onClick={copyToClipboard}
+                title="Copy to clipboard for a ticket / email"
+                style={{
+                  fontSize: 11,
+                  padding: "3px 10px",
+                  borderRadius: 3,
+                  border: "1px solid var(--border)",
+                  background: "var(--surface)",
+                  color: "var(--text2)",
+                  cursor: "pointer",
+                  fontWeight: 500,
+                  fontFamily: "inherit",
+                }}
+              >
+                {copied ? "Copied" : "Copy details"}
+              </button>
+            </div>
           </div>
         )}
       </div>
