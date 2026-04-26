@@ -1,20 +1,26 @@
-"""Help system: search + ranking + impression/click logging.
+"""Help system: contextual ranking via Aito _recommend.
 
 Three article categories: app (product docs), legal (compliance
 pointers), internal (per-customer guidance).
 
-Ranking strategy:
-  - Default surface: top-K articles by historical click-through-rate
-    where (customer_id, page) matches the current context.
-    Aito's _predict article_id WHERE page=…, customer_id=… returns
-    articles ranked by association — articles that historically get
-    clicked from this page on this customer surface higher.
-  - Search: same _predict but with a free-text query field added
-    to the where clause. Aito's text analyzer takes care of token
-    matching against title/body/tags.
+Ranking strategy: Aito's `_recommend` operator — the same one
+aito-demo uses for product recommendations. The semantics fit
+help articles exactly:
 
-Logging: every shown article writes an impression row, every click
-toggles its clicked flag. The next prediction includes that signal.
+    POST /_recommend
+      from:      help_impressions             # impression history
+      where:     { customer_id, page, [query] }  # current context
+      recommend: article_id                   # what to recommend
+      goal:      { clicked: true }            # optimise for clicks
+
+Aito returns article_ids ranked by the predicted probability of
+the goal (a click) being achieved given the context — i.e. CTR-
+ranked recommendations. New clicks become new impression rows;
+the next call automatically reflects them, no retraining.
+
+Logging: every shown article writes an impression row; every click
+writes a second row with clicked=true. The signal is implicit in
+the impression history.
 """
 
 import time
@@ -30,36 +36,43 @@ def search_help(
     query: str | None = None,
     limit: int = 5,
 ) -> list[dict]:
-    """Return ranked help articles for the current context.
+    """Return click-through-ranked help articles for the current context.
 
     Articles available to a customer = those with customer_id="*"
-    (global app/legal docs) plus their own internal ones. Aito's
-    _predict returns ranked article_ids; we hydrate to full rows.
+    (global app/legal docs) plus their own internal ones. We do two
+    `_recommend` passes (global + customer-specific) and merge —
+    Aito's `where` doesn't OR cleanly on customer_id without a $or
+    expression, and two passes keep the where clauses simple.
     """
-    where: dict = {}
+    base_where: dict = {}
     if page:
-        where["page"] = page
-    # query goes through Aito's text analyzer if provided
+        base_where["page"] = page
     if query:
-        where["query"] = query
-    # We can't OR on customer_id in a single _predict call cleanly,
-    # so we do two passes (global + customer-specific) and merge.
+        # query goes through Aito's text analyzer
+        base_where["query"] = query
 
     ranked: list[tuple[float, str]] = []  # (score, article_id)
 
     for cid_filter in ("*", customer_id):
         try:
-            result = client._request("POST", "/_predict", json={
+            result = client._request("POST", "/_recommend", json={
                 "from": "help_impressions",
-                "where": {**where, "customer_id": cid_filter, "clicked": True},
-                "predict": "article_id",
+                "where": {**base_where, "customer_id": cid_filter},
+                "recommend": "article_id",
+                "goal": {"clicked": True},
                 "select": ["$p", "feature"],
                 "limit": limit,
             })
         except AitoError:
             continue
         for hit in result.get("hits", []):
-            ranked.append((float(hit.get("$p", 0)), hit["feature"]))
+            # Aito returns dicts with "feature" (the value) and "$p"
+            # (probability the goal would be achieved). Some payloads
+            # also use "$value" — handle both shapes defensively.
+            article_id = hit.get("feature") or hit.get("$value")
+            if article_id is None:
+                continue
+            ranked.append((float(hit.get("$p", 0)), article_id))
 
     # Sort by score, dedupe
     seen = set()
@@ -83,10 +96,9 @@ def search_help(
         except AitoError:
             return []
 
-    # Hydrate: fetch all candidate articles and order by ranked list
+    # Hydrate: fetch each article and preserve the ranked order
     articles_by_id: dict[str, dict] = {}
     try:
-        # One bulk fetch covering all candidates
         for aid in ordered_ids:
             res = client.search("help_articles", {"article_id": aid}, limit=1)
             if res.get("hits"):

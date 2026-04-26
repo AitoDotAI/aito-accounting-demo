@@ -1,5 +1,6 @@
-  # Help search — CUST-0000 on /invoices
+  # Help recommend — CUST-0000 on /invoices
   
+  Underlying call: POST /_recommend WHERE customer_id, page → goal: { clicked: true }
   
     5 articles returned
   
