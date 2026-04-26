@@ -177,6 +177,43 @@ export default function FormFillPage() {
     setTemplate(null);
   }, []);
 
+  const [submitMsg, setSubmitMsg] = useState<string | null>(null);
+  const handleSubmit = useCallback(async () => {
+    // Build the per-field log: every field that was either user-entered or
+    // had a prediction. accepted = user kept the predicted value.
+    const fieldRows = Object.entries(userValues)
+      .filter(([, v]) => v)
+      .map(([field, value]) => {
+        const pred = predictions.find((p) => p.field === field);
+        const predictedValue = pred?.raw_value ?? null;
+        const userValue = value;
+        const accepted = predictedValue != null && predictedValue === userValue;
+        return {
+          field,
+          predicted_value: predictedValue,
+          user_value: userValue,
+          source: pred?.predicted ? (accepted ? "predicted" : "user") : "user",
+          confidence: pred?.confidence ?? 0,
+          accepted,
+        };
+      });
+    if (fieldRows.length === 0) {
+      setSubmitMsg("Nothing to log — fill in some fields first");
+      return;
+    }
+    try {
+      const resp = await apiFetch<{ logged: number; error?: string }>("/api/formfill/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customer_id: customerId, fields: fieldRows }),
+      });
+      setSubmitMsg(resp.error ? `Logged with warning: ${resp.error}` : `Logged ${resp.logged} field decisions to prediction_log`);
+      setTimeout(() => setSubmitMsg(null), 4000);
+    } catch {
+      setSubmitMsg("Failed to log submission");
+    }
+  }, [userValues, predictions, customerId]);
+
   const getPrediction = (fieldName: string): FieldPrediction | undefined =>
     predictions.find((p) => p.field === fieldName);
 
@@ -195,10 +232,18 @@ export default function FormFillPage() {
           subtitle={loading ? "Predicting..." : predictedCount > 0 ? `${predictedCount} fields predicted \u00B7 avg ${(avgConf * 100).toFixed(0)}% confidence` : "Type in any field to trigger predictions"}
           live={live}
           actions={
-            <button className="btn btn-outline" onClick={handleClear}>Clear</button>
+            <>
+              <button className="btn btn-outline" onClick={handleClear}>Clear</button>
+              <button className="btn btn-primary" onClick={handleSubmit}>Log submission</button>
+            </>
           }
         />
         <div className="content">
+          {submitMsg && (
+            <div style={{ background: "var(--green-bg)", border: "1px solid #a8d8b0", borderRadius: 8, padding: "8px 14px", fontSize: "12.5px", color: "#2a8a3a", marginBottom: 8 }}>
+              {submitMsg}
+            </div>
+          )}
           {template && template.confidence != null && template.confidence >= 0.40 && (
             <div style={{ background: "var(--surface2)", border: "1px solid var(--border2)", borderRadius: 8, padding: "12px 16px", marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ flex: 1, fontSize: "12.5px", color: "var(--text2)", lineHeight: 1.5 }}>

@@ -9,15 +9,25 @@ explanations so the UI can show dropdowns and factor breakdowns.
 from src.aito_client import AitoClient, AitoError
 from src.invoice_service import GL_LABELS, _extract_alternatives, _extract_why_factors
 
-# Fields that can be predicted, with display labels and formatting
+# Fields that can be predicted, with display labels and formatting.
+#
+# auto_prefill_threshold is the minimum confidence at which a prediction is
+# returned as `predicted: True` (the field auto-fills in State 2 styling).
+# Below the threshold the prediction is still returned as a suggestion in
+# `alternatives` but the field stays empty — user must explicitly choose.
+#
+# High-cost fields (vendor, gl_code, approver) need high confidence because
+# a wrong silent prefill goes to wrong account / wrong person.
+# Low-cost fields (cost_centre, vat_pct, payment_method, due_days) prefill
+# more aggressively because errors are trivially fixable.
 PREDICT_FIELDS = [
-    {"field": "vendor", "label": "Vendor", "format": "text"},
-    {"field": "gl_code", "label": "GL Account", "format": "gl"},
-    {"field": "approver", "label": "Approver", "format": "text"},
-    {"field": "cost_centre", "label": "Cost centre", "format": "text"},
-    {"field": "vat_pct", "label": "VAT %", "format": "pct"},
-    {"field": "payment_method", "label": "Payment method", "format": "text"},
-    {"field": "due_days", "label": "Due terms", "format": "days"},
+    {"field": "vendor",         "label": "Vendor",         "format": "text", "auto_prefill_threshold": 0.95},
+    {"field": "gl_code",        "label": "GL Account",     "format": "gl",   "auto_prefill_threshold": 0.85},
+    {"field": "approver",       "label": "Approver",       "format": "text", "auto_prefill_threshold": 0.85},
+    {"field": "cost_centre",    "label": "Cost centre",    "format": "text", "auto_prefill_threshold": 0.70},
+    {"field": "vat_pct",        "label": "VAT %",          "format": "pct",  "auto_prefill_threshold": 0.60},
+    {"field": "payment_method", "label": "Payment method", "format": "text", "auto_prefill_threshold": 0.70},
+    {"field": "due_days",       "label": "Due terms",      "format": "days", "auto_prefill_threshold": 0.70},
 ]
 
 # All field names that can be used as input context
@@ -134,6 +144,7 @@ def predict_fields(client: AitoClient, where: dict) -> dict:
 
     for field_def in fields_to_predict:
         field_name = field_def["field"]
+        threshold = field_def.get("auto_prefill_threshold", 0.85)
         try:
             result = client.predict("invoices", where, field_name)
             hits = result.get("hits", [])
@@ -147,13 +158,20 @@ def predict_fields(client: AitoClient, where: dict) -> dict:
                 label_map = _label_map_for_field(field_name)
                 alternatives = _extract_alternatives(hits, label_map)
 
+                # Only auto-prefill when above this field's safety threshold.
+                # Below threshold: alternatives still returned, but predicted=False
+                # so UI shows it as suggestion (dropdown) not a filled value.
+                auto_prefill = confidence >= threshold
+
                 fields.append({
                     "field": field_name,
                     "label": field_def["label"],
-                    "value": display_value,
-                    "raw_value": raw_value,
+                    "value": display_value if auto_prefill else None,
+                    "raw_value": raw_value if auto_prefill else None,
                     "confidence": round(confidence, 2),
-                    "predicted": True,
+                    "predicted": auto_prefill,
+                    "auto_prefill_threshold": threshold,
+                    "below_threshold": not auto_prefill,
                     "alternatives": alternatives,
                 })
                 confidences.append(confidence)
@@ -165,6 +183,8 @@ def predict_fields(client: AitoClient, where: dict) -> dict:
                     "raw_value": None,
                     "confidence": 0.0,
                     "predicted": False,
+                    "auto_prefill_threshold": threshold,
+                    "below_threshold": False,
                     "alternatives": [],
                 })
         except AitoError:
@@ -175,6 +195,8 @@ def predict_fields(client: AitoClient, where: dict) -> dict:
                 "raw_value": None,
                 "confidence": 0.0,
                 "predicted": False,
+                "auto_prefill_threshold": threshold,
+                "below_threshold": False,
                 "alternatives": [],
             })
 

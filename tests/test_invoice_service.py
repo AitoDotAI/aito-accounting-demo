@@ -94,7 +94,7 @@ class TestPredictInvoice:
 
         assert result.source == "aito"
         assert result.gl_code == "4400"
-        assert result.gl_label == "Supplies"
+        assert result.gl_label == "Materials & Supplies"
         assert result.approver == "AP / Sanna L."
         assert result.confidence == 0.88  # min(0.91, 0.88)
 

@@ -59,7 +59,10 @@ class TestPredictFields:
         assert "gl_code" in field_names
 
     def test_predicts_remaining_fields_given_amount(self, httpx_mock):
-        """Given only amount, should predict all 7 fields including vendor."""
+        """Given only amount, returns 7 field entries. At p=0.80, only fields
+        with auto_prefill_threshold <= 0.80 get predicted=True (cost_centre,
+        payment_method, due_days, vat_pct). High-cost fields (vendor 0.95,
+        gl_code 0.85, approver 0.85) come back below_threshold."""
         for _ in range(7):
             httpx_mock.add_response(json=_mock_predict_response("test", 0.80))
 
@@ -67,8 +70,15 @@ class TestPredictFields:
         result = predict_fields(client, {"amount": 4220})
 
         field_names = [f["field"] for f in result["fields"]]
-        assert "vendor" in field_names  # vendor not provided, so predicted
-        assert result["predicted_count"] == 7
+        assert "vendor" in field_names
+        # 4 fields prefill at 0.80: cost_centre (0.70), vat_pct (0.60),
+        # payment_method (0.70), due_days (0.70)
+        assert result["predicted_count"] == 4
+        # vendor and gl_code suggestions exist as alternatives but not auto-prefilled
+        vendor_field = next(f for f in result["fields"] if f["field"] == "vendor")
+        assert vendor_field["predicted"] is False
+        assert vendor_field["below_threshold"] is True
+        assert vendor_field["confidence"] == 0.80
 
     def test_skips_provided_fields(self, httpx_mock):
         """Fields in the where clause should not be predicted."""

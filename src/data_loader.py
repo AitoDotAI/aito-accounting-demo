@@ -98,10 +98,24 @@ SCHEMAS = {
             "corrected_by": {"type": "String", "nullable": False},
         },
     },
+    "prediction_log": {
+        "type": "table",
+        "columns": {
+            "log_id": {"type": "String", "nullable": False},
+            "customer_id": {"type": "String", "nullable": False, "link": "customers.customer_id"},
+            "field": {"type": "String", "nullable": False},
+            "predicted_value": {"type": "String", "nullable": True},
+            "user_value": {"type": "String", "nullable": True},
+            "source": {"type": "String", "nullable": False},  # "user" / "predicted" / "derived"
+            "confidence": {"type": "Decimal", "nullable": False},
+            "accepted": {"type": "Boolean", "nullable": False},
+            "timestamp": {"type": "Int", "nullable": False},
+        },
+    },
 }
 
 # Table deletion order — linked tables first
-DELETE_ORDER = ["overrides", "bank_transactions", "invoices", "employees", "customers", "corporate_entities", "cache_entries"]
+DELETE_ORDER = ["prediction_log", "overrides", "bank_transactions", "invoices", "employees", "customers", "corporate_entities", "cache_entries"]
 
 
 def load_fixture(name: str) -> list[dict]:

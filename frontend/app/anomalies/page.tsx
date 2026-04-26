@@ -86,29 +86,30 @@ export default function AnomaliesPage() {
           </div>
           <div className="card">
             <div className="card-header"><span className="card-title">Flagged transactions</span><span className="card-hint">Inverse <code>_predict</code> &middot; reasons and recommended action shown</span></div>
-            {(data?.flags ?? []).map((f, i) => (
-              <div key={i} className="anomaly-row" style={{ alignItems: "flex-start" }}>
-                <div className={`anomaly-icon ${f.severity}`}>
-                  {f.severity === "high" ? (
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2L1 12h12L7 2z" stroke="#8b1a1a" strokeWidth="1.3"/><path d="M7 6v3M7 10.5v.5" stroke="#8b1a1a" strokeWidth="1.3" strokeLinecap="round"/></svg>
-                  ) : (
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="#92610a" strokeWidth="1.3"/><path d="M7 4.5v3M7 9v.5" stroke="#92610a" strokeWidth="1.3" strokeLinecap="round"/></svg>
-                  )}
+            {data && (() => {
+              // Group by category
+              const groups: Record<string, AnomalyFlag[]> = {};
+              for (const f of data.flags) {
+                const cat = f.category || "unfamiliar";
+                (groups[cat] ||= []).push(f);
+              }
+              const labels: Record<string, string> = {
+                gl_mismatch: "GL code mismatches — likely data-entry errors",
+                amount_outlier: "Amount outliers — verify with vendor",
+                unfamiliar: "Unfamiliar patterns — first-time or rare combinations",
+                approver: "Routing changes — approver pattern shifted",
+              };
+              return Object.entries(groups).map(([cat, flags]) => (
+                <div key={cat}>
+                  <div style={{ padding: "8px 16px 4px", fontSize: 11, fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", background: "var(--surface2)" }}>
+                    {labels[cat] ?? cat} &middot; {flags.length}
+                  </div>
+                  {flags.map((f, i) => (
+                    <FlagRow key={`${cat}-${i}`} f={f} />
+                  ))}
                 </div>
-                <div className="anomaly-body">
-                  <div className="anomaly-title">{f.title}</div>
-                  <div className="anomaly-sub">{f.description}</div>
-                  {f.recommendation && (
-                    <div style={{ marginTop: 6, padding: "6px 10px", background: "var(--surface2)", borderLeft: "3px solid var(--gold-mid)", borderRadius: 3, fontSize: "11.5px", color: "var(--text2)" }}>
-                      <strong style={{ color: "var(--gold-dark)", marginRight: 6 }}>Recommended:</strong>
-                      {f.recommendation}
-                    </div>
-                  )}
-                </div>
-                <div>{SEVERITY_BADGE[f.severity]}</div>
-                <div className="anomaly-amount" style={{ marginLeft: 16 }}>{fmtAmount(f.amount)}</div>
-              </div>
-            ))}
+              ));
+            })()}
             {!data && !error && Array.from({ length: 5 }).map((_, i) => (
               <div key={`skel-${i}`} style={{ display: "flex", alignItems: "center", padding: 16, borderBottom: "1px solid var(--border2)", gap: 16 }}>
                 <div className="skeleton" style={{ width: 14, height: 14, borderRadius: "50%" }} />
@@ -132,5 +133,31 @@ export default function AnomaliesPage() {
       </div>
       <AitoPanel config={PANEL} />
     </>
+  );
+}
+
+function FlagRow({ f }: { f: AnomalyFlag }) {
+  return (
+    <div className="anomaly-row" style={{ alignItems: "flex-start" }}>
+      <div className={`anomaly-icon ${f.severity}`}>
+        {f.severity === "high" ? (
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2L1 12h12L7 2z" stroke="#8b1a1a" strokeWidth="1.3"/><path d="M7 6v3M7 10.5v.5" stroke="#8b1a1a" strokeWidth="1.3" strokeLinecap="round"/></svg>
+        ) : (
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="#92610a" strokeWidth="1.3"/><path d="M7 4.5v3M7 9v.5" stroke="#92610a" strokeWidth="1.3" strokeLinecap="round"/></svg>
+        )}
+      </div>
+      <div className="anomaly-body">
+        <div className="anomaly-title">{f.title}</div>
+        <div className="anomaly-sub">{f.description}</div>
+        {f.recommendation && (
+          <div style={{ marginTop: 6, padding: "6px 10px", background: "var(--surface2)", borderLeft: "3px solid var(--gold-mid)", borderRadius: 3, fontSize: "11.5px", color: "var(--text2)" }}>
+            <strong style={{ color: "var(--gold-dark)", marginRight: 6 }}>Recommended:</strong>
+            {f.recommendation}
+          </div>
+        )}
+      </div>
+      <div>{SEVERITY_BADGE[f.severity]}</div>
+      <div className="anomaly-amount" style={{ marginLeft: 16 }}>{fmtAmount(f.amount)}</div>
+    </div>
   );
 }

@@ -209,6 +209,37 @@ def matching_pairs(customer_id: str = Query(...)):
     return result
 
 
+@app.get("/api/rules/drilldown")
+def rules_drilldown(
+    customer_id: str = Query(...),
+    condition_field: str = Query(...),
+    condition_value: str = Query(...),
+    target_value: str = Query(...),
+):
+    """Return invoices matching a rule's condition, marked by whether
+    they agree with the predicted GL or disagree."""
+    where = {"customer_id": customer_id, condition_field: condition_value}
+    try:
+        result = aito.search("invoices", where, limit=50)
+    except AitoError as exc:
+        return {"invoices": [], "error": str(exc)}
+
+    invoices = []
+    for hit in result.get("hits", []):
+        invoices.append({
+            "invoice_id": hit.get("invoice_id"),
+            "vendor": hit.get("vendor"),
+            "amount": hit.get("amount"),
+            "gl_code": hit.get("gl_code"),
+            "category": hit.get("category"),
+            "invoice_date": hit.get("invoice_date"),
+            "matched_rule": hit.get("gl_code") == target_value,
+        })
+    # Show disagreeing ones first
+    invoices.sort(key=lambda i: (i["matched_rule"], i.get("invoice_date") or ""))
+    return {"invoices": invoices}
+
+
 @app.get("/api/rules/candidates")
 def rules_candidates(customer_id: str = Query(...)):
     """Mine rule candidates for a customer."""
@@ -322,6 +353,45 @@ def formfill_predict(body: dict):
     result = predict_fields(aito, where)
     cache.set(cache_key, result, ttl=300)
     return result
+
+
+@app.post("/api/formfill/submit")
+def formfill_submit(body: dict):
+    """Log a Form Fill submission to prediction_log.
+
+    Each field's (predicted_value, user_value, confidence, source) is
+    captured so we can later compute real accuracy: a prediction is
+    "correct" if the user accepted it without override.
+    """
+    import time
+    import uuid
+
+    customer_id = body.get("customer_id")
+    submissions = body.get("fields", [])
+    if not customer_id or not submissions:
+        return {"error": "customer_id and fields[] required"}
+
+    now = int(time.time())
+    rows = []
+    for sub in submissions:
+        rows.append({
+            "log_id": f"LOG-{uuid.uuid4().hex[:12]}",
+            "customer_id": customer_id,
+            "field": sub.get("field", ""),
+            "predicted_value": sub.get("predicted_value"),
+            "user_value": sub.get("user_value"),
+            "source": sub.get("source", "user"),
+            "confidence": float(sub.get("confidence", 0)),
+            "accepted": bool(sub.get("accepted", False)),
+            "timestamp": now,
+        })
+
+    try:
+        # Best-effort batch upload; ignore errors so submit never blocks UX
+        aito._request("POST", "/data/prediction_log/batch", json=rows)
+        return {"logged": len(rows)}
+    except AitoError as exc:
+        return {"logged": 0, "error": str(exc)}
 
 
 @app.get("/api/schema")

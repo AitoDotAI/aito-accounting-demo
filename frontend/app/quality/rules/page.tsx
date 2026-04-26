@@ -25,6 +25,9 @@ interface RulePerf {
   precision: number;
   total_matches: number;
   correct: number;
+  disagreeing?: number;
+  owner?: string;
+  last_reviewed?: string;
   trend: string;
   status: string;
 }
@@ -73,10 +76,11 @@ export default function RulePerformancePage() {
                   <tr>
                     <th>Rule</th>
                     <th>Fires on</th>
-                    <th>Coverage</th>
+                    <th>Owner</th>
+                    <th>Last reviewed</th>
                     <th>Matches</th>
+                    <th>Disagree</th>
                     <th>Precision</th>
-                    <th>Trend</th>
                     <th>Status</th>
                   </tr>
                 </thead>
@@ -85,12 +89,13 @@ export default function RulePerformancePage() {
                     <tr key={i}>
                       <td className="mono" style={{ fontSize: 11 }}>{r.rule}</td>
                       <td style={{ fontSize: 12 }}>{r.fires_on}</td>
-                      <td className="mono">{r.coverage}</td>
-                      <td className="mono">{r.total_matches.toLocaleString()}</td>
-                      <td><ConfidenceBar value={r.precision} /></td>
-                      <td style={{ fontSize: 12, color: r.trend === "stable" ? "var(--green)" : r.trend === "drifting" ? "var(--amber)" : "var(--red)" }}>
-                        {r.trend === "stable" ? "\u2192 stable" : `\u2193 ${r.trend}`}
+                      <td style={{ fontSize: 12, color: "var(--text2)" }}>{r.owner ?? "Unassigned"}</td>
+                      <td className="mono" style={{ fontSize: 11, color: "var(--text3)" }}>{r.last_reviewed ?? "\u2014"}</td>
+                      <td className="mono">{r.total_matches.toLocaleString()} <span style={{ fontSize: 10, color: "var(--text3)" }}>({r.coverage})</span></td>
+                      <td className="mono" style={{ color: (r.disagreeing ?? 0) > 0 ? "var(--red)" : "var(--text3)" }}>
+                        {r.disagreeing ?? 0}
                       </td>
+                      <td><ConfidenceBar value={r.precision} /></td>
                       <td>
                         <span className={`badge ${r.status === "Active" ? "badge-green" : r.status === "Drifting" ? "badge-amber" : "badge-red"}`}>{r.status}</span>
                       </td>
