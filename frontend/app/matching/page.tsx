@@ -13,9 +13,9 @@ import type { AitoPanelConfig } from "@/lib/types";
 const PANEL: AitoPanelConfig = {
   operation: "_predict",
   stats: [
-    { value: "0.46", label: "Top confidence" },
-    { value: "27ms", label: "Response" },
-    { value: "120", label: "Bank txns" },
+    { value: "_predict", label: "Operation" },
+    { value: "Live", label: "Predictions" },
+    { value: "$invoices", label: "Invoices" },
     { value: "Zero", label: "Training" },
   ],
   description:

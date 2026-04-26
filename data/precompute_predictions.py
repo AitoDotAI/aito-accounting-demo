@@ -348,7 +348,7 @@ def precompute_rule_performance(client: AitoClient, invoices: list[dict]) -> Non
         # Trend: check last quarter vs overall
         rules_data.append({
             "rule": rule_def["name"],
-            "fires_on": f"GL {rule_def['gl_code']}, {rule_def['approver']}",
+            "fires_on": f"GL {rule_def['gl_code']} ({GL_LABELS.get(rule_def['gl_code'], rule_def['gl_code'])}), {rule_def['approver']}",
             "coverage": f"{coverage}%",
             "precision": precision,
             "total_matches": total,

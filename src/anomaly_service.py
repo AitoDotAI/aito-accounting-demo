@@ -11,6 +11,7 @@ routing doubles as an anomaly detector.
 from dataclasses import dataclass
 
 from src.aito_client import AitoClient, AitoError
+from src.invoice_service import GL_LABELS
 
 
 @dataclass
@@ -123,10 +124,12 @@ def _describe_anomaly(
 
     # GL code mismatch
     if stated_gl and stated_gl != gl_predicted and gl_p > 0.50:
+        pred_label = GL_LABELS.get(gl_predicted, gl_predicted)
+        stated_label = GL_LABELS.get(stated_gl, stated_gl)
         return (
-            f"GL code mismatch — predicted {gl_predicted} but stated as {stated_gl}",
-            f"{vendor} · Aito predicts GL {gl_predicted} with {gl_p:.0%} confidence, "
-            f"but invoice uses {stated_gl} · score {anomaly_score:.2f}",
+            f"GL code mismatch — predicted {gl_predicted} ({pred_label}) but stated as {stated_gl} ({stated_label})",
+            f"{vendor} · Aito predicts {gl_predicted} ({pred_label}) with {gl_p:.0%} confidence, "
+            f"but invoice uses {stated_gl} ({stated_label}) · score {anomaly_score:.2f}",
         )
 
     # Low confidence on everything — unknown pattern

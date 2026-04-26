@@ -2,6 +2,9 @@ export interface InvoicePrediction {
   invoice_id: string;
   vendor: string;
   amount: number;
+  invoice_date?: string;
+  due_days?: number;
+  vat_pct?: number;
   approver: string | null;
   approver_confidence: number;
   gl_code: string | null;
@@ -40,9 +43,14 @@ export interface InvoicesResponse {
   metrics: InvoiceMetrics;
 }
 
+export interface AitoPanelStat {
+  value: string;
+  label: string;
+}
+
 export interface AitoPanelConfig {
   operation: string;
-  stats: { value: string; label: string }[];
+  stats: AitoPanelStat[];
   description: string;
   query: string;
   links: { label: string; url: string }[];

@@ -15,9 +15,9 @@ import type { InvoicesResponse, InvoicePrediction, AitoPanelConfig } from "@/lib
 const PANEL_CONFIG: AitoPanelConfig = {
   operation: "_predict",
   stats: [
-    { value: "0.91", label: "Confidence" },
-    { value: "27ms", label: "Response" },
-    { value: "230", label: "Records" },
+    { value: "_predict", label: "Operation" },
+    { value: "Live", label: "Predictions" },
+    { value: "$invoices", label: "Records" },
     { value: "Zero", label: "Training" },
   ],
   description:
@@ -40,6 +40,39 @@ function sourceBadge(source: string) {
   return <span className="badge badge-amber">No match</span>;
 }
 
+function touchlessPct(invoices: InvoicePrediction[]): number {
+  if (invoices.length === 0) return 0;
+  const touchless = invoices.filter((inv) => inv.confidence >= 0.85).length;
+  return Math.round((touchless / invoices.length) * 100);
+}
+
+function dueDate(inv: InvoicePrediction): Date | null {
+  if (!inv.invoice_date) return null;
+  const d = new Date(inv.invoice_date);
+  if (isNaN(d.getTime())) return null;
+  d.setDate(d.getDate() + (inv.due_days ?? 30));
+  return d;
+}
+
+function fmtShortDate(d: string | null | undefined): string {
+  if (!d) return "—";
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return d;
+  return date.toLocaleDateString("fi-FI", { day: "2-digit", month: "2-digit", year: "2-digit" });
+}
+
+function dueLabel(inv: InvoicePrediction): { text: string; tone: "red" | "amber" | "neutral" } {
+  const due = dueDate(inv);
+  if (!due) return { text: "—", tone: "neutral" };
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  if (days < 0) return { text: `${-days}d overdue`, tone: "red" };
+  if (days === 0) return { text: "Due today", tone: "red" };
+  if (days <= 7) return { text: `Due in ${days}d`, tone: "amber" };
+  return { text: fmtShortDate(due.toISOString()), tone: "neutral" };
+}
+
 export default function InvoicesPage() {
   const { customerId } = useCustomer();
   const [data, setData] = useState<InvoicesResponse | null>(null);
@@ -54,7 +87,12 @@ export default function InvoicesPage() {
   }, [customerId]);
 
   const metrics = data?.metrics;
-  const invoices = data?.invoices ?? [];
+  // Sort by due date ascending (overdue first), missing dates at end
+  const invoices = (data?.invoices ?? []).slice().sort((a, b) => {
+    const da = dueDate(a)?.getTime() ?? Infinity;
+    const db = dueDate(b)?.getTime() ?? Infinity;
+    return da - db;
+  });
 
   return (
     <>
@@ -65,36 +103,33 @@ export default function InvoicesPage() {
           title="Invoice Processing"
           subtitle={metrics ? `${metrics.total} pending \u00B7 ${metrics.review_count} require review` : "Loading..."}
           live={live}
-          actions={
-            <>
-              <button className="btn btn-outline">Export</button>
-              <button className="btn btn-primary">+ New Invoice</button>
-            </>
-          }
         />
         <div className="content">
           <div className="metrics">
             <div className="metric highlight">
-              <div className="metric-label">Automation Rate</div>
-              <div className="metric-value">{metrics ? `${Math.round(metrics.automation_rate * 100)}%` : "--"}</div>
-              <div className="metric-sub metric-up">
-                {metrics ? `\u2191 ${Math.round(metrics.automation_rate * 100) - metrics.rule_count}pp from rules-only` : ""}
-              </div>
-            </div>
-            <div className="metric">
-              <div className="metric-label">Avg Confidence</div>
-              <div className="metric-value">{metrics?.avg_confidence.toFixed(2) ?? "--"}</div>
-            </div>
-            <div className="metric">
-              <div className="metric-label">Processed</div>
-              <div className="metric-value">{metrics?.total ?? "--"}</div>
+              <div className="metric-label">Touchless rate</div>
+              <div className="metric-value">{metrics ? `${touchlessPct(invoices)}%` : "--"}</div>
               <div className="metric-sub metric-neutral">
-                {metrics ? `${metrics.rule_count} rules \u00B7 ${metrics.aito_count} Aito` : ""}
+                Predicted at &ge; 0.85 confidence
               </div>
             </div>
             <div className="metric">
-              <div className="metric-label">Exceptions</div>
-              <div className="metric-value">{metrics?.review_count ?? "--"}</div>
+              <div className="metric-label">Avg confidence</div>
+              <div className="metric-value">{metrics?.avg_confidence.toFixed(2) ?? "--"}</div>
+              <div className="metric-sub metric-neutral">
+                {metrics ? `${metrics.rule_count} rules · ${metrics.aito_count} Aito` : ""}
+              </div>
+            </div>
+            <div className="metric">
+              <div className="metric-label">Pending</div>
+              <div className="metric-value">{metrics?.total ?? "--"}</div>
+            </div>
+            <div className="metric">
+              <div className="metric-label">Review needed</div>
+              <div className="metric-value" style={{ color: metrics?.review_count ? "var(--amber)" : undefined }}>{metrics?.review_count ?? "--"}</div>
+              <div className="metric-sub metric-neutral">
+                {metrics?.review_count ? "Below confidence threshold" : "All above threshold"}
+              </div>
             </div>
           </div>
 
@@ -107,11 +142,14 @@ export default function InvoicesPage() {
               <thead>
                 <tr>
                   <th>Invoice</th>
+                  <th>Date</th>
+                  <th>Due</th>
                   <th>Vendor</th>
-                  <th>Amount</th>
-                  <th>AI Routing</th>
+                  <th>Net</th>
+                  <th>VAT</th>
+                  <th>Approver</th>
                   <th>GL Code</th>
-                  <th>Confidence</th>
+                  <th>Conf.</th>
                   <th>Source</th>
                 </tr>
               </thead>
@@ -120,10 +158,10 @@ export default function InvoicesPage() {
                   <SkeletonRow key={i} />
                 ))}
                 {live && invoices.length === 0 && !error && (
-                  <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--text3)", padding: 24 }}>No invoices</td></tr>
+                  <tr><td colSpan={10} style={{ textAlign: "center", color: "var(--text3)", padding: 24 }}>No invoices</td></tr>
                 )}
                 {error && (
-                  <tr><td colSpan={7}><ErrorState /></td></tr>
+                  <tr><td colSpan={10}><ErrorState /></td></tr>
                 )}
                 {invoices.map((inv) => (
                   <InvoiceRow key={inv.invoice_id} inv={inv} />
@@ -143,12 +181,17 @@ function InvoiceRow({ inv }: { inv: InvoicePrediction }) {
   const approverAlts = inv.approver_alternatives;
   const glWhyFactors = glAlts?.[0]?.why ?? [];
   const approverWhyFactors = approverAlts?.[0]?.why ?? [];
+  const due = dueLabel(inv);
+  const dueColor = due.tone === "red" ? "var(--red)" : due.tone === "amber" ? "var(--amber)" : "var(--text3)";
 
   return (
     <tr>
       <td className="mono" style={{ color: "var(--gold-dark)", cursor: "pointer" }}>{inv.invoice_id}</td>
+      <td className="mono" style={{ fontSize: 11, color: "var(--text3)" }}>{fmtShortDate(inv.invoice_date)}</td>
+      <td className="mono" style={{ fontSize: 11, fontWeight: due.tone === "neutral" ? 400 : 600, color: dueColor }}>{due.text}</td>
       <td>{inv.vendor}</td>
       <td className="mono">{fmtAmount(inv.amount)}</td>
+      <td className="mono" style={{ fontSize: 11, color: "var(--text3)" }}>{inv.vat_pct != null ? `${inv.vat_pct}%` : "—"}</td>
       <td>
         {inv.approver ? (
           <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
@@ -186,9 +229,9 @@ function InvoiceRow({ inv }: { inv: InvoicePrediction }) {
 function SkeletonRow() {
   return (
     <tr>
-      {Array.from({ length: 7 }).map((_, i) => (
+      {Array.from({ length: 10 }).map((_, i) => (
         <td key={i}>
-          <div className="skeleton" style={{ height: 14, borderRadius: 4, width: i === 1 ? "80%" : i === 2 ? "60%" : "70%" }} />
+          <div className="skeleton" style={{ height: 14, borderRadius: 4, width: "70%" }} />
         </td>
       ))}
     </tr>

@@ -235,6 +235,53 @@ def random_date() -> str:
     return (START_DATE + timedelta(days=days)).isoformat()
 
 
+def finnish_reference(rng: random.Random) -> str:
+    """Generate a Finnish reference number (Viite) with ISO 7064 mod 10 check digit."""
+    base = str(rng.randint(1000, 99999999))
+    weights = [7, 3, 1]
+    s = sum(int(c) * weights[i % 3] for i, c in enumerate(reversed(base)))
+    check = (10 - s % 10) % 10
+    return base + str(check)
+
+
+def rf_reference(rng: random.Random) -> str:
+    """Generate an RF (creditor) reference like RF18 1234 5678 9012 3456."""
+    digits = "".join(str(rng.randint(0, 9)) for _ in range(rng.randint(8, 16)))
+    # ISO 11649 mod 97 check
+    rearranged = digits + "271500"  # 'RF' + '00'
+    check = 98 - (int(rearranged) % 97)
+    return f"RF{check:02d} " + " ".join(digits[i:i+4] for i in range(0, len(digits), 4))
+
+
+def vendor_to_bank_desc(vendor_name: str, rng: random.Random) -> str:
+    """Convert a vendor name to a bank-statement-style description.
+
+    Real bank exports are noisy: ALL CAPS, sometimes truncated, sometimes
+    with city, sometimes with OY suffix added/dropped.
+    """
+    name = vendor_name.upper()
+    # 30% truncate to first word(s)
+    r = rng.random()
+    if r < 0.10:
+        # Just first word
+        name = name.split()[0]
+    elif r < 0.25:
+        # Drop "OY"/"OYJ"/"AB"/"AB OY" suffixes
+        for suffix in [" OYJ AB", " AB OY", " OYJ", " OY", " AB"]:
+            if name.endswith(suffix):
+                name = name[: -len(suffix)]
+                break
+    elif r < 0.40:
+        # Add city
+        cities = ["HELSINKI", "ESPOO", "VANTAA", "TAMPERE", "TURKU", "OULU"]
+        name += f" {rng.choice(cities)}"
+
+    # Truncate long names — bank exports often cap at 35 chars
+    if len(name) > 35:
+        name = name[:35].rstrip()
+    return name
+
+
 def generate_description(category: str) -> str:
     templates = TEMPLATES.get(category, ["Invoice - {ref}"])
     template = random.choice(templates)
@@ -482,11 +529,31 @@ def generate_invoices_for_customer(
 
         # Bank transaction for ~60% of routed invoices
         if routed and rng.random() < 0.60:
-            bank_desc = vdef["name"].upper()
-            if rng.random() < 0.15:
-                bank_desc = bank_desc.split()[0]
-            elif rng.random() < 0.3:
-                bank_desc += " OY"
+            vendor_part = vendor_to_bank_desc(vdef["name"], rng)
+            # Reference number style: Finnish viite (75%), RF reference (20%), free-text note (5%)
+            ref_choice = rng.random()
+            if ref_choice < 0.75:
+                ref = f"VIITE {finnish_reference(rng)}"
+            elif ref_choice < 0.95:
+                ref = rf_reference(rng)
+            else:
+                ref = f"LASKU {rng.randint(2024, 2026)}-{rng.randint(1000, 9999)}"
+
+            # Payment date typically near invoice date
+            pay_date = inv_date  # already ISO; we'll reformat to dd.mm.yy
+            try:
+                d = date.fromisoformat(pay_date)
+                pay_str = f"{d.day:02d}.{d.month:02d}.{str(d.year)[-2:]}"
+            except Exception:
+                pay_str = ""
+
+            # Concatenate parts as a real bank export would
+            parts = [vendor_part, ref]
+            if pay_str:
+                parts.append(f"PVM {pay_str}")
+            bank_desc = " / ".join(parts)
+            if len(bank_desc) > 70:
+                bank_desc = bank_desc[:70].rstrip()
 
             amt_diff = rng.choice([0, 0, 0, 0.50, -0.50, 1.00])
             bank_txns.append({

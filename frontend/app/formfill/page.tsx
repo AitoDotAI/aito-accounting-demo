@@ -14,7 +14,7 @@ const PANEL_CONFIG: AitoPanelConfig = {
   stats: [
     { value: "0.95", label: "Avg confidence" },
     { value: "6", label: "Fields" },
-    { value: "230", label: "Records" },
+    { value: "$invoices", label: "Records" },
     { value: "Zero", label: "Training" },
   ],
   description:
@@ -146,10 +146,7 @@ export default function FormFillPage() {
           subtitle={loading ? "Predicting..." : predictedCount > 0 ? `${predictedCount} fields predicted \u00B7 avg ${(avgConf * 100).toFixed(0)}% confidence` : "Type in any field to trigger predictions"}
           live={live}
           actions={
-            <>
-              <button className="btn btn-outline" onClick={handleClear}>Clear</button>
-              <button className="btn btn-primary">Save invoice</button>
-            </>
+            <button className="btn btn-outline" onClick={handleClear}>Clear</button>
           }
         />
         <div className="content">

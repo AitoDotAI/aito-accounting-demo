@@ -12,9 +12,9 @@ import type { AitoPanelConfig } from "@/lib/types";
 const PANEL: AitoPanelConfig = {
   operation: "_predict (inverse)",
   stats: [
-    { value: "0.71", label: "Anomaly score" },
-    { value: "31ms", label: "Response" },
-    { value: "230", label: "Records" },
+    { value: "Inverse", label: "Approach" },
+    { value: "Live", label: "Predictions" },
+    { value: "$invoices", label: "Records" },
     { value: "Zero", label: "Training" },
   ],
   description:
@@ -112,7 +112,13 @@ export default function AnomaliesPage() {
                 <div className="skeleton" style={{ height: 14, width: 80 }} />
               </div>
             ))}
-            {data && data.flags.length === 0 && <div style={{ padding: 24, textAlign: "center", color: "var(--text3)" }}>No anomalies detected</div>}
+            {data && data.flags.length === 0 && (
+              <div style={{ padding: 32, textAlign: "center", color: "var(--text3)", fontSize: 13, lineHeight: 1.6 }}>
+                No anomalies detected — every invoice fits a known pattern.
+                <br />
+                <span style={{ fontSize: 11 }}>Try a smaller customer with less history to see cold-start anomaly behavior.</span>
+              </div>
+            )}
           </div>
         </div>
       </div>

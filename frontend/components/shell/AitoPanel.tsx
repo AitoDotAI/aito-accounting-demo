@@ -1,4 +1,7 @@
-import type { AitoPanelConfig } from "@/lib/types";
+"use client";
+
+import { useCustomer } from "@/lib/customer-context";
+import type { AitoPanelConfig, AitoPanelStat } from "@/lib/types";
 
 interface AitoPanelProps {
   config: AitoPanelConfig;
@@ -6,7 +9,22 @@ interface AitoPanelProps {
   lastResponseMs?: number | null;
 }
 
+// Resolve stats that reference live customer data via the special "$" prefix
+function resolveStat(stat: AitoPanelStat, ctx: { invoices: number; employees: number }): AitoPanelStat {
+  if (stat.value === "$invoices") return { ...stat, value: ctx.invoices.toLocaleString() };
+  if (stat.value === "$employees") return { ...stat, value: ctx.employees.toLocaleString() };
+  return stat;
+}
+
 export default function AitoPanel({ config, lastQuery, lastResponseMs }: AitoPanelProps) {
+  const { currentCustomer, customers } = useCustomer();
+  const totalInvoices = customers.reduce((sum, c) => sum + (c.invoice_count || 0), 0);
+  const ctx = {
+    invoices: currentCustomer?.invoice_count ?? totalInvoices,
+    employees: currentCustomer?.employee_count ?? 0,
+  };
+  const stats = config.stats.map((s) => resolveStat(s, ctx));
+
   return (
     <aside className="aito-panel">
       <div className="aito-header">
@@ -21,7 +39,7 @@ export default function AitoPanel({ config, lastQuery, lastResponseMs }: AitoPan
       </div>
 
       <div className="aito-stats">
-        {config.stats.map((s, i) => (
+        {stats.map((s, i) => (
           <div key={i} className="aito-stat">
             <div className="aito-stat-val">{s.value}</div>
             <div className="aito-stat-lbl">{s.label}</div>

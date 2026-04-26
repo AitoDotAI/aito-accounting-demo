@@ -120,6 +120,9 @@ class InvoicePrediction:
     gl_confidence: float
     source: str
     confidence: float
+    invoice_date: str | None = None
+    due_days: int | None = None
+    vat_pct: int | None = None
     gl_alternatives: list[dict] = field(default_factory=list)
     approver_alternatives: list[dict] = field(default_factory=list)
 
@@ -128,6 +131,9 @@ class InvoicePrediction:
             "invoice_id": self.invoice_id,
             "vendor": self.vendor,
             "amount": self.amount,
+            "invoice_date": self.invoice_date,
+            "due_days": self.due_days,
+            "vat_pct": self.vat_pct,
             "approver": self.approver,
             "approver_confidence": round(self.approver_confidence, 2),
             "gl_code": self.gl_code,
@@ -180,6 +186,9 @@ def predict_invoice(client: AitoClient, invoice: dict) -> InvoicePrediction:
     invoice_id = invoice["invoice_id"]
     vendor = invoice["vendor"]
     amount = invoice["amount"]
+    invoice_date = invoice.get("invoice_date")
+    due_days = invoice.get("due_days")
+    vat_pct = invoice.get("vat_pct")
 
     rule_match = check_rules(invoice)
     if rule_match:
@@ -190,6 +199,9 @@ def predict_invoice(client: AitoClient, invoice: dict) -> InvoicePrediction:
             invoice_id=invoice_id,
             vendor=vendor,
             amount=amount,
+            invoice_date=invoice_date,
+            due_days=due_days,
+            vat_pct=vat_pct,
             approver=f"AP / {approver}",
             approver_confidence=0.99,
             gl_code=gl_code,
@@ -215,6 +227,9 @@ def predict_invoice(client: AitoClient, invoice: dict) -> InvoicePrediction:
             invoice_id=invoice_id,
             vendor=vendor,
             amount=amount,
+            invoice_date=invoice_date,
+            due_days=due_days,
+            vat_pct=vat_pct,
             approver=None,
             approver_confidence=0.0,
             gl_code=None,
@@ -242,6 +257,9 @@ def predict_invoice(client: AitoClient, invoice: dict) -> InvoicePrediction:
         invoice_id=invoice_id,
         vendor=vendor,
         amount=amount,
+        invoice_date=invoice_date,
+        due_days=due_days,
+        vat_pct=vat_pct,
         approver=f"AP / {approver_name}" if approver_name else None,
         approver_confidence=approver_conf,
         gl_code=gl_code,

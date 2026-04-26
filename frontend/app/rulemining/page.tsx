@@ -14,7 +14,7 @@ const PANEL: AitoPanelConfig = {
   stats: [
     { value: "30", label: "Patterns" },
     { value: "25", label: "Strong" },
-    { value: "230", label: "Records" },
+    { value: "$invoices", label: "Records" },
     { value: "Zero", label: "Training" },
   ],
   description:
@@ -106,7 +106,7 @@ export default function RuleMiningPage() {
                 <div style={{ fontSize: 12, fontFamily: "'IBM Plex Mono', monospace", color: "var(--text2)", minWidth: 80, textAlign: "right" }}>{c.coverage}%</div>
                 <div style={{ textAlign: "center" }}>{strengthBadge(c.strength)}</div>
                 <div style={{ minWidth: 100, textAlign: "right" }}>
-                  {c.strength === "strong" && <button className="rule-action rule-promote">Promote &rarr;</button>}
+                  {c.strength === "strong" && <span style={{ fontSize: 11, color: "var(--text3)", fontStyle: "italic" }}>candidate</span>}
                 </div>
               </div>
             ))}

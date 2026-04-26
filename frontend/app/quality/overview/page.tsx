@@ -14,7 +14,7 @@ const PANEL: AitoPanelConfig = {
   stats: [
     { value: "78%", label: "Automation" },
     { value: "63%", label: "Aito share" },
-    { value: "230", label: "Records" },
+    { value: "$invoices", label: "Records" },
     { value: "Zero", label: "Training" },
   ],
   description: "Quality overview aggregates from the invoices and overrides tables. Automation breakdown computed from routed_by field.",
@@ -85,15 +85,26 @@ export default function QualityOverviewPage() {
             <div className="quality-card">
               <div className="qc-header"><span className="qc-title">Override summary</span></div>
               <div className="qc-body">
-                <div style={{ fontSize: 24, fontWeight: 600, fontFamily: "'IBM Plex Mono', monospace", marginBottom: 12 }}>{data?.overrides?.total ?? "--"}</div>
-                <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 12 }}>total overrides</div>
-                {data?.overrides?.by_field && Object.entries(data.overrides.by_field).sort(([,a],[,b]) => b - a).map(([field, count]) => (
-                  <div key={field} className="bar-row">
-                    <div className="bar-label">{field}</div>
-                    <div className="bar-track"><div className="bar-fill bar-fill-gold" style={{ width: `${(count / data.overrides.total) * 100}%` }} /></div>
-                    <div className="bar-val">{count}</div>
+                {data && (data.overrides?.total ?? 0) < 3 ? (
+                  <div style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.6 }}>
+                    Few overrides for this customer yet. Patterns emerge as the
+                    customer accumulates more invoice history. Try a larger
+                    customer (e.g. CUST-0000) to see Aito learn from human
+                    corrections at scale.
                   </div>
-                ))}
+                ) : (
+                  <>
+                    <div style={{ fontSize: 24, fontWeight: 600, fontFamily: "'IBM Plex Mono', monospace", marginBottom: 12 }}>{data?.overrides?.total ?? "--"}</div>
+                    <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 12 }}>total overrides</div>
+                    {data?.overrides?.by_field && Object.entries(data.overrides.by_field).sort(([,a],[,b]) => b - a).map(([field, count]) => (
+                      <div key={field} className="bar-row">
+                        <div className="bar-label">{field}</div>
+                        <div className="bar-track"><div className="bar-fill bar-fill-gold" style={{ width: `${(count / data.overrides.total) * 100}%` }} /></div>
+                        <div className="bar-val">{count}</div>
+                      </div>
+                    ))}
+                  </>
+                )}
               </div>
             </div>
           </div>
