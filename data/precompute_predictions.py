@@ -127,16 +127,41 @@ def precompute_rule_performance_for_customer(client: AitoClient, customer_id: st
     return compute_rule_performance(client, customer_id=customer_id)
 
 
+EMPTY_RULES_CANDIDATES = {
+    "candidates": [],
+    "metrics": {"total": 0, "high_precision": 0, "medium_precision": 0, "promoted": 0},
+}
+EMPTY_RULE_PERFORMANCE = {"rules": []}
+EMPTY_PREDICTION_ACCURACY = {
+    "overall_accuracy": 0, "gl_accuracy": 0, "approver_accuracy": 0,
+    "high_conf_accuracy": 0, "override_rate": 0, "dangerous_errors": 0,
+    "base_accuracy": 0, "rules_coverage": 0, "rules_accuracy_within": 0,
+    "rules_total_accuracy": 0, "geom_mean_p": 0,
+    "confidence_table": [], "accuracy_by_type": [], "total_evaluated": 0,
+}
+
+
 def precompute_one_customer(
     client: AitoClient,
     customer_id: str,
     invoices_for_customer: list[dict],
+    lite: bool = False,
 ) -> dict[str, int]:
-    """Run all precomputes for a single customer, return {name: bytes_written}."""
+    """Run all precomputes for a single customer, return {name: bytes_written}.
+
+    `lite=True` skips per-vendor rule mining, _evaluate-based accuracy,
+    and rule replay -- writing empty JSON for those views. Use it for
+    small/midmarket tier customers where the demo persona is "just
+    signed up, no patterns yet" and the slow Aito calls would just
+    produce noisy stats.
+    """
     sizes: dict[str, int] = {}
 
-    # Rules are reused across the invoice/accuracy precomputes
-    mined_rules = mine_rules_for_customer(client, customer_id)
+    if lite:
+        mined_rules: list[dict] = []
+    else:
+        # Rules are reused across the invoice/accuracy precomputes
+        mined_rules = mine_rules_for_customer(client, customer_id)
 
     sizes["invoices_pending"] = save(
         customer_id, "invoices_pending",
@@ -145,23 +170,29 @@ def precompute_one_customer(
     sizes["matching_pairs"] = save(
         customer_id, "matching_pairs", precompute_matching(client, customer_id),
     )
-    sizes["rules_candidates"] = save(
-        customer_id, "rules_candidates", precompute_rules(client, customer_id),
-    )
     sizes["anomalies_scan"] = save(
         customer_id, "anomalies_scan", precompute_anomalies(client, customer_id),
     )
     sizes["quality_overview"] = save(
         customer_id, "quality_overview", precompute_quality_overview(client, customer_id),
     )
-    sizes["prediction_accuracy"] = save(
-        customer_id, "prediction_accuracy",
-        precompute_prediction_accuracy(client, customer_id),
-    )
-    sizes["rule_performance"] = save(
-        customer_id, "rule_performance",
-        precompute_rule_performance_for_customer(client, customer_id),
-    )
+
+    if lite:
+        sizes["rules_candidates"] = save(customer_id, "rules_candidates", EMPTY_RULES_CANDIDATES)
+        sizes["prediction_accuracy"] = save(customer_id, "prediction_accuracy", EMPTY_PREDICTION_ACCURACY)
+        sizes["rule_performance"] = save(customer_id, "rule_performance", EMPTY_RULE_PERFORMANCE)
+    else:
+        sizes["rules_candidates"] = save(
+            customer_id, "rules_candidates", precompute_rules(client, customer_id),
+        )
+        sizes["prediction_accuracy"] = save(
+            customer_id, "prediction_accuracy",
+            precompute_prediction_accuracy(client, customer_id),
+        )
+        sizes["rule_performance"] = save(
+            customer_id, "rule_performance",
+            precompute_rule_performance_for_customer(client, customer_id),
+        )
     return sizes
 
 
@@ -176,6 +207,12 @@ def main() -> None:
     parser.add_argument(
         "--skip-existing", action="store_true",
         help="Skip customers that already have all 7 precomputed JSON files",
+    )
+    parser.add_argument(
+        "--lite-threshold", type=int, default=0,
+        help="Customers with fewer invoices than this get the lite "
+             "precompute (no rule mining, no _evaluate, empty rule replay). "
+             "Default 0 = full precompute for everyone.",
     )
     args = parser.parse_args()
 
@@ -221,42 +258,44 @@ def main() -> None:
     t0 = time.time()
     completed = 0
 
-    def run_one(idx_customer: tuple[int, dict]) -> tuple[int, str, dict, int, float]:
+    def run_one(idx_customer: tuple[int, dict]) -> tuple[int, str, dict, int, float, bool]:
         idx, customer = idx_customer
         cid = customer["customer_id"]
         invs = by_customer.get(cid, [])
+        lite = args.lite_threshold > 0 and len(invs) < args.lite_threshold
         t_cust = time.time()
         try:
-            sizes = precompute_one_customer(client, cid, invs)
-            return idx, cid, sizes, len(invs), time.time() - t_cust
+            sizes = precompute_one_customer(client, cid, invs, lite=lite)
+            return idx, cid, sizes, len(invs), time.time() - t_cust, lite
         except Exception as e:
             print(f"  [{idx}/{len(customers)}] {cid}: ERROR {e}", file=sys.stderr)
-            return idx, cid, {}, len(invs), time.time() - t_cust
+            return idx, cid, {}, len(invs), time.time() - t_cust, lite
+
+    def _print_row(idx: int, cid: str, n_inv: int, kb: float, elapsed: float, lite: bool, tier: str = "") -> None:
+        suffix = " [lite]" if lite else ""
+        tier_str = f" ({tier}, {n_inv} inv)" if tier else f" ({n_inv} inv)"
+        print(
+            f"  [{idx}/{len(customers)}] {cid}{tier_str}: "
+            f"{kb:.0f} KB in {elapsed:.1f}s{suffix}",
+            flush=True,
+        )
 
     if args.workers <= 1:
         for i, customer in enumerate(customers, 1):
-            idx, cid, sizes, n_inv, elapsed = run_one((i, customer))
+            idx, cid, sizes, n_inv, elapsed, lite = run_one((i, customer))
             kb = sum(sizes.values()) / 1024
             total_bytes += sum(sizes.values())
             completed += 1
-            print(
-                f"  [{idx}/{len(customers)}] {cid} "
-                f"({customer['size_tier']}, {n_inv} inv): {kb:.0f} KB in {elapsed:.1f}s",
-                flush=True,
-            )
+            _print_row(idx, cid, n_inv, kb, elapsed, lite, customer["size_tier"])
     else:
         with ThreadPoolExecutor(max_workers=args.workers) as pool:
-            for idx, cid, sizes, n_inv, elapsed in pool.map(
+            for idx, cid, sizes, n_inv, elapsed, lite in pool.map(
                 run_one, list(enumerate(customers, 1))
             ):
                 kb = sum(sizes.values()) / 1024
                 total_bytes += sum(sizes.values())
                 completed += 1
-                print(
-                    f"  [{idx}/{len(customers)}] {cid} ({n_inv} inv): "
-                    f"{kb:.0f} KB in {elapsed:.1f}s",
-                    flush=True,
-                )
+                _print_row(idx, cid, n_inv, kb, elapsed, lite)
 
     total_elapsed = time.time() - t0
     print(

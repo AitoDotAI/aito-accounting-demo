@@ -523,8 +523,11 @@ def generate_invoices_for_customer(
     n = customer["invoice_count"]
     rng = random.Random(hash(cid))
 
-    # Weighted vendor selection (some vendors invoice more often)
-    vendor_weights = [rng.uniform(0.5, 3.0) for _ in vendors]
+    # Zipfian vendor weights so a handful of vendors dominate volume
+    # (mirrors real AP: ~10 top vendors / 60% of invoices, long tail
+    # for the rest). Makes _relate find clean rules instead of noise.
+    vendor_weights = [1.0 / (rank + 1) ** 0.9 for rank in range(len(vendors))]
+    rng.shuffle(vendor_weights)
     total_weight = sum(vendor_weights)
     vendor_probs = [w / total_weight for w in vendor_weights]
 
