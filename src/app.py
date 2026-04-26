@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from src.aito_client import AitoClient, AitoError
 from src import cache
 from src.config import load_config
-from src.formfill_service import KNOWN_VENDORS, predict_fields
+from src.formfill_service import predict_fields
 from src.invoice_service import predict_batch, compute_metrics
 from src.matching_service import match_all
 from src.rulemining_service import mine_rules
@@ -152,6 +152,13 @@ def list_customers():
 
 # ── Per-customer endpoints ────────────────────────────────────────
 
+@app.get("/api/demo/today")
+def demo_today_endpoint():
+    """The demo's frozen 'today'. Frontend uses this for all date math."""
+    from src.date_window import demo_today
+    return {"date": demo_today().isoformat()}
+
+
 @app.get("/api/health")
 def health():
     cached = cache.get("health")
@@ -238,6 +245,7 @@ def rules_drilldown(
     except AitoError as exc:
         return {"invoices": [], "error": str(exc)}
 
+    from src.date_window import shift_iso
     invoices = []
     for hit in result.get("hits", []):
         invoices.append({
@@ -246,7 +254,7 @@ def rules_drilldown(
             "amount": hit.get("amount"),
             "gl_code": hit.get("gl_code"),
             "category": hit.get("category"),
-            "invoice_date": hit.get("invoice_date"),
+            "invoice_date": shift_iso(hit.get("invoice_date")),
             "matched_rule": hit.get("gl_code") == target_value,
         })
     # Show disagreeing ones first
@@ -332,8 +340,8 @@ def formfill_vendors(customer_id: str = Query(...)):
         result = aito.search("invoices", {"customer_id": customer_id}, limit=100)
         vendors = sorted({hit["vendor"] for hit in result.get("hits", [])})
         return {"vendors": vendors}
-    except AitoError:
-        return {"vendors": KNOWN_VENDORS}
+    except AitoError as exc:
+        return {"vendors": [], "error": str(exc)}
 
 
 @app.get("/api/formfill/template")

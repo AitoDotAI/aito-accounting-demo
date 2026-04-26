@@ -29,14 +29,11 @@ Story sections below)
 ### Polish
 
 - [ ] **#6 Cold-start onboarding indicator** for small customers
-- [ ] **#7 Date handling**: rolling-window dates so demo never goes stale
 - [ ] **#8 Progressive skeletons** — render structure first, fill predictions in
 - [ ] **#9 Form Fill banner**: collapse after first display
 - [ ] **#10 Anomaly recommendation buttons** — make them do something
 
 ### Architecture / hygiene
-
-- [ ] **#11 Remove stale single-tenant RULES + KNOWN_VENDORS**
 - [ ] **#12 Aito client retry / circuit breaker**
 - [ ] **#13 Two-layer cache write race** — per-key lock around compute+set
 - [ ] **#14 Booktest coverage**: drill-down, template, formfill-submit,
@@ -104,6 +101,19 @@ Story sections below)
   this page" section in AitoPanel. Each step says what the call
   produces. Implemented on Invoices, Form Fill, Matching, Rule
   Mining, Anomalies.
+
+### Hygiene
+- [x] **#7 Frozen demo time** — `DEMO_TODAY = 2026-04-30` is the
+  pinned "now" for the whole demo. Backend exposes via
+  `/api/demo/today`; frontend `demoToday()` returns it (cached after
+  first load, fallback to the same date if API fails). Replaces all
+  `new Date()` calls in due-date math and the Form Fill date default.
+  Demo behaves like a permanent snapshot — same screenshots, same
+  due-soon highlights, every visit.
+- [x] **#11 Remove stale single-tenant code** — DEMO_INVOICES,
+  DEMO_OPEN_INVOICES, DEMO_BANK_TXNS, DEMO_SCAN_INVOICES, KNOWN_VENDORS
+  all deleted. Fallback paths now return empty + error instead of
+  fake vendor lists.
 
 ### Foundation (earlier)
 - [x] 100K invoices, pre-computed predictions architecture

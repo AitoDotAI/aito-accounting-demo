@@ -185,10 +185,13 @@ def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None 
     mine_rules_for_customer), vendor-equality rules short-circuit the
     Aito call and produce source="rule".
     """
+    from src.date_window import shift_iso
+
     invoice_id = invoice["invoice_id"]
     vendor = invoice["vendor"]
     amount = invoice["amount"]
-    invoice_date = invoice.get("invoice_date")
+    # invoice_date shifted to a rolling window so the demo never goes stale
+    invoice_date = shift_iso(invoice.get("invoice_date"))
     due_days = invoice.get("due_days")
     vat_pct = invoice.get("vat_pct")
 
@@ -314,17 +317,3 @@ def compute_metrics(predictions: list[InvoicePrediction]) -> dict:
     }
 
 
-DEMO_INVOICES = [
-    {"invoice_id": "INV-2841", "vendor": "Kesko Oyj", "amount": 4220.00, "category": "supplies"},
-    {"invoice_id": "INV-2842", "vendor": "Telia Finland", "amount": 890.50, "category": "telecom"},
-    {"invoice_id": "INV-2843", "vendor": "Hartwall Oy", "amount": 12400.00, "category": "food_bev"},
-    {"invoice_id": "INV-2844", "vendor": "Unknown Vendor GmbH", "amount": 3100.00},
-    {"invoice_id": "INV-2845", "vendor": "SOK Corporation", "amount": 7850.00, "category": "supplies"},
-    {"invoice_id": "INV-2846", "vendor": "Fazer Bakeries", "amount": 2340.00, "category": "food_bev"},
-    {"invoice_id": "INV-2847", "vendor": "Verkkokauppa.com", "amount": 1299.00, "category": "it_equipment"},
-    {"invoice_id": "INV-2848", "vendor": "ISS Palvelut", "amount": 5200.00, "category": "facilities"},
-    {"invoice_id": "INV-2849", "vendor": "Elisa Oyj", "amount": 445.00, "category": "telecom"},
-    {"invoice_id": "INV-2850", "vendor": "Kone Oyj", "amount": 18500.00, "category": "maintenance"},
-    {"invoice_id": "INV-2851", "vendor": "Lyreco Oy", "amount": 35.00, "category": "office"},
-    {"invoice_id": "INV-2852", "vendor": "W\u00e4rtsil\u00e4 Oyj", "amount": 28000.00, "category": "maintenance"},
-]

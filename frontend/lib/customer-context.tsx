@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { apiFetch } from "./api";
+import { loadDemoToday } from "./demo-time";
 
 interface Customer {
   customer_id: string;
@@ -33,6 +34,8 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
     apiFetch<{ customers: Customer[] }>("/api/customers")
       .then((d) => setCustomers(d.customers))
       .catch(() => {});
+    // Pre-load the demo's frozen "today" so date math is consistent.
+    loadDemoToday();
   }, []);
 
   const currentCustomer = customers.find((c) => c.customer_id === customerId) || null;

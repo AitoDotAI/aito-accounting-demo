@@ -10,6 +10,7 @@ import WhyTooltip from "@/components/prediction/WhyTooltip";
 import ErrorState from "@/components/shell/ErrorState";
 import TourBadge from "@/components/shell/TourBadge";
 import { useCustomer } from "@/lib/customer-context";
+import { demoToday } from "@/lib/demo-time";
 import { apiFetch, fmtAmount } from "@/lib/api";
 import type { InvoicesResponse, InvoicePrediction, AitoPanelConfig } from "@/lib/types";
 
@@ -72,8 +73,7 @@ function fmtShortDate(d: string | null | undefined): string {
 function dueLabel(inv: InvoicePrediction): { text: string; tone: "red" | "amber" | "neutral" } {
   const due = dueDate(inv);
   if (!due) return { text: "—", tone: "neutral" };
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = demoToday();  // frozen, not new Date()
   const days = Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
   if (days < 0) return { text: `${-days}d overdue`, tone: "red" };
   if (days === 0) return { text: "Due today", tone: "red" };

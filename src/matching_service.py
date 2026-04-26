@@ -42,27 +42,6 @@ class MatchPair:
         }
 
 
-# Demo invoices waiting to be matched
-DEMO_OPEN_INVOICES = [
-    {"invoice_id": "INV-2838", "vendor": "Telia Finland", "amount": 890.50},
-    {"invoice_id": "INV-2835", "vendor": "Kesko Oyj", "amount": 4220.00},
-    {"invoice_id": "INV-2839", "vendor": "SOK Corporation", "amount": 7850.00},
-    {"invoice_id": "INV-2844", "vendor": "Unknown Vendor GmbH", "amount": 3100.00},
-    {"invoice_id": "INV-2840", "vendor": "Fazer Bakeries", "amount": 2340.00},
-    {"invoice_id": "INV-2836", "vendor": "Verkkokauppa.com", "amount": 1299.00},
-]
-
-# Demo bank transactions to match against
-DEMO_BANK_TXNS = [
-    {"txn_id": "TXN-20001", "description": "TELIA FINLAND OY", "amount": 890.50, "bank": "OP Bank"},
-    {"txn_id": "TXN-20002", "description": "KESKO OYJ HELSINKI", "amount": 4220.00, "bank": "OP Bank"},
-    {"txn_id": "TXN-20003", "description": "SOK CORPORATION", "amount": 7852.00, "bank": "Nordea"},
-    {"txn_id": "TXN-20004", "description": "VENDOR GMBH BERLIN", "amount": 3099.00, "bank": "SEPA"},
-    {"txn_id": "TXN-20005", "description": "FAZER GROUP OY", "amount": 2340.00, "bank": "Nordea"},
-    {"txn_id": "TXN-20006", "description": "UNKNOWN TRANSFER", "amount": 550.00, "bank": "OP Bank"},
-]
-
-
 def _amount_match_score(invoice_amount: float, bank_amount: float) -> float:
     """Score how close two amounts are. Returns 1.0 for exact, tapering to 0."""
     if invoice_amount == 0:

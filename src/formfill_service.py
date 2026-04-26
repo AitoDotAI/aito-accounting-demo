@@ -211,17 +211,3 @@ def predict_fields(client: AitoClient, where: dict) -> dict:
     }
 
 
-KNOWN_VENDORS = [
-    "Kesko Oyj",
-    "Telia Finland",
-    "Fazer Bakeries",
-    "SOK Corporation",
-    "Verkkokauppa.com",
-    "Kone Oyj",
-    "ISS Palvelut",
-    "SAP SE",
-    "Microsoft Ireland",
-    "Hartwall Oy",
-    "Elisa Oyj",
-    "W\u00e4rtsil\u00e4 Oyj",
-]

@@ -183,30 +183,6 @@ def _describe_anomaly(
     )
 
 
-# Demo invoices to scan — mix of normal and anomalous
-DEMO_SCAN_INVOICES = [
-    # Normal invoices (should not flag)
-    {"invoice_id": "INV-2901", "vendor": "Telia Finland", "amount": 890.50, "category": "telecom"},
-    {"invoice_id": "INV-2902", "vendor": "Kesko Oyj", "amount": 4220.00, "category": "supplies"},
-    # Anomalous: unknown vendor + high amount
-    {"invoice_id": "INV-2903", "vendor": "Brand New Corp", "amount": 45000.00},
-    # Anomalous: wrong GL code for vendor
-    {"invoice_id": "INV-2904", "vendor": "Kesko Oyj", "amount": 4220.00, "category": "supplies", "gl_code": "5100"},
-    # Anomalous: huge amount for this vendor
-    {"invoice_id": "INV-2905", "vendor": "Fazer Bakeries", "amount": 22400.00, "category": "food_bev"},
-    # Normal
-    {"invoice_id": "INV-2906", "vendor": "SOK Corporation", "amount": 7850.00, "category": "supplies"},
-    # Anomalous: unknown vendor, moderate amount
-    {"invoice_id": "INV-2907", "vendor": "Suspicious GmbH", "amount": 8750.00},
-    # Normal
-    {"invoice_id": "INV-2908", "vendor": "Elisa Oyj", "amount": 445.00, "category": "telecom"},
-    # Anomalous: GL mismatch
-    {"invoice_id": "INV-2909", "vendor": "Telia Finland", "amount": 1200.00, "category": "telecom", "gl_code": "4400"},
-    # Normal
-    {"invoice_id": "INV-2910", "vendor": "Verkkokauppa.com", "amount": 1299.00, "category": "it_equipment"},
-]
-
-
 def scan_all(client: AitoClient, customer_id: str | None = None) -> dict:
     """Scan invoices for anomalies for a customer."""
     # Fetch a sample of invoices for this customer
@@ -237,6 +213,6 @@ def scan_all(client: AitoClient, customer_id: str | None = None) -> dict:
             "high": high,
             "medium": medium,
             "low": low,
-            "scanned": len(DEMO_SCAN_INVOICES),
+            "scanned": len(scan_invoices),
         },
     }

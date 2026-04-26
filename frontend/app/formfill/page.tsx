@@ -6,6 +6,7 @@ import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
 import PredictedField from "@/components/prediction/PredictedField";
 import { useCustomer } from "@/lib/customer-context";
+import { demoToday } from "@/lib/demo-time";
 import { apiFetch } from "@/lib/api";
 import type { AitoPanelConfig } from "@/lib/types";
 
@@ -398,7 +399,7 @@ export default function FormFillPage() {
                   <input
                     className="field-input"
                     type="date"
-                    value={userValues.invoice_date || new Date().toISOString().slice(0, 10)}
+                    value={userValues.invoice_date || demoToday().toISOString().slice(0, 10)}
                     onChange={(e) => handleChange("invoice_date", e.target.value)}
                   />
                 </div>
