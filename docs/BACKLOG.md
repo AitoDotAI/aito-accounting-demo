@@ -38,7 +38,6 @@ Story sections below)
 - [ ] **#13 Two-layer cache write race** — per-key lock around compute+set
 - [ ] **#14 Booktest coverage**: drill-down, template, formfill-submit,
   prediction_log endpoints
-- [ ] **#15 Update README and demo-script.md** for multi-tenant flow
 
 ### Story / messaging (towards public release)
 
@@ -48,9 +47,6 @@ Story sections below)
   schema + run-your-own-query
 - [ ] **#18 Lift number tooltip**: explain "lift 38× = 38× more often
   than random; >5× is strong"
-- [ ] **Use-case page** in aito-demo style: a markdown file at
-  `docs/use-cases/accounting-multitenant.md` matching the existing
-  numbered-use-case format, ready to drop into the public library
 
 ---
 
@@ -114,6 +110,17 @@ Story sections below)
   DEMO_OPEN_INVOICES, DEMO_BANK_TXNS, DEMO_SCAN_INVOICES, KNOWN_VENDORS
   all deleted. Fallback paths now return empty + error instead of
   fake vendor lists.
+
+### Documentation
+- [x] **#15 README + demo-script** rewritten for the multi-tenant
+  story. README now leads with the multi-tenant pitch, has the 5-step
+  quick-start including PRH fetch, and a per-view table tying each
+  view to its Aito call.
+- [x] **Public use-case page** — `docs/use-cases/multi-tenant-accounting.md`
+  matches the format of aito-demo's existing 11 use-case pages (overview,
+  schema, code samples, when-to-use, related references). Ready to drop
+  into the public library as the multi-tenant counterpart to the
+  single-tenant invoice-processing reference.
 
 ### Foundation (earlier)
 - [x] 100K invoices, pre-computed predictions architecture
