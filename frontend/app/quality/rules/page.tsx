@@ -12,8 +12,8 @@ import type { AitoPanelConfig } from "@/lib/types";
 
 const PANEL: AitoPanelConfig = {
   operation: "_predict (replay)",
-  stats: [{ value: "--", label: "Rules" }, { value: "--", label: "Avg precision" }, { value: "Indexed", label: "Model" }, { value: "100K", label: "Records" }],
-  description: "Rule precision measured by replaying each rule against the full 100K invoice dataset and comparing to actual GL codes.",
+  stats: [{ value: "--", label: "Rules" }, { value: "--", label: "Avg precision" }, { value: "Indexed", label: "Model" }, { value: "$invoices", label: "Records" }],
+  description: "Rule precision measured by replaying each rule against this customer's invoices and comparing the predicted GL code to the actual one.",
   query: JSON.stringify({ from: "invoices", where: { vendor: "Telia Finland" }, predict: "gl_code" }, null, 2),
   links: [{ label: "Rule evaluation docs", url: "https://aito.ai/docs" }],
 };
@@ -73,7 +73,7 @@ function Sparkline({ values, width = 80, height = 22 }: { values: number[]; widt
 }
 
 export default function RulePerformancePage() {
-  const { customerId } = useCustomer();
+  const { customerId, currentCustomer } = useCustomer();
   const [data, setData] = useState<RulesData | null>(null);
   const [drift, setDrift] = useState<DriftData | null>(null);
   const [live, setLive] = useState(false);
@@ -107,7 +107,13 @@ export default function RulePerformancePage() {
         <TopBar
           breadcrumb="Quality"
           title="Rule Performance"
-          subtitle={data ? `${rules.length} rules evaluated against 100K invoices` : error ? "Backend not reachable" : "Loading..."}
+          subtitle={
+            data
+              ? `${rules.length} rules · ${currentCustomer?.invoice_count?.toLocaleString() ?? ""} invoices replayed`
+              : error
+                ? "Backend not reachable"
+                : "Loading..."
+          }
           live={live}
         />
         <div className="content">
