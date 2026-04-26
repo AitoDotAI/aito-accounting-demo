@@ -149,43 +149,42 @@ class InvoicePrediction:
         }
 
 
-# ── Simple rules engine ────────────────────────────────────────────
-
-RULES = [
-    {
-        "name": "Telia \u2192 Telecom",
-        "match": lambda inv: inv["vendor"] == "Telia Finland",
-        "gl_code": "6200",
-        "approver": "Mikael H.",
-    },
-    {
-        "name": "Elisa \u2192 Telecom",
-        "match": lambda inv: inv["vendor"] == "Elisa Oyj",
-        "gl_code": "6200",
-        "approver": "Mikael H.",
-    },
-    {
-        "name": "Small office purchase",
-        "match": lambda inv: inv.get("category") == "office" and inv["amount"] < 50,
-        "gl_code": "4500",
-        "approver": "Mikael H.",
-    },
-]
+# ── Rules engine ─────────────────────────────────────────────────
+#
+# Rules are mined per-customer from _relate patterns rather than hard-coded.
+# A rule is {name, vendor, gl_code, approver} where historical support is
+# >= 0.95 with at least 5 matching invoices. See mine_rules_for_customer()
+# in quality_service.py.
+#
+# The legacy global RULES list is intentionally empty so any caller that
+# still uses check_rules(invoice) without a rules argument gets "no rule
+# applied" \u2014 which routes through Aito _predict, the safe fallback.
+RULES: list[dict] = []
 
 
-def check_rules(invoice: dict) -> tuple[str, str, str] | None:
+def check_rules(invoice: dict, rules: list[dict] | None = None) -> tuple[str, str, str] | None:
     """Check if any rule matches the invoice.
 
+    Each rule is {name, vendor, gl_code, approver}. Match by vendor equality.
     Returns (gl_code, approver, rule_name) or None.
+
+    If rules is None, falls back to the (empty) global RULES list.
     """
-    for rule in RULES:
-        if rule["match"](invoice):
+    rule_list = rules if rules is not None else RULES
+    vendor = invoice.get("vendor")
+    for rule in rule_list:
+        if rule.get("vendor") and rule["vendor"] == vendor:
             return rule["gl_code"], rule["approver"], rule["name"]
     return None
 
 
-def predict_invoice(client: AitoClient, invoice: dict) -> InvoicePrediction:
-    """Predict GL code and approver for a single invoice."""
+def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None = None) -> InvoicePrediction:
+    """Predict GL code and approver for a single invoice.
+
+    If rules are provided (typically the per-customer set from
+    mine_rules_for_customer), vendor-equality rules short-circuit the
+    Aito call and produce source="rule".
+    """
     invoice_id = invoice["invoice_id"]
     vendor = invoice["vendor"]
     amount = invoice["amount"]
@@ -193,7 +192,7 @@ def predict_invoice(client: AitoClient, invoice: dict) -> InvoicePrediction:
     due_days = invoice.get("due_days")
     vat_pct = invoice.get("vat_pct")
 
-    rule_match = check_rules(invoice)
+    rule_match = check_rules(invoice, rules=rules)
     if rule_match:
         gl_code, approver, rule_name = rule_match
         rule_why = [{"field": "rule", "value": rule_name, "lift": 1.0}]
@@ -275,11 +274,20 @@ def predict_invoice(client: AitoClient, invoice: dict) -> InvoicePrediction:
     )
 
 
-def predict_batch(client: AitoClient, invoices: list[dict], customer_id: str | None = None) -> list[InvoicePrediction]:
-    """Predict GL code and approver for a batch of invoices."""
+def predict_batch(
+    client: AitoClient,
+    invoices: list[dict],
+    customer_id: str | None = None,
+    rules: list[dict] | None = None,
+) -> list[InvoicePrediction]:
+    """Predict GL code and approver for a batch of invoices.
+
+    `rules` is the per-customer mined rules set; pass-through to
+    predict_invoice so high-precision patterns short-circuit Aito calls.
+    """
     if customer_id:
         invoices = [{**inv, "customer_id": customer_id} for inv in invoices]
-    return [predict_invoice(client, inv) for inv in invoices]
+    return [predict_invoice(client, inv, rules=rules) for inv in invoices]
 
 
 def compute_metrics(predictions: list[InvoicePrediction]) -> dict:

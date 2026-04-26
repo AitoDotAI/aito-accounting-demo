@@ -25,25 +25,28 @@ TEST_CONFIG = Config(
 
 
 class TestCheckRules:
-    def test_telia_matches_telecom_rule(self):
-        result = check_rules({"vendor": "Telia Finland", "amount": 890})
+    """Rules are now passed in per-call (mined per-customer), not global."""
+
+    SAMPLE_RULES = [
+        {"name": "Telia → Telecom", "vendor": "Telia Finland", "gl_code": "6200", "approver": "Mikael H."},
+        {"name": "Elisa → Telecom", "vendor": "Elisa Oyj", "gl_code": "6200", "approver": "Mikael H."},
+    ]
+
+    def test_vendor_match_returns_rule(self):
+        result = check_rules({"vendor": "Telia Finland", "amount": 890}, rules=self.SAMPLE_RULES)
         assert result[:2] == ("6200", "Mikael H.")
 
-    def test_elisa_matches_telecom_rule(self):
-        result = check_rules({"vendor": "Elisa Oyj", "amount": 500})
+    def test_second_rule_matches(self):
+        result = check_rules({"vendor": "Elisa Oyj", "amount": 500}, rules=self.SAMPLE_RULES)
         assert result[:2] == ("6200", "Mikael H.")
-
-    def test_small_office_purchase_matches_rule(self):
-        result = check_rules({"vendor": "Lyreco Oy", "amount": 35, "category": "office"})
-        assert result[:2] == ("4500", "Mikael H.")
 
     def test_unknown_vendor_returns_none(self):
-        result = check_rules({"vendor": "Unknown GmbH", "amount": 3000})
+        result = check_rules({"vendor": "Unknown GmbH", "amount": 3000}, rules=self.SAMPLE_RULES)
         assert result is None
 
-    def test_known_vendor_non_rule_returns_none(self):
-        """Kesko Oyj has no rule — should fall through to Aito."""
-        result = check_rules({"vendor": "Kesko Oyj", "amount": 4220})
+    def test_no_rules_provided_returns_none(self):
+        """Default global RULES is empty — nothing matches."""
+        result = check_rules({"vendor": "Telia Finland", "amount": 890})
         assert result is None
 
 
@@ -52,15 +55,18 @@ class TestCheckRules:
 
 class TestPredictInvoice:
     def test_rule_match_returns_high_confidence_rule_source(self, httpx_mock):
-        """Telia should match a rule — no Aito call needed."""
+        """When a per-customer rule matches the vendor, no Aito call is made."""
         client = AitoClient(TEST_CONFIG)
+        rules = [
+            {"name": "Telia → Telecom", "vendor": "Telia Finland", "gl_code": "6200", "approver": "Mikael H."},
+        ]
 
         result = predict_invoice(client, {
             "invoice_id": "INV-001",
             "vendor": "Telia Finland",
             "amount": 890.50,
             "category": "telecom",
-        })
+        }, rules=rules)
 
         assert result.source == "rule"
         assert result.gl_code == "6200"

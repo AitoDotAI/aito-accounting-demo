@@ -53,15 +53,20 @@ def _warm_top_customers():
             return
 
         from src.invoice_service import predict_invoice, compute_metrics
+        from src.quality_service import mine_rules_for_customer
 
         def warm_one(cust, deep=False):
             cid = cust["customer_id"]
             try:
+                # Mine per-customer rules once and cache for downstream use
+                mined = mine_rules_for_customer(aito, cid)
+                cache.set(f"mined_rules:{cid}", mined, ttl=1800)
+
                 # Fast: invoices + quality (always)
                 result = aito.search("invoices", {"customer_id": cid}, limit=20)
                 with ThreadPoolExecutor(max_workers=8) as pool:
                     preds = list(pool.map(
-                        lambda inv: predict_invoice(aito, {**inv, "customer_id": cid}),
+                        lambda inv: predict_invoice(aito, {**inv, "customer_id": cid}, rules=mined),
                         result.get("hits", []),
                     ))
                 data = {"invoices": [p.to_dict() for p in preds], "metrics": compute_metrics(preds)}
@@ -173,12 +178,21 @@ def invoices_pending(customer_id: str = Query(...), page: int = 1, per_page: int
         except AitoError:
             return {"invoices": [], "metrics": {}, "error": "Could not fetch invoices"}
 
+        # Mine the customer's rules once and cache. Rules short-circuit
+        # high-precision patterns so we hit Aito only for novel invoices.
+        rules_key = f"mined_rules:{customer_id}"
+        rules = cache.get(rules_key)
+        if rules is None:
+            from src.quality_service import mine_rules_for_customer
+            rules = mine_rules_for_customer(aito, customer_id)
+            cache.set(rules_key, rules, ttl=1800)
+
         # Parallelize predictions for faster response
         from concurrent.futures import ThreadPoolExecutor
         from src.invoice_service import predict_invoice
         with ThreadPoolExecutor(max_workers=8) as pool:
             predictions = list(pool.map(
-                lambda inv: predict_invoice(aito, {**inv, "customer_id": customer_id}),
+                lambda inv: predict_invoice(aito, {**inv, "customer_id": customer_id}, rules=rules),
                 sample_invoices,
             ))
         metrics = compute_metrics(predictions)

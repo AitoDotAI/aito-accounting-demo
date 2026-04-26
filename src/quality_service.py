@@ -170,35 +170,130 @@ def compute_prediction_quality(client: AitoClient, customer_id: str | None = Non
     }
 
 
+def mine_rules_for_customer(client: AitoClient, customer_id: str, top_n: int = 8) -> list[dict]:
+    """Mine deterministic vendor->GL rules for a customer using _relate.
+
+    Each returned dict mirrors the shape of the legacy static RULES entries
+    so callers (predict_invoice, compute_rule_performance) can use the same
+    interface. We only return patterns that are strong enough to act as
+    rules: support_match >= 5 and support_ratio >= 0.95.
+
+    Approver is resolved as the most-common approver among the matched
+    invoices for each pattern.
+    """
+    from collections import Counter
+
+    where_filter = {"customer_id": customer_id}
+    try:
+        # Get top vendors for this customer
+        sample = client.search("invoices", where_filter, limit=300)
+    except AitoError:
+        return []
+
+    vendors = [h["vendor"] for h in sample.get("hits", []) if h.get("vendor")]
+    if not vendors:
+        return []
+    vendor_counts = Counter(vendors)
+    candidate_vendors = [v for v, _ in vendor_counts.most_common(20)]
+
+    rules = []
+    for vendor in candidate_vendors:
+        try:
+            relate_result = client.relate(
+                "invoices",
+                {"customer_id": customer_id, "vendor": vendor},
+                "gl_code",
+            )
+        except AitoError:
+            continue
+
+        hits = relate_result.get("hits", [])
+        if not hits:
+            continue
+
+        # Top relate hit gives the most-likely GL for this vendor
+        top = hits[0]
+        target = top.get("related", {}).get("gl_code", {}).get("$has")
+        fs = top.get("fs", {})
+        f_match = int(fs.get("fOnCondition", 0))
+        f_total = int(fs.get("fCondition", 0))
+        if not target or f_total == 0:
+            continue
+
+        support_ratio = f_match / f_total
+        if f_match < 5 or support_ratio < 0.95:
+            continue
+
+        # Find the most-common approver for this vendor's invoices
+        try:
+            inv_for_vendor = client.search(
+                "invoices",
+                {"customer_id": customer_id, "vendor": vendor, "gl_code": target},
+                limit=20,
+            )
+        except AitoError:
+            continue
+        approvers = Counter(
+            h.get("approver") for h in inv_for_vendor.get("hits", []) if h.get("approver")
+        )
+        if not approvers:
+            continue
+        approver = approvers.most_common(1)[0][0]
+
+        rules.append({
+            "name": f"{vendor} → GL {target}",
+            "vendor": vendor,
+            "gl_code": target,
+            "approver": approver,
+            "support_match": f_match,
+            "support_total": f_total,
+            "support_ratio": round(support_ratio, 3),
+            "lift": round(top.get("lift", 0), 1),
+        })
+
+        if len(rules) >= top_n:
+            break
+
+    return rules
+
+
 def compute_rule_performance(client: AitoClient, customer_id: str | None = None) -> dict:
-    """Replay each static rule against the customer's invoices and report
-    precision (correct match rate), coverage, owner, and last review."""
+    """Mine deterministic rules from _relate, then replay them on the
+    customer's invoices and report precision, coverage, owner, last review."""
     import hashlib
     from datetime import datetime, timedelta
-    from src.invoice_service import RULES, GL_LABELS
+    from src.invoice_service import GL_LABELS
 
-    where_filter = {"customer_id": customer_id} if customer_id else {}
+    if not customer_id:
+        return {"rules": []}
+
+    where_filter = {"customer_id": customer_id}
     try:
         sample = client.search("invoices", where_filter, limit=300)
         invoices = sample.get("hits", [])
     except AitoError:
         invoices = []
 
-    # Find a likely "owner" — the most active corrector for this customer's overrides
+    # Owner = most-active corrector for this customer's overrides
     owner = "Unassigned"
     try:
         ovr = client.search("overrides", where_filter, limit=50)
         from collections import Counter
-        correctors = Counter(h.get("corrected_by") for h in ovr.get("hits", []) if h.get("corrected_by"))
+        correctors = Counter(
+            h.get("corrected_by") for h in ovr.get("hits", []) if h.get("corrected_by")
+        )
         if correctors:
             owner = correctors.most_common(1)[0][0]
     except AitoError:
         pass
 
+    mined = mine_rules_for_customer(client, customer_id, top_n=10)
+
     today = datetime.utcnow().date()
     rules_data = []
-    for rule in RULES:
-        matches = [inv for inv in invoices if rule["match"](inv)]
+    for rule in mined:
+        # Replay rule against the sample
+        matches = [inv for inv in invoices if inv.get("vendor") == rule["vendor"]]
         n_match = len(matches)
         if n_match == 0:
             continue
@@ -207,8 +302,6 @@ def compute_rule_performance(client: AitoClient, customer_id: str | None = None)
         precision = correct_gl / n_match
         coverage_pct = round(n_match / max(1, len(invoices)) * 100, 1)
 
-        # Stable per-rule "last reviewed" — hash of rule name to a date in the
-        # last 90 days so the demo shows realistic audit data
         seed = int(hashlib.md5(rule["name"].encode()).hexdigest(), 16)
         days_ago = seed % 90
         last_reviewed = (today - timedelta(days=days_ago)).isoformat()
@@ -223,6 +316,7 @@ def compute_rule_performance(client: AitoClient, customer_id: str | None = None)
             "disagreeing": disagreeing,
             "owner": owner,
             "last_reviewed": last_reviewed,
+            "lift": rule["lift"],
             "trend": "stable" if precision >= 0.95 else ("drifting" if precision >= 0.80 else "degrading"),
             "status": "Active" if precision >= 0.95 else ("Drifting" if precision >= 0.80 else "Stale"),
         })
