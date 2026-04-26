@@ -357,6 +357,49 @@ def quality_evaluations(customer_id: str = Query(...)):
     return result
 
 
+@app.get("/api/quality/domains")
+def quality_domains():
+    """Catalog of evaluable domains, prediction targets, and input fields.
+
+    Drives the Prediction Quality page configurator (mirroring
+    aito-demo's EvaluationPage).
+    """
+    from src.evaluation_service import get_domains_catalog
+    return get_domains_catalog()
+
+
+@app.get("/api/quality/evaluate")
+def quality_evaluate(
+    customer_id: str = Query(...),
+    domain: str = Query(...),
+    predict: str = Query(...),
+    input_fields: str = Query(...),
+    limit: int = 100,
+):
+    """Run Aito _evaluate for one (domain, predict, inputs) combo.
+
+    input_fields is a comma-separated list of feature names used in
+    the where clause via $get bindings. Result has KPIs + per-case
+    table + the actual query (so the frontend can display it).
+
+    Cached 10 min per (customer, domain, predict, inputs, limit).
+    """
+    fields = sorted([f.strip() for f in input_fields.split(",") if f.strip()])
+    cache_key = f"eval:{customer_id}:{domain}:{predict}:{','.join(fields)}:{limit}"
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+    with cache.compute_lock(cache_key):
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
+        from src.evaluation_service import run_evaluation
+        result = run_evaluation(aito, customer_id, domain, predict, fields, limit=limit)
+        if "error" not in result:
+            cache.set(cache_key, result, ttl=600)
+        return result
+
+
 @app.get("/api/quality/predictions")
 def quality_predictions(customer_id: str = Query(...)):
     """Real prediction accuracy via Aito _evaluate, with rules-only baseline.

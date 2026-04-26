@@ -187,6 +187,26 @@ the same complaint would surface in real conversations.
 - [x] **API endpoints** — `GET /api/help/search?customer_id&page&q`
   (ranked results) and `POST /api/help/impression` (log click).
 
+### Quality / Predictions redesign (mirrors aito-demo EvaluationPage)
+- [x] **Interactive evaluation page** — `/quality/predictions` rebuilt
+  to match the aito-demo EvaluationPage UX:
+  - Domain selector pills (Invoice Processing / Payment Matching /
+    Help Recommendations)
+  - Prediction target dropdown (per-domain list of evaluable fields)
+  - Test set size slider (20–300, capped to keep latency bounded)
+  - Input field checkboxes — each becomes a $get binding in the
+    where clause
+  - KPIs: accuracy / mean rank / geomP / gain / test+train samples
+    / correct count
+  - Per-case table with green/red status bar, actual vs predicted,
+    confidence — driven by `_evaluate select: [..., "cases"]`
+  Backend: `src/evaluation_service.py` defines the domain catalog
+  (3 tables × 2-6 predict targets × 3-7 input features each) and
+  runs the parametrised _evaluate. Two endpoints:
+  `GET /api/quality/domains` returns the catalog;
+  `GET /api/quality/evaluate?...` runs evaluation. Cached 10 min
+  per (customer, domain, predict, inputs, limit) with compute_lock.
+
 ### r/accounting feedback fixes (round 3 — drift)
 - [x] **#26 Drift over time** — Quality > Rules now shows:
   - 12-week per-rule precision sparkline (color-coded: red >5pp drop,
