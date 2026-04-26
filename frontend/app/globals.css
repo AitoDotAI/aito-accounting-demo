@@ -55,9 +55,12 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 
 /* METRICS */
 .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-.metric{background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px 18px;position:relative;overflow:hidden}
+.metric{background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px 18px;position:relative;overflow:hidden;transition:border-color .15s,box-shadow .15s}
 .metric::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--gold-mid);opacity:.3}
 .metric.highlight::before{opacity:1}
+.metric[style*="cursor: pointer"]:hover{border-color:var(--gold-mid)}
+.metric.metric-active{border-color:var(--gold-dark);box-shadow:0 0 0 2px rgba(216,188,112,.3)}
+.metric.metric-active::before{opacity:1;background:var(--gold-dark)}
 .metric-label{font-size:10.5px;color:var(--text3);font-weight:500;text-transform:uppercase;letter-spacing:.6px}
 .metric-value{font-size:24px;font-weight:600;color:var(--text);margin-top:5px;line-height:1;font-family:'IBM Plex Mono',monospace}
 .metric-sub{font-size:11px;margin-top:5px}

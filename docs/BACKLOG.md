@@ -21,20 +21,12 @@ front-page library and reuse compatible terminology, branding, and CTA flow.
 
 ## Active
 
-- [ ] **#1 Mine rules from data** — replace synthetic `RULES` array with
-  top-N high-precision `_relate` patterns per customer. Quality/Rules
-  currently empty because hardcoded rules are for old vendors.
+- [ ] **#2 Template-first Form Fill** — show "Recently used templates"
+  list before any input; users start from a template, not blank.
 
 ## Todo (priority order)
 
 ### Big wins
-
-- [ ] **#3 Searchable customer picker** — 256 customers in a dropdown
-  is unusable. Group by tier, add search.
-- [ ] **#5 Touchless drill-down** — click "97% touchless rate" on
-  Invoices to filter to the 3% review-needed, with reasons.
-- [ ] **#2 Template-first Form Fill** — show "Recently used templates"
-  list before any input; users start from a template, not blank.
 - [ ] **#4 Data-flow tour** — toggle on each page that overlays which
   Aito calls produce which UI elements. Builds evaluator trust.
 
@@ -97,6 +89,16 @@ front-page library and reuse compatible terminology, branding, and CTA flow.
 - [x] Per-field confidence thresholds
 - [x] Submit-time logging to `prediction_log` table
 - [x] Anomaly clustering by category
+
+### Big wins
+- [x] **#1 Mine rules from data** — per-customer rules from `_relate`
+  with support_ratio ≥ 0.95; replaces stale hardcoded RULES list
+- [x] **#3 Searchable customer picker** — dropdown grouped by tier
+  (enterprise / large / midmarket / small) with search by id, name,
+  or tier; current selection highlighted; warm/cold dot preserved
+- [x] **#5 Touchless drill-down** — Touchless rate and Review needed
+  metric cards are clickable; filter invoice table; active filter
+  shown in highlighted banner with "Clear filter ×" button
 
 ### Foundation (earlier)
 - [x] 100K invoices, pre-computed predictions architecture

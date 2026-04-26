@@ -87,11 +87,21 @@ export default function InvoicesPage() {
   }, [customerId]);
 
   const metrics = data?.metrics;
-  // Sort by due date ascending (overdue first), missing dates at end
-  const invoices = (data?.invoices ?? []).slice().sort((a, b) => {
+  type Filter = "all" | "touchless" | "review" | "rule" | "aito";
+  const [filter, setFilter] = useState<Filter>("all");
+  const allInvoices = (data?.invoices ?? []).slice().sort((a, b) => {
     const da = dueDate(a)?.getTime() ?? Infinity;
     const db = dueDate(b)?.getTime() ?? Infinity;
     return da - db;
+  });
+  const invoices = allInvoices.filter((inv) => {
+    switch (filter) {
+      case "touchless": return inv.confidence >= 0.85;
+      case "review":    return inv.source === "review" || inv.confidence < 0.85;
+      case "rule":      return inv.source === "rule";
+      case "aito":      return inv.source === "aito";
+      default: return true;
+    }
   });
 
   return (
@@ -106,9 +116,14 @@ export default function InvoicesPage() {
         />
         <div className="content">
           <div className="metrics">
-            <div className="metric highlight">
+            <div
+              className={`metric highlight ${filter === "touchless" ? "metric-active" : ""}`}
+              onClick={() => setFilter(filter === "touchless" ? "all" : "touchless")}
+              style={{ cursor: "pointer" }}
+              title="Click to filter to touchless invoices"
+            >
               <div className="metric-label">Touchless rate</div>
-              <div className="metric-value">{metrics ? `${touchlessPct(invoices)}%` : "--"}</div>
+              <div className="metric-value">{metrics ? `${touchlessPct(allInvoices)}%` : "--"}</div>
               <div className="metric-sub metric-neutral">
                 Predicted at &ge; 0.85 confidence
               </div>
@@ -124,7 +139,12 @@ export default function InvoicesPage() {
               <div className="metric-label">Pending</div>
               <div className="metric-value">{metrics?.total ?? "--"}</div>
             </div>
-            <div className="metric">
+            <div
+              className={`metric ${filter === "review" ? "metric-active" : ""}`}
+              onClick={() => setFilter(filter === "review" ? "all" : "review")}
+              style={{ cursor: "pointer" }}
+              title="Click to filter to invoices needing review"
+            >
               <div className="metric-label">Review needed</div>
               <div className="metric-value" style={{ color: metrics?.review_count ? "var(--amber)" : undefined }}>{metrics?.review_count ?? "--"}</div>
               <div className="metric-sub metric-neutral">
@@ -132,6 +152,23 @@ export default function InvoicesPage() {
               </div>
             </div>
           </div>
+          {filter !== "all" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, padding: "6px 12px", background: "var(--gold-light)", border: "1px solid #d8bc70", borderRadius: 6, fontSize: 12 }}>
+              <span style={{ color: "var(--gold-dark)", fontWeight: 600 }}>Filtered:</span>
+              <span style={{ color: "var(--text2)" }}>
+                {filter === "touchless" && `Showing ${invoices.length} touchless invoices (≥0.85 confidence)`}
+                {filter === "review" && `Showing ${invoices.length} invoices needing review (<0.85 confidence)`}
+                {filter === "rule" && `Showing ${invoices.length} rule-routed invoices`}
+                {filter === "aito" && `Showing ${invoices.length} Aito-predicted invoices`}
+              </span>
+              <button
+                onClick={() => setFilter("all")}
+                style={{ marginLeft: "auto", background: "transparent", border: "none", color: "var(--gold-dark)", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
+              >
+                Clear filter ×
+              </button>
+            </div>
+          )}
 
           <div className="card">
             <div className="card-header">

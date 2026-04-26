@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCustomer } from "@/lib/customer-context";
 import { apiFetch } from "@/lib/api";
 
@@ -9,9 +9,23 @@ interface CacheStatus {
   quality_warm: boolean;
 }
 
+interface Customer {
+  customer_id: string;
+  name: string;
+  size_tier: string;
+  invoice_count: number;
+  employee_count: number;
+}
+
+const TIER_ORDER = ["enterprise", "large", "midmarket", "small"] as const;
+
 export default function CustomerSelector() {
   const { customerId, setCustomerId, customers, currentCustomer } = useCustomer();
   const [warm, setWarm] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const ref = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -25,21 +39,52 @@ export default function CustomerSelector() {
     return () => { cancelled = true; clearInterval(interval); };
   }, [customerId]);
 
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
+
+  // Group customers by tier; filter by query
+  const filtered = customers.filter((c) => {
+    if (!query) return true;
+    const q = query.toLowerCase();
+    return (
+      c.customer_id.toLowerCase().includes(q) ||
+      c.name.toLowerCase().includes(q) ||
+      c.size_tier.toLowerCase().includes(q)
+    );
+  });
+  const grouped: Record<string, Customer[]> = {};
+  for (const c of filtered) {
+    (grouped[c.size_tier] ||= []).push(c);
+  }
+
+  const select = (id: string) => {
+    setCustomerId(id);
+    setOpen(false);
+    setQuery("");
+  };
+
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <div ref={ref} style={{ position: "relative", display: "flex", alignItems: "center", gap: 8 }}>
       <span
         title={warm ? "Cached — instant load" : "Cold — first load may take 10-20s"}
         style={{
-          width: 8,
-          height: 8,
-          borderRadius: "50%",
+          width: 8, height: 8, borderRadius: "50%",
           background: warm ? "#6ab87a" : "#d49b4a",
           boxShadow: warm ? "0 0 4px #6ab87a" : "0 0 4px #d49b4a",
         }}
       />
-      <select
-        value={customerId}
-        onChange={(e) => setCustomerId(e.target.value)}
+      <button
+        onClick={() => setOpen(!open)}
         style={{
           padding: "5px 10px",
           borderRadius: 6,
@@ -49,19 +94,99 @@ export default function CustomerSelector() {
           background: "var(--surface)",
           color: "var(--text)",
           cursor: "pointer",
-          minWidth: 180,
+          minWidth: 220,
+          textAlign: "left",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 6,
         }}
       >
-        {customers.map((c) => (
-          <option key={c.customer_id} value={c.customer_id}>
-            {c.customer_id} — {c.size_tier} ({c.invoice_count.toLocaleString()})
-          </option>
-        ))}
-      </select>
-      {currentCustomer && (
-        <span style={{ fontSize: 11, color: "var(--text3)" }}>
-          {currentCustomer.employee_count} employees
+        <span>
+          {currentCustomer
+            ? `${currentCustomer.customer_id} · ${currentCustomer.size_tier} (${currentCustomer.invoice_count.toLocaleString()})`
+            : customerId}
         </span>
+        <span style={{ color: "var(--text3)", fontSize: 10 }}>{open ? "▴" : "▾"}</span>
+      </button>
+
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "100%",
+            right: 0,
+            marginTop: 4,
+            width: 320,
+            maxHeight: 420,
+            overflowY: "auto",
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
+            zIndex: 100,
+          }}
+        >
+          <div style={{ padding: 8, borderBottom: "1px solid var(--border2)", position: "sticky", top: 0, background: "var(--surface)" }}>
+            <input
+              ref={inputRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by id, tier, name..."
+              style={{
+                width: "100%",
+                padding: "6px 10px",
+                fontSize: 12,
+                border: "1px solid var(--border)",
+                borderRadius: 4,
+                background: "var(--surface2)",
+                color: "var(--text)",
+                outline: "none",
+              }}
+            />
+          </div>
+          {filtered.length === 0 && (
+            <div style={{ padding: 16, fontSize: 12, color: "var(--text3)", textAlign: "center" }}>No customers match "{query}"</div>
+          )}
+          {TIER_ORDER.map((tier) => {
+            const list = grouped[tier];
+            if (!list || list.length === 0) return null;
+            return (
+              <div key={tier}>
+                <div style={{ padding: "6px 10px", fontSize: 10, fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", background: "var(--surface2)", borderBottom: "1px solid var(--border2)" }}>
+                  {tier} · {list.length}
+                </div>
+                {list.map((c) => (
+                  <div
+                    key={c.customer_id}
+                    onClick={() => select(c.customer_id)}
+                    style={{
+                      padding: "8px 10px",
+                      fontSize: 12,
+                      cursor: "pointer",
+                      background: c.customer_id === customerId ? "var(--gold-light)" : "transparent",
+                      borderBottom: "1px solid var(--border2)",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                    onMouseEnter={(e) => { if (c.customer_id !== customerId) (e.currentTarget as HTMLDivElement).style.background = "var(--surface2)"; }}
+                    onMouseLeave={(e) => { if (c.customer_id !== customerId) (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
+                  >
+                    <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                      <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: "var(--gold-dark)" }}>{c.customer_id}</span>
+                      <span style={{ fontSize: 10, color: "var(--text3)" }}>{c.employee_count} employees</span>
+                    </div>
+                    <span style={{ fontSize: 11, color: "var(--text2)", whiteSpace: "nowrap" }}>
+                      {c.invoice_count.toLocaleString()} inv
+                    </span>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
