@@ -3,7 +3,7 @@
   "snapshots": {
     "httpx": {
       "hash": "sha256:c61cbd78635857efc262cc4a061880cfe1fcf537e7aa03744b975bb502a8bc45",
-      "state": "updated",
+      "state": "intact",
       "details": {
         "count": 6,
         "urls": [
@@ -23,12 +23,12 @@
           "56c00f386356e5c24fee149a03aba526836a4b4a"
         ]
       },
-      "timestamp": 1777105999.1239424
+      "timestamp": 1777202957.922166
     }
   },
   "result": {
     "success": "ok",
-    "snapshotting": "updated"
+    "snapshotting": "intact"
   },
-  "timestamp": 1777105999.1242507
+  "timestamp": 1777202957.9223557
 }

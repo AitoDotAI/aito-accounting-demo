@@ -1,0 +1,26 @@
+{
+  "test_id": "book/test_06_template_and_log.py::test_predict_template_for_recurring_vendor",
+  "snapshots": {
+    "httpx": {
+      "hash": "sha256:ad6aaba6deac9c4568d1cd8ed2f5e32c52b03d4f59a6839d81c7de07e1f6bdb2",
+      "state": "intact",
+      "details": {
+        "count": 2,
+        "urls": [
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_search",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_search"
+        ],
+        "hashes": [
+          "29f971a7cb63e87b93ec49d894a4dcd90c84dc7f",
+          "9cd0a27c3e6ac4be08c2ef98b4170bb7ab75021c"
+        ]
+      },
+      "timestamp": 1777202958.3292325
+    }
+  },
+  "result": {
+    "success": "ok",
+    "snapshotting": "intact"
+  },
+  "timestamp": 1777202958.3293839
+}

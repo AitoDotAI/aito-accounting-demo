@@ -6,6 +6,7 @@ import { useCustomer } from "@/lib/customer-context";
 import ErrorState from "@/components/shell/ErrorState";
 import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
+import LiftHint from "@/components/prediction/LiftHint";
 import { apiFetch } from "@/lib/api";
 import type { AitoPanelConfig } from "@/lib/types";
 
@@ -65,7 +66,7 @@ export default function OverridesPage() {
                 Reviewers corrected <strong>{topPattern.field}</strong> to{" "}
                 <strong>{topPattern.corrected_to}</strong> in{" "}
                 <strong>{topPattern.count}</strong> recent invoices
-                {topPattern.lift > 1 && <span style={{ color: "var(--text3)" }}> (lift {topPattern.lift}× over baseline)</span>}.
+                {topPattern.lift > 1 && <> (<LiftHint value={topPattern.lift} /> over baseline)</>}.
                 This is a rule candidate — promote it once support stabilises.
               </div>
             </div>
@@ -85,7 +86,7 @@ export default function OverridesPage() {
                   <div key={i} className="rule-row" style={{ padding: "10px 0" }}>
                     <div style={{ flex: 1 }}>
                       <div className="rule-pattern">{p.field} &rarr; {p.corrected_to}</div>
-                      <div className="rule-arrow" style={{ marginTop: 3, fontSize: 11, color: "var(--text3)" }}>{p.count} overrides &middot; lift {p.lift}×</div>
+                      <div className="rule-arrow" style={{ marginTop: 3, fontSize: 11, color: "var(--text3)" }}>{p.count} overrides &middot; <LiftHint value={p.lift} /></div>
                     </div>
                     <span style={{ fontSize: 11, color: "var(--text3)", fontStyle: "italic" }}>candidate rule</span>
                   </div>

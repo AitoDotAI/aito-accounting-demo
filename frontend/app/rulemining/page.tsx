@@ -6,6 +6,7 @@ import { useCustomer } from "@/lib/customer-context";
 import ErrorState from "@/components/shell/ErrorState";
 import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
+import LiftHint from "@/components/prediction/LiftHint";
 import { apiFetch } from "@/lib/api";
 import type { AitoPanelConfig } from "@/lib/types";
 
@@ -154,7 +155,7 @@ export default function RuleMiningPage() {
                   </div>
                   <div className="rule-arrow" style={{ marginTop: 4, fontSize: 11, color: "var(--text3)" }}>
                     in {c.support_match} of {c.support_total} cases
-                    {c.lift > 1 && <> &middot; lift {c.lift}× over baseline</>}
+                    {c.lift > 1 && <> &middot; <LiftHint value={c.lift} /></>}
                   </div>
                 </div>
                 <div className={`rule-support ${supportClass(c.support_ratio)}`} style={{ minWidth: 80, textAlign: "right" }}>{Math.round(c.support_ratio * 100)}%</div>

@@ -28,7 +28,6 @@ Story sections below)
 
 ### Polish
 
-- [ ] **#6 Cold-start onboarding indicator** for small customers
 - [ ] **#8 Progressive skeletons** — render structure first, fill predictions in
 - [ ] **#9 Form Fill banner**: collapse after first display
 - [ ] **#10 Anomaly recommendation buttons** — make them do something
@@ -36,17 +35,9 @@ Story sections below)
 ### Architecture / hygiene
 - [ ] **#12 Aito client retry / circuit breaker**
 - [ ] **#13 Two-layer cache write race** — per-key lock around compute+set
-- [ ] **#14 Booktest coverage**: drill-down, template, formfill-submit,
-  prediction_log endpoints
 
 ### Story / messaging (towards public release)
-
-- [ ] **#16 Above-the-fold framing**: 1-line on landing page explaining
-  what this is and why it's interesting
-- [ ] **#17 Provable "no training"**: link to read-only Aito console for
-  schema + run-your-own-query
-- [ ] **#18 Lift number tooltip**: explain "lift 38× = 38× more often
-  than random; >5× is strong"
+(all shipped — see Done)
 
 ---
 
@@ -121,6 +112,35 @@ Story sections below)
   schema, code samples, when-to-use, related references). Ready to drop
   into the public library as the multi-tenant counterpart to the
   single-tenant invoice-processing reference.
+
+### Story / messaging (public release)
+- [x] **#16 Above-the-fold framing** — gold gradient strip on every
+  page: "Predictive Ledger · multi-tenant AP automation on Aito.ai ·
+  N customers · M invoices · same _predict, scoped per customer ·
+  zero training". Dismissible, persisted in localStorage.
+- [x] **#17 Provable "no training"** — AitoPanel "Verify yourself"
+  section with direct links to `/api/schema` (live JSON) and the
+  Aito query API reference. Visitors can inspect the actual schema
+  and run their own queries.
+- [x] **#18 Lift number tooltip** — `<LiftHint>` component renders
+  lift values with hover tooltip: "lift = how many times more often
+  this combination occurs than random. >20× very strong, 5–20×
+  strong, 1–5× weak, <1× anti-correlated." Color-coded by tone.
+  Used on Rule Mining and Override Patterns.
+
+### Polish (cold-start)
+- [x] **#6 Cold-start onboarding indicator** — when the selected
+  customer has < 100 invoices, every page shows an amber banner
+  setting honest expectations: "Aito predictions still work but
+  with honest low confidence on rarely-seen vendors". CUST-0254 (16
+  invoices) is the test case.
+
+### Hygiene (testing)
+- [x] **#14 Booktest coverage** — new `book/test_06_template_and_log.py`
+  covers: predict_template (joint mode for top vendor),
+  mine_rules_for_customer (per-customer mined rules with support and
+  lift), prediction_log schema (verifies the audit table exists with
+  expected columns). 17/17 booktests pass.
 
 ### Foundation (earlier)
 - [x] 100K invoices, pre-computed predictions architecture

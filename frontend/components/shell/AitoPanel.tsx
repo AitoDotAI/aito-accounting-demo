@@ -87,6 +87,22 @@ export default function AitoPanel({ config, lastQuery, lastResponseMs }: AitoPan
       </div>
 
       <div className="aito-section">
+        <div className="aito-section-title">Verify yourself</div>
+        <div style={{ fontSize: 11, color: "var(--text3)", lineHeight: 1.5, marginBottom: 8 }}>
+          Every claim on this page traces back to an Aito query. No model file,
+          no training step. Inspect the live schema and run your own queries:
+        </div>
+        <div className="aito-links">
+          <a className="aito-link" href="/api/schema" target="_blank" rel="noreferrer">
+            View live schema (JSON) →
+          </a>
+          <a className="aito-link" href="https://aito.ai/docs/api/" target="_blank" rel="noreferrer">
+            Query API reference →
+          </a>
+        </div>
+      </div>
+
+      <div className="aito-section">
         <div className="aito-section-title">Learn more</div>
         <div className="aito-links">
           {config.links.map((link, i) => (

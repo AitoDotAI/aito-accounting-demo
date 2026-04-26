@@ -1,0 +1,76 @@
+  # prediction_log: write + read
+  
+  
+  
+! test raised exception missing snapshot for request https://shared.aito.ai/db/aito-accounting-demo/api/v1/data/prediction_log - ab02137ae8723150b83c0550b84f81011a43bf58. try running booktest with '-s' flag to capture the missing snapshot:
+≠   fetched 1 hit(s)
+. Traceback (most recent call last):                           ≠   field=gl_code predicted=5300 user=5300 accepted=True
+.   File "/home/arau/episto/src/aito-accounting-demo/.venv/lib/python3.12/site-packages/booktest/core/testrun.py", line 105, in run_case
+≠ 
+.     rv = await maybe_async_call(case, [t], {})               ≠ ok
+.          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^               ≠ ok
+.   File "/home/arau/episto/src/aito-accounting-demo/.venv/lib/python3.12/site-packages/booktest/utils/coroutines.py", line 11, in maybe_async_call
+≠ EOF
+.     return await func(*args2, **kwargs)                      ≠ EOF
+.            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^                      ≠ EOF
+.   File "/home/arau/episto/src/aito-accounting-demo/.venv/lib/python3.12/site-packages/booktest/snapshots/httpx.py", line 422, in wrapper
+≠ EOF
+.     return await maybe_async_call(func , args, kwargs)       ≠ EOF
+.            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^       ≠ EOF
+.   File "/home/arau/episto/src/aito-accounting-demo/.venv/lib/python3.12/site-packages/booktest/utils/coroutines.py", line 13, in maybe_async_call
+≠ EOF
+.     return func(*args2, **kwargs)                            ≠ EOF
+.            ^^^^^^^^^^^^^^^^^^^^^^                            ≠ EOF
+.   File "/home/arau/episto/src/aito-accounting-demo/book/test_06_template_and_log.py", line 105, in test_prediction_log_round_trip
+≠ EOF
+.     c._request("POST", "/data/prediction_log", json=payload)
+≠ EOF
+.   File "/home/arau/episto/src/aito-accounting-demo/src/aito_client.py", line 50, in _request
+≠ EOF
+.     response = httpx.request(                                ≠ EOF
+.                ^^^^^^^^^^^^^^                                ≠ EOF
+.   File "/home/arau/episto/src/aito-accounting-demo/.venv/lib/python3.12/site-packages/httpx/_api.py", line 118, in request
+≠ EOF
+.     return client.request(                                   ≠ EOF
+.            ^^^^^^^^^^^^^^^                                   ≠ EOF
+.   File "/home/arau/episto/src/aito-accounting-demo/.venv/lib/python3.12/site-packages/httpx/_client.py", line 837, in request
+≠ EOF
+.     return self.send(request, auth=auth, follow_redirects=follow_redirects)
+≠ EOF
+.            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+≠ EOF
+.   File "/home/arau/episto/src/aito-accounting-demo/.venv/lib/python3.12/site-packages/httpx/_client.py", line 926, in send
+≠ EOF
+.     response = self._send_handling_auth(                     ≠ EOF
+.                ^^^^^^^^^^^^^^^^^^^^^^^^^                     ≠ EOF
+.   File "/home/arau/episto/src/aito-accounting-demo/.venv/lib/python3.12/site-packages/httpx/_client.py", line 954, in _send_handling_auth
+≠ EOF
+.     response = self._send_handling_redirects(                ≠ EOF
+.                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^                ≠ EOF
+.   File "/home/arau/episto/src/aito-accounting-demo/.venv/lib/python3.12/site-packages/httpx/_client.py", line 991, in _send_handling_redirects
+≠ EOF
+.     response = self._send_single_request(request)            ≠ EOF
+.                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^            ≠ EOF
+.   File "/home/arau/episto/src/aito-accounting-demo/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1027, in _send_single_request
+≠ EOF
+.     response = transport.handle_request(request)             ≠ EOF
+.                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^             ≠ EOF
+.   File "/home/arau/episto/src/aito-accounting-demo/.venv/lib/python3.12/site-packages/booktest/snapshots/httpx.py", line 299, in mocked_handle_request
+≠ EOF
+.     return self.handle_request(transport, request)           ≠ EOF
+.            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^           ≠ EOF
+.   File "/home/arau/episto/src/aito-accounting-demo/.venv/lib/python3.12/site-packages/booktest/snapshots/httpx.py", line 273, in handle_request
+≠ EOF
+.     return self.snapshot_request(transport, request)         ≠ EOF
+.            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^         ≠ EOF
+.   File "/home/arau/episto/src/aito-accounting-demo/.venv/lib/python3.12/site-packages/booktest/snapshots/httpx.py", line 263, in snapshot_request
+≠ EOF
+.     key, rv = self.lookup_request_snapshot(request)          ≠ EOF
+.               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^          ≠ EOF
+.   File "/home/arau/episto/src/aito-accounting-demo/.venv/lib/python3.12/site-packages/booktest/snapshots/httpx.py", line 257, in lookup_request_snapshot
+≠ EOF
+.     raise AssertionError(f"missing snapshot for request {request.url} - {key.hash}. "
+≠ EOF
+. AssertionError: missing snapshot for request https://shared.aito.ai/db/aito-accounting-demo/api/v1/data/prediction_log - ab02137ae8723150b83c0550b84f81011a43bf58. try running booktest with '-s' flag to capture the missing snapshot
+≠ EOF
+  

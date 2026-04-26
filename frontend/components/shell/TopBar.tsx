@@ -1,6 +1,7 @@
 "use client";
 
 import CustomerSelector from "./CustomerSelector";
+import ColdStartBanner from "./ColdStartBanner";
 import { useTour } from "@/lib/tour-context";
 
 interface TopBarProps {
@@ -14,6 +15,7 @@ interface TopBarProps {
 export default function TopBar({ breadcrumb, title, subtitle, actions, live }: TopBarProps) {
   const { tourOn, setTourOn } = useTour();
   return (
+    <>
     <div className="topbar">
       <div>
         <div className="topbar-breadcrumb">{breadcrumb}</div>
@@ -48,5 +50,7 @@ export default function TopBar({ breadcrumb, title, subtitle, actions, live }: T
         {actions}
       </div>
     </div>
+    <ColdStartBanner />
+    </>
   );
 }
