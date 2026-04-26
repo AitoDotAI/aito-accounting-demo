@@ -386,6 +386,39 @@ def quality_rules_history(customer_id: str = Query(...), as_of: int | None = Non
     return {"rules": get_rule_history(aito, customer_id, as_of=as_of)}
 
 
+@app.post("/api/quality/rules/backfill")
+def quality_rules_backfill(customer_id: str = Query(...)):
+    """One-time backfill of 12 weeks of synthesized rule history.
+
+    Real production builds this via a weekly snapshot cron; for the
+    demo we call this endpoint once per customer to populate the
+    drift charts immediately.
+    """
+    from src.quality_service import backfill_rule_drift
+    n = backfill_rule_drift(aito, customer_id)
+    return {"backfilled": n, "customer_id": customer_id}
+
+
+@app.get("/api/quality/rules/drift")
+def quality_rules_drift(customer_id: str = Query(...)):
+    """Per-rule precision over the last 12 weeks + weekly override counts.
+
+    Drives the Quality > Rules drift sparklines and the override-trend
+    chart that answers "what does this look like at 90 days?"
+    """
+    cache_key = f"drift:{customer_id}"
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+    from src.quality_service import get_rule_drift_series, get_weekly_override_counts
+    result = {
+        "rules": get_rule_drift_series(aito, customer_id),
+        "weekly_overrides": get_weekly_override_counts(aito, customer_id),
+    }
+    cache.set(cache_key, result, ttl=600)
+    return result
+
+
 @app.get("/api/quality/rules")
 def quality_rules(customer_id: str = Query(...)):
     """Rule performance — replay each static rule against actual GL codes."""
@@ -520,6 +553,45 @@ def formfill_submit(body: dict):
         return {"logged": len(rows)}
     except AitoError as exc:
         return {"logged": 0, "error": str(exc)}
+
+
+@app.get("/api/help/search")
+def help_search(
+    customer_id: str = Query(...),
+    page: str = Query(""),
+    q: str = Query(""),
+    limit: int = 5,
+):
+    """Contextual help articles ranked by Aito click-through-rate.
+
+    The same _predict pattern aito-demo uses for product
+    recommendations: articles historically clicked in this context
+    rise to the top.
+    """
+    from src.help_service import search_help
+    articles = search_help(
+        aito,
+        customer_id=customer_id,
+        page=page or None,
+        query=q or None,
+        limit=limit,
+    )
+    return {"articles": articles}
+
+
+@app.post("/api/help/impression")
+def help_impression(body: dict):
+    """Log that an article was shown (or clicked, if clicked=true)."""
+    from src.help_service import log_impression
+    log_impression(
+        aito,
+        article_id=body.get("article_id", ""),
+        customer_id=body.get("customer_id", ""),
+        page=body.get("page", ""),
+        query=body.get("query", ""),
+        clicked=bool(body.get("clicked", False)),
+    )
+    return {"ok": True}
 
 
 @app.get("/api/schema")

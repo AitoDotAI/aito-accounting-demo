@@ -117,6 +117,39 @@ SCHEMAS = {
     # shifts), a new row goes here. valid_from..valid_to bracket each
     # rule version. Querying "rules as of date X" = WHERE valid_from
     # <= X AND (valid_to IS NULL OR valid_to > X).
+    # Help system: contextual articles ranked by Aito click-through.
+    # category in {app, legal, internal}. customer_id is set only for
+    # internal articles (company-specific guidance); app and legal are
+    # global (customer_id="*").
+    "help_articles": {
+        "type": "table",
+        "columns": {
+            "article_id": {"type": "String", "nullable": False},
+            "title": {"type": "Text", "nullable": False, "analyzer": "english"},
+            "body": {"type": "Text", "nullable": False, "analyzer": "english"},
+            "category": {"type": "String", "nullable": False},  # app / legal / internal
+            "customer_id": {"type": "String", "nullable": False},  # "*" for global
+            "tags": {"type": "Text", "nullable": True, "analyzer": "english"},
+            "page_context": {"type": "String", "nullable": True},  # which app page is most relevant
+        },
+    },
+    # Impressions: every time an article was shown to a user (through
+    # search results, contextual recommendations, or the FAQ list).
+    # The same row used as a click-through training signal: Aito's
+    # _predict article_id WHERE page=X, customer_id=Y, query=Z then
+    # ranks by historical click rate.
+    "help_impressions": {
+        "type": "table",
+        "columns": {
+            "impression_id": {"type": "String", "nullable": False},
+            "article_id": {"type": "String", "nullable": False, "link": "help_articles.article_id"},
+            "customer_id": {"type": "String", "nullable": False},
+            "page": {"type": "String", "nullable": False},  # the URL the user was on
+            "query": {"type": "Text", "nullable": True, "analyzer": "english"},
+            "clicked": {"type": "Boolean", "nullable": False},
+            "timestamp": {"type": "Int", "nullable": False},
+        },
+    },
     "rule_revisions": {
         "type": "table",
         "columns": {
@@ -138,7 +171,7 @@ SCHEMAS = {
 }
 
 # Table deletion order — linked tables first
-DELETE_ORDER = ["rule_revisions", "prediction_log", "overrides", "bank_transactions", "invoices", "employees", "customers", "corporate_entities", "cache_entries"]
+DELETE_ORDER = ["help_impressions", "help_articles", "rule_revisions", "prediction_log", "overrides", "bank_transactions", "invoices", "employees", "customers", "corporate_entities", "cache_entries"]
 
 
 def load_fixture(name: str) -> list[dict]:

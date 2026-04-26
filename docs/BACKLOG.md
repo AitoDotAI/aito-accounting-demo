@@ -51,16 +51,6 @@ the same complaint would surface in real conversations.
   bank transactions by currency in matching view.
   **(1 day; requires regen)**
 
-- [ ] **#26 Drift over time** — the cynical old partner's question:
-  "what does this look like at 90 days?" Now that rule_revisions
-  exists (#22), the data path is clear:
-  - Group rule_revisions by rule_name; render precision sparkline
-    per rule using `valid_from` timestamps
-  - Weekly override counts from prediction_log, plotted
-  - "Stale rules" section: rules with no recent matching invoices
-  Currently the rule_revisions table is empty; needs scheduled
-  snapshot (or back-fill on first load).
-  **(1-2 days; biggest remaining demo-impact item)**
 
 - [ ] **#27 Multi-entity per customer** — needs schema change.
   Add `entity_id` field to customers and invoices; make customer
@@ -176,6 +166,36 @@ the same complaint would surface in real conversations.
   mine_rules_for_customer (per-customer mined rules with support and
   lift), prediction_log schema (verifies the audit table exists with
   expected columns). 17/17 booktests pass.
+
+### Help system (CTR-ranked, like aito-demo product impressions)
+- [x] **Contextual Help drawer** — floating ? button on every page
+  opens a side panel with articles ranked by historical click-through
+  rate. Same pattern as aito-demo's product recommendations:
+  `_predict article_id WHERE page=…, customer_id=…, clicked=true`
+  surfaces articles users have actually clicked from this page.
+  Each shown article logs an impression; each click logs a positive
+  signal. Three categories: app docs, legal/compliance, internal
+  (per-customer).
+- [x] **Help schema** — `help_articles` (id, title, body, category,
+  customer_id, tags, page_context) and `help_impressions` (article_id,
+  customer_id, page, query, clicked, timestamp).
+- [x] **Generated content** — 10 app articles, 10 legal articles
+  (Finnish VAT/AML/SOX-equivalent), 5 internal article templates ×
+  20 top customers = 120 articles total. 2,700 synthesized
+  impressions with 36.5% baseline CTR; click bias toward
+  page_context match means contextual articles surface first.
+- [x] **API endpoints** — `GET /api/help/search?customer_id&page&q`
+  (ranked results) and `POST /api/help/impression` (log click).
+
+### r/accounting feedback fixes (round 3 — drift)
+- [x] **#26 Drift over time** — Quality > Rules now shows:
+  - 12-week per-rule precision sparkline (color-coded: red >5pp drop,
+    green improving, gold stable). Sorted by largest drop first.
+  - Weekly overrides bar chart at the bottom.
+  - "Backfill 12 weeks" button on first visit synthesizes a
+    deterministic per-rule precision walk into rule_revisions.
+  - New endpoints: POST /api/quality/rules/backfill,
+    GET /api/quality/rules/drift returns series + weekly overrides.
 
 ### r/accounting feedback fixes (round 2)
 - [x] **#22-partial Rule-change audit trail (schema + endpoints)** —

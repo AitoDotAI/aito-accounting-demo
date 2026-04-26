@@ -4,6 +4,7 @@ import "./globals.css";
 import { CustomerProvider } from "@/lib/customer-context";
 import { TourProvider } from "@/lib/tour-context";
 import HeadlineBanner from "@/components/shell/HeadlineBanner";
+import HelpDrawer from "@/components/help/HelpDrawer";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -15,6 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <div className="app">
               {children}
             </div>
+            <HelpDrawer />
           </TourProvider>
         </CustomerProvider>
       </body>

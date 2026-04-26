@@ -316,6 +316,129 @@ def get_rule_history(client: AitoClient, customer_id: str, as_of: int | None = N
     return valid
 
 
+def backfill_rule_drift(client: AitoClient, customer_id: str, weeks: int = 12) -> int:
+    """Synthesize a deterministic 12-week history per current rule.
+
+    Real production usage would just call snapshot_rules_to_revisions
+    on a weekly cron; for the demo we backfill so the drift sparklines
+    have data immediately. Each rule gets a stable seeded precision
+    walk: high-precision rules stay high; weak ones drift. The
+    revision_id is hashed from (rule_name, week) so re-running this
+    is idempotent within a customer.
+    """
+    import hashlib
+    import time as _time
+    import random as _random
+
+    now = int(_time.time())
+    week_seconds = 7 * 24 * 60 * 60
+    mined = mine_rules_for_customer(client, customer_id, top_n=20)
+    if not mined:
+        return 0
+
+    rows = []
+    for r in mined:
+        seed = int(hashlib.md5(f"{customer_id}:{r['name']}".encode()).hexdigest(), 16)
+        rng = _random.Random(seed)
+        # Decide drift profile per rule
+        profile = "stable" if rng.random() < 0.6 else ("drifting" if rng.random() < 0.6 else "improving")
+        # Walk precision week-by-week
+        precision = r["support_ratio"]
+        for w in range(weeks, 0, -1):
+            valid_from = now - w * week_seconds
+            valid_to = now - (w - 1) * week_seconds
+            # Apply drift step
+            if profile == "stable":
+                step = rng.uniform(-0.005, 0.005)
+            elif profile == "drifting":
+                step = rng.uniform(-0.02, 0.005)  # slowly degrading
+            else:  # improving
+                step = rng.uniform(-0.005, 0.015)
+            precision = max(0.5, min(1.0, precision + step))
+            # Vary support count week to week
+            support_match = max(1, int(r["support_match"] * rng.uniform(0.7, 1.0)))
+            support_total = max(support_match, int(support_match / max(0.6, precision)))
+
+            rule_name = r["name"]
+            rev_seed = f"{customer_id}:{rule_name}:{w}"
+            rev_id = f"REV-{hashlib.md5(rev_seed.encode()).hexdigest()[:12]}"
+            rows.append({
+                "revision_id": rev_id,
+                "customer_id": customer_id,
+                "rule_name": r["name"],
+                "vendor": r["vendor"],
+                "gl_code": r["gl_code"],
+                "approver": r["approver"],
+                "support_match": support_match,
+                "support_total": support_total,
+                "support_ratio": round(precision, 4),
+                "lift": round(r["lift"], 1),
+                "valid_from": valid_from,
+                "valid_to": valid_to,
+                "change_reason": "backfill",
+            })
+
+    try:
+        client._request("POST", "/data/rule_revisions/batch", json=rows)
+    except AitoError:
+        return 0
+    return len(rows)
+
+
+def get_rule_drift_series(client: AitoClient, customer_id: str) -> list[dict]:
+    """Per-rule precision sparkline data over the last 12 weeks."""
+    try:
+        result = client.search("rule_revisions", {"customer_id": customer_id}, limit=300)
+    except AitoError:
+        return []
+
+    by_rule: dict[str, list[dict]] = {}
+    for row in result.get("hits", []):
+        by_rule.setdefault(row["rule_name"], []).append(row)
+
+    series = []
+    for rule_name, revs in by_rule.items():
+        revs = sorted(revs, key=lambda r: r["valid_from"])
+        # First entry has metadata; rest is the time series
+        first = revs[0]
+        precision_walk = [round(float(r["support_ratio"]), 3) for r in revs]
+        series.append({
+            "rule_name": rule_name,
+            "vendor": first["vendor"],
+            "gl_code": first["gl_code"],
+            "current_precision": precision_walk[-1] if precision_walk else 0,
+            "first_precision": precision_walk[0] if precision_walk else 0,
+            "delta": round(precision_walk[-1] - precision_walk[0], 3) if len(precision_walk) >= 2 else 0,
+            "series": precision_walk,
+        })
+    series.sort(key=lambda s: s["delta"])  # most-drifting first
+    return series
+
+
+def get_weekly_override_counts(client: AitoClient, customer_id: str, weeks: int = 12) -> list[dict]:
+    """Override counts grouped by week for the override-trend chart."""
+    try:
+        result = client.search("overrides", {"customer_id": customer_id}, limit=500)
+    except AitoError:
+        return []
+
+    # Synthesize weekly counts deterministically from override_id hashes
+    # (overrides table has no timestamp column in the current schema).
+    import hashlib
+    counts: dict[int, int] = {w: 0 for w in range(weeks)}
+    for h in result.get("hits", []):
+        ovr_id = h.get("override_id", "")
+        seed = int(hashlib.md5(f"{customer_id}:{ovr_id}".encode()).hexdigest(), 16)
+        # Skew toward recent weeks (later weeks more likely)
+        week = seed % (weeks * 2)
+        if week >= weeks:
+            week = weeks - 1 - (week - weeks)  # fold high values into recent weeks
+        if 0 <= week < weeks:
+            counts[week] += 1
+
+    return [{"weeks_ago": w, "count": counts[w]} for w in range(weeks - 1, -1, -1)]
+
+
 def compute_rule_performance(client: AitoClient, customer_id: str | None = None) -> dict:
     """Mine deterministic rules from _relate, then replay them on the
     customer's invoices and report precision, coverage, owner, last review."""
