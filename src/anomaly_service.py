@@ -131,6 +131,23 @@ def _describe_anomaly(
     amount = invoice["amount"]
     stated_gl = invoice.get("gl_code")
 
+    # Potential fraud signal: large round-number amount to a vendor Aito
+    # has very weak history for. Round amounts (no cents, divisible by
+    # 1000) above €10K with no clear approver pattern is a known
+    # forensic-accounting red flag (manufactured invoices often use
+    # round amounts; reviewers tend to wave them through).
+    is_round = amount >= 10000 and amount % 1000 == 0
+    if is_round and gl_p < 0.40 and approver_p < 0.40:
+        return (
+            f"Potential fraud signal — round €{amount:,.0f} to weak-history vendor {vendor}",
+            f"€{amount:,.0f} is a round amount (no cents, divisible by 1000) to a vendor "
+            f"with no strong historical routing pattern (GL {int(gl_p * 100)}%, approver "
+            f"{int(approver_p * 100)}%). Manufactured invoices commonly use round amounts.",
+            "Escalate to compliance / internal audit. Verify the PO, the vendor "
+            "registration, and confirm the approver actually authorised this.",
+            "fraud_signal",
+        )
+
     # GL code mismatch — highest signal, suggests data-entry error or shifted policy
     if stated_gl and stated_gl != gl_predicted and gl_p > 0.50:
         pred_label = GL_LABELS.get(gl_predicted, gl_predicted)

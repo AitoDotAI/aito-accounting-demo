@@ -112,10 +112,33 @@ SCHEMAS = {
             "timestamp": {"type": "Int", "nullable": False},
         },
     },
+    # Per-rule history for SOX audit. Every time a mined rule changes
+    # (new vendor enters, support_ratio drops below 0.95, approver
+    # shifts), a new row goes here. valid_from..valid_to bracket each
+    # rule version. Querying "rules as of date X" = WHERE valid_from
+    # <= X AND (valid_to IS NULL OR valid_to > X).
+    "rule_revisions": {
+        "type": "table",
+        "columns": {
+            "revision_id": {"type": "String", "nullable": False},
+            "customer_id": {"type": "String", "nullable": False, "link": "customers.customer_id"},
+            "rule_name": {"type": "String", "nullable": False},
+            "vendor": {"type": "String", "nullable": False},
+            "gl_code": {"type": "String", "nullable": False},
+            "approver": {"type": "String", "nullable": False},
+            "support_match": {"type": "Int", "nullable": False},
+            "support_total": {"type": "Int", "nullable": False},
+            "support_ratio": {"type": "Decimal", "nullable": False},
+            "lift": {"type": "Decimal", "nullable": False},
+            "valid_from": {"type": "Int", "nullable": False},
+            "valid_to": {"type": "Int", "nullable": True},
+            "change_reason": {"type": "String", "nullable": True},  # "new" / "drift" / "approver_change" / "deprecated"
+        },
+    },
 }
 
 # Table deletion order — linked tables first
-DELETE_ORDER = ["prediction_log", "overrides", "bank_transactions", "invoices", "employees", "customers", "corporate_entities", "cache_entries"]
+DELETE_ORDER = ["rule_revisions", "prediction_log", "overrides", "bank_transactions", "invoices", "employees", "customers", "corporate_entities", "cache_entries"]
 
 
 def load_fixture(name: str) -> list[dict]:

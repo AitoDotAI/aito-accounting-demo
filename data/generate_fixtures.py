@@ -282,6 +282,68 @@ def vendor_to_bank_desc(vendor_name: str, rng: random.Random) -> str:
     return name
 
 
+def format_bank_description(
+    vendor_part: str,
+    ref: str,
+    pay_date_iso: str,
+    amount: float,
+    bank: str,
+    rng: random.Random,
+) -> str:
+    """Format the bank-line description in a bank-specific style.
+
+    Real Finnish bank exports differ in layout. We approximate four
+    common ones so the demo data looks like a mixed-bank export, not
+    a single sanitized template.
+    """
+    try:
+        d = date.fromisoformat(pay_date_iso)
+        pvm = f"{d.day:02d}.{d.month:02d}.{str(d.year)[-2:]}"
+        pvm_long = f"{d.day:02d}{d.month:02d}{d.year}"
+    except Exception:
+        pvm = ""
+        pvm_long = ""
+
+    if bank == "OP Bank":
+        # OP: vendor / VIITE / PVM, all-caps, " / " separator, ~70 char cap
+        parts = [vendor_part, ref]
+        if pvm:
+            parts.append(f"PVM {pvm}")
+        out = " / ".join(parts)
+    elif bank == "Nordea":
+        # Nordea: vendor with date stamp inline; viite either prefixed
+        # "Viite:" or appended; mixed-case-ish but mostly upper
+        if "VIITE" in ref:
+            ref_part = ref.replace("VIITE ", "Viite: ")
+        else:
+            ref_part = ref
+        out = f"{vendor_part} {pvm_long} {ref_part}"
+    elif bank == "Aktia":
+        # Aktia exports use tab-like separation with field codes
+        out = f"{vendor_part}\t{pvm}\tref={ref}"
+    elif bank == "Danske Bank":
+        # Danske: leading bank code, then vendor, then pretty short
+        out = f"DB-FIN {vendor_part[:25]} {ref}"
+    elif bank == "S-Pankki":
+        # S-Pankki: prefer compact form, often drops viite if RF given
+        if ref.startswith("RF"):
+            out = f"{vendor_part} {ref}"
+        else:
+            out = f"{vendor_part} {ref} / {pvm}"
+    elif bank == "Handelsbanken":
+        # Handelsbanken: more verbose, includes saaja/maksaja text
+        out = f"{vendor_part}  Saaja  {ref}  {pvm}"
+    else:
+        # Default — generic OP-like
+        out = f"{vendor_part} / {ref} / PVM {pvm}"
+
+    # Bank-specific line-length caps
+    cap = 70 if bank in ("Nordea", "Aktia", "Handelsbanken") else 60
+    if len(out) > cap:
+        out = out[:cap].rstrip()
+    return out
+
+
 def generate_description(category: str) -> str:
     templates = TEMPLATES.get(category, ["Invoice - {ref}"])
     template = random.choice(templates)
@@ -539,21 +601,10 @@ def generate_invoices_for_customer(
             else:
                 ref = f"LASKU {rng.randint(2024, 2026)}-{rng.randint(1000, 9999)}"
 
-            # Payment date typically near invoice date
-            pay_date = inv_date  # already ISO; we'll reformat to dd.mm.yy
-            try:
-                d = date.fromisoformat(pay_date)
-                pay_str = f"{d.day:02d}.{d.month:02d}.{str(d.year)[-2:]}"
-            except Exception:
-                pay_str = ""
-
-            # Concatenate parts as a real bank export would
-            parts = [vendor_part, ref]
-            if pay_str:
-                parts.append(f"PVM {pay_str}")
-            bank_desc = " / ".join(parts)
-            if len(bank_desc) > 70:
-                bank_desc = bank_desc[:70].rstrip()
+            bank = rng.choice(BANKS)
+            bank_desc = format_bank_description(
+                vendor_part, ref, inv_date, amount, bank, rng,
+            )
 
             amt_diff = rng.choice([0, 0, 0, 0.50, -0.50, 1.00])
             bank_txns.append({
@@ -562,7 +613,7 @@ def generate_invoices_for_customer(
                 "description": bank_desc,
                 "vendor_name": vdef["name"],
                 "amount": round(amount + amt_diff, 2),
-                "bank": rng.choice(BANKS),
+                "bank": bank,
                 "invoice_id": invoice["invoice_id"],
             })
 

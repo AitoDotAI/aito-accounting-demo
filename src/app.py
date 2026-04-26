@@ -363,6 +363,29 @@ def quality_predictions(customer_id: str = Query(...)):
     return result
 
 
+@app.post("/api/quality/rules/snapshot")
+def quality_rules_snapshot(customer_id: str = Query(...)):
+    """Write the current mined rule set to the rule_revisions table.
+
+    SOX/audit support: each snapshot is a point-in-time record of the
+    rules in effect. Operators run this on a schedule (or before/after
+    a control-period close) to build a queryable history.
+    """
+    from src.quality_service import snapshot_rules_to_revisions
+    n = snapshot_rules_to_revisions(aito, customer_id)
+    return {"snapshotted": n, "customer_id": customer_id}
+
+
+@app.get("/api/quality/rules/history")
+def quality_rules_history(customer_id: str = Query(...), as_of: int | None = None):
+    """Rules in effect at a given timestamp (defaults to now).
+
+    Drives the future "Compare to date" picker in Quality > Rules.
+    """
+    from src.quality_service import get_rule_history
+    return {"rules": get_rule_history(aito, customer_id, as_of=as_of)}
+
+
 @app.get("/api/quality/rules")
 def quality_rules(customer_id: str = Query(...)):
     """Rule performance — replay each static rule against actual GL codes."""

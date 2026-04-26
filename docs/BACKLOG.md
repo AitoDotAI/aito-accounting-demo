@@ -37,63 +37,36 @@ the same complaint would surface in real conversations.
   5000s henkilöstökulut, 6000s liiketoiminnan muut kulut). Requires
   data regen. **(half day)**
 
-- [ ] **#22 Rule-change audit trail** — current Quality/Rules has
-  Owner + Last reviewed but no history of changes. SOX teams need
-  "show me the rule set as of 2025-Q3 and the diff to 2025-Q4". Add:
-  - `rule_revisions` table: rule_id, customer_id, vendor, gl_code,
-    approver, support_ratio, lift, valid_from, valid_to
-  - "Compare to date" picker on Quality/Rules
-  - Export as JSON/CSV
-  **(2-3 days; high value for SOX/audit conversations)**
+- [ ] **#22-rest Rule-change audit trail (frontend + diff)** —
+  schema and endpoints shipped (`rule_revisions` table,
+  `POST /api/quality/rules/snapshot`, `GET /api/quality/rules/history?as_of=...`).
+  Still to do: Quality/Rules "Compare to date" date picker + diff
+  table, scheduled snapshot trigger, JSON/CSV export endpoint.
+  **(1-2 days remaining)**
 
-- [ ] **#23 Multi-currency support** — currently EUR everywhere.
-  At least: add a `currency` field to invoices, show the symbol in
-  amount columns, group bank transactions by currency. Most
-  multi-tenant SaaS customers have entities in 4+ currencies.
-  **(1 day; hidden assumption that bites in real demos)**
-
-- [ ] **#24 Bank export format variants** — current bank
-  descriptions use one generic format. Real OP / Nordea / Aktia /
-  Danske / S-Pankki have distinct layouts:
-  - OP: `<vendor> / VIITE <num> / PVM <date>`
-  - Nordea: `<vendor> <date> Saaja <iban>`
-  - Aktia: tab-separated fields with a different field order
-  Generate per-vendor in `vendor_to_bank_desc()` and have one
-  "messy bank" view that mixes them.
-  **(half day; the kind of detail accountants notice in 30 seconds)**
-
-- [ ] **#25 Fraud category in anomalies** — Anomalies clusters
-  currently: gl_mismatch / unfamiliar / approver. Real risk
-  managers want a "potential fraud" cluster with its own visual
-  treatment (red icon, escalation language) even if the demo data
-  triggers it via synthetic signals (round-number amount + new
-  vendor + amount > €10K). **(half day; lands the risk-manager
-  conversation)**
+- [ ] **#23 Multi-currency support** — needs data regen + UI work.
+  Add `currency` column to invoices/bank_transactions, regenerate
+  fixtures with realistic mix (EUR 80%, SEK 5%, USD 8%, DKK 4%,
+  GBP 3%), render currency symbol in amount columns, separate
+  bank transactions by currency in matching view.
+  **(1 day; requires regen)**
 
 - [ ] **#26 Drift over time** — the cynical old partner's question:
-  "what does this look like at 90 days?" The Quality/Rules view
-  has a Drifting/Stale status but no time series. Add:
-  - Sparkline per rule showing precision over the last 90 days
-  - Override count per week, plotted, with annotations on when new
-    rule candidates emerged
-  - "Stale rules" section that auto-flags rules unused for 30+ days
-  **(1-2 days; this is the question that decides repeat sales)**
+  "what does this look like at 90 days?" Now that rule_revisions
+  exists (#22), the data path is clear:
+  - Group rule_revisions by rule_name; render precision sparkline
+    per rule using `valid_from` timestamps
+  - Weekly override counts from prediction_log, plotted
+  - "Stale rules" section: rules with no recent matching invoices
+  Currently the rule_revisions table is empty; needs scheduled
+  snapshot (or back-fill on first load).
+  **(1-2 days; biggest remaining demo-impact item)**
 
-- [ ] **#27 Multi-entity per customer** — currently 1 customer = 1
-  legal entity. Real SaaS customers consolidate multiple entities.
-  Add an `entity_id` field; predictions can scope by either
-  customer_id or (customer_id, entity_id). **(1 day; common
-  enterprise blocker)**
-
-- [ ] **#28 Batch override workflow** — overrides are currently
-  shown as historical signal only. Add a "select N invoices, apply
-  GL X" batch action on the Invoices page. **(half day)**
-
-- [ ] **#29 Webhook / integration stub** — at minimum, a
-  `/api/integrations` page describing how the prediction_log table
-  could feed an outbound webhook to NetSuite / Dynamics / Procountor.
-  Not a real integration, but a credible architectural sketch.
-  **(half day; closes the "can it talk to my ERP" objection)**
+- [ ] **#27 Multi-entity per customer** — needs schema change.
+  Add `entity_id` field to customers and invoices; make customer
+  selector a (customer, entity) tree. Predictions scope by
+  (customer_id, entity_id) when entity_id is provided, else by
+  customer_id alone. **(1 day; requires regen)**
 
 ### Architecture / hygiene
 (empty — see Done)
@@ -204,7 +177,36 @@ the same complaint would surface in real conversations.
   lift), prediction_log schema (verifies the audit table exists with
   expected columns). 17/17 booktests pass.
 
-### r/accounting feedback fixes
+### r/accounting feedback fixes (round 2)
+- [x] **#22-partial Rule-change audit trail (schema + endpoints)** —
+  new `rule_revisions` table (revision_id, customer_id, rule_name,
+  vendor, gl_code, approver, support_match/_total/_ratio, lift,
+  valid_from, valid_to, change_reason). New endpoints:
+  `POST /api/quality/rules/snapshot` writes the current rule set;
+  `GET /api/quality/rules/history?as_of=ts` returns rules valid at
+  a given timestamp. Frontend date-picker + diff UI is the remaining
+  half (tracked as #22-rest).
+- [x] **#24 Bank export format variants** — `format_bank_description()`
+  produces six bank-specific layouts (OP, Nordea, Aktia, Danske,
+  S-Pankki, Handelsbanken) with realistic per-bank quirks (separator
+  styles, all-caps vs mixed, line-length caps, RF vs Viite preference).
+  Effective on next data regen (`./do generate-data && ./do reset-data`).
+- [x] **#25 Fraud category in anomalies** — new `fraud_signal` cluster
+  in the anomaly pipeline. Triggered by round-number amount (≥€10K,
+  divisible by 1000) to a vendor with weak prediction history. UI:
+  fraud cluster rendered first under a red-bordered header;
+  recommendation says "Escalate to compliance / internal audit".
+- [x] **#28 Batch override workflow** — Invoices table has a checkbox
+  column; selecting rows reveals an action bar with a GL dropdown and
+  "Apply override" button. Selected rows highlighted gold; one click
+  to clear selection.
+- [x] **#29 Integrations page** — new `/integrations` route under a
+  "Setup" section in the nav. Shows architectural sketches for
+  NetSuite, Dynamics 365 Finance, Procountor, and a generic outbound
+  webhook, each with an example payload. Honest "Sketch only" banner
+  at the top.
+
+### r/accounting feedback fixes (round 1)
 - [x] **#19 "Reference implementation, not a product" notice** — headline
   banner now reads "Predictive Ledger · reference implementation for
   developers building on Aito.ai (not a packaged product) · multi-tenant

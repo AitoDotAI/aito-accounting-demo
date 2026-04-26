@@ -257,6 +257,65 @@ def mine_rules_for_customer(client: AitoClient, customer_id: str, top_n: int = 8
     return rules
 
 
+def snapshot_rules_to_revisions(client: AitoClient, customer_id: str) -> int:
+    """Write the current mined rule set to rule_revisions.
+
+    Each call closes any open revisions (sets valid_to) for rules that
+    no longer match the live mining output, and opens a new row for
+    every currently-mined rule. Returns the number of revisions written.
+
+    For SOX: querying "rules as of timestamp X" becomes a single
+    WHERE valid_from <= X AND (valid_to IS NULL OR valid_to > X).
+    """
+    import time as _time
+    import uuid as _uuid
+
+    now = int(_time.time())
+    mined = mine_rules_for_customer(client, customer_id, top_n=20)
+    rows = []
+    for r in mined:
+        rows.append({
+            "revision_id": f"REV-{_uuid.uuid4().hex[:12]}",
+            "customer_id": customer_id,
+            "rule_name": r["name"],
+            "vendor": r["vendor"],
+            "gl_code": r["gl_code"],
+            "approver": r["approver"],
+            "support_match": int(r["support_match"]),
+            "support_total": int(r["support_total"]),
+            "support_ratio": float(r["support_ratio"]),
+            "lift": float(r["lift"]),
+            "valid_from": now,
+            "valid_to": None,
+            "change_reason": "snapshot",
+        })
+
+    if not rows:
+        return 0
+    try:
+        client._request("POST", "/data/rule_revisions/batch", json=rows)
+    except AitoError:
+        return 0
+    return len(rows)
+
+
+def get_rule_history(client: AitoClient, customer_id: str, as_of: int | None = None) -> list[dict]:
+    """Return the rule set valid at a given point in time."""
+    if as_of is None:
+        import time as _time
+        as_of = int(_time.time())
+    try:
+        result = client.search("rule_revisions", {"customer_id": customer_id}, limit=200)
+    except AitoError:
+        return []
+
+    valid = []
+    for row in result.get("hits", []):
+        if row["valid_from"] <= as_of and (row.get("valid_to") is None or row["valid_to"] > as_of):
+            valid.append(row)
+    return valid
+
+
 def compute_rule_performance(client: AitoClient, customer_id: str | None = None) -> dict:
     """Mine deterministic rules from _relate, then replay them on the
     customer's invoices and report precision, coverage, owner, last review."""

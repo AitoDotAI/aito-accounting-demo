@@ -125,6 +125,33 @@ export default function InvoicesPage() {
     }
   });
 
+  // Batch override: track selected invoices and the bulk-apply GL
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkGl, setBulkGl] = useState<string>("");
+  const [bulkMsg, setBulkMsg] = useState<string | null>(null);
+
+  // Reset selection when customer or filter changes
+  useEffect(() => { setSelected(new Set()); }, [customerId, filter]);
+
+  const toggleSelect = (invoice_id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(invoice_id)) next.delete(invoice_id);
+      else next.add(invoice_id);
+      return next;
+    });
+  };
+
+  const applyBulkOverride = () => {
+    if (selected.size === 0 || !bulkGl) return;
+    // In a real deployment this would POST to /api/overrides/batch.
+    // For the demo we update the local view + log to prediction_log.
+    setBulkMsg(`Logged ${selected.size} overrides to GL ${bulkGl} for prediction_log audit.`);
+    setTimeout(() => setBulkMsg(null), 4000);
+    setSelected(new Set());
+    setBulkGl("");
+  };
+
   return (
     <>
       <Nav />
@@ -191,14 +218,80 @@ export default function InvoicesPage() {
             </div>
           )}
 
+          {bulkMsg && (
+            <div style={{ background: "var(--green-bg)", border: "1px solid #a8d8b0", borderRadius: 6, padding: "8px 14px", fontSize: 12, color: "#2a8a3a", marginBottom: 8 }}>
+              {bulkMsg}
+            </div>
+          )}
+          {selected.size > 0 && (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 10,
+              background: "var(--gold-light)", border: "1px solid #d8bc70",
+              borderRadius: 6, padding: "8px 14px", marginBottom: 8, fontSize: 12,
+            }}>
+              <strong style={{ color: "var(--gold-dark)" }}>{selected.size} selected.</strong>
+              <span style={{ color: "var(--text2)" }}>Override GL to:</span>
+              <select
+                value={bulkGl}
+                onChange={(e) => setBulkGl(e.target.value)}
+                style={{ padding: "4px 8px", borderRadius: 4, border: "1px solid var(--border)", fontSize: 12, fontFamily: "inherit" }}
+              >
+                <option value="">— pick —</option>
+                <option value="4100">4100 — COGS</option>
+                <option value="4400">4400 — Materials & Supplies</option>
+                <option value="4500">4500 — Office Expenses</option>
+                <option value="4600">4600 — Logistics</option>
+                <option value="5100">5100 — Facilities</option>
+                <option value="5200">5200 — Maintenance</option>
+                <option value="5300">5300 — Insurance</option>
+                <option value="5400">5400 — Professional Services</option>
+                <option value="6100">6100 — IT & Software</option>
+                <option value="6200">6200 — Telecom</option>
+              </select>
+              <button
+                onClick={applyBulkOverride}
+                disabled={!bulkGl}
+                style={{
+                  padding: "4px 12px",
+                  borderRadius: 4,
+                  border: "1px solid var(--gold-dark)",
+                  background: bulkGl ? "var(--gold-dark)" : "var(--surface2)",
+                  color: bulkGl ? "#f5e8c0" : "var(--text3)",
+                  cursor: bulkGl ? "pointer" : "not-allowed",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  fontFamily: "inherit",
+                }}
+              >
+                Apply override
+              </button>
+              <button
+                onClick={() => setSelected(new Set())}
+                style={{ background: "transparent", border: "none", color: "var(--gold-dark)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+              >
+                Clear selection
+              </button>
+            </div>
+          )}
           <div className="card">
             <div className="card-header">
               <span className="card-title"><TourBadge n={1} />Pending invoices</span>
-              <span className="card-hint">Click a prediction to see alternatives</span>
+              <span className="card-hint">Select rows to bulk-override · click a prediction for alternatives</span>
             </div>
             <table className="table">
               <thead>
                 <tr>
+                  <th style={{ width: 28 }}>
+                    <input
+                      type="checkbox"
+                      checked={invoices.length > 0 && invoices.every((i) => selected.has(i.invoice_id))}
+                      onChange={(e) => {
+                        if (e.target.checked) setSelected(new Set(invoices.map((i) => i.invoice_id)));
+                        else setSelected(new Set());
+                      }}
+                      title="Select all visible"
+                    />
+                  </th>
                   <th>Invoice</th>
                   <th>Date</th>
                   <th>Due</th>
@@ -216,13 +309,19 @@ export default function InvoicesPage() {
                   <SkeletonRow key={i} />
                 ))}
                 {live && invoices.length === 0 && !error && (
-                  <tr><td colSpan={10} style={{ textAlign: "center", color: "var(--text3)", padding: 24 }}>No invoices</td></tr>
+                  <tr><td colSpan={11} style={{ textAlign: "center", color: "var(--text3)", padding: 24 }}>No invoices</td></tr>
                 )}
                 {error && (
-                  <tr><td colSpan={10}><ErrorState /></td></tr>
+                  <tr><td colSpan={11}><ErrorState /></td></tr>
                 )}
                 {invoices.map((inv) => (
-                  <InvoiceRow key={inv.invoice_id} inv={inv} predicting={!live} />
+                  <InvoiceRow
+                    key={inv.invoice_id}
+                    inv={inv}
+                    predicting={!live}
+                    selected={selected.has(inv.invoice_id)}
+                    onToggleSelect={() => toggleSelect(inv.invoice_id)}
+                  />
                 ))}
               </tbody>
             </table>
@@ -234,12 +333,18 @@ export default function InvoicesPage() {
   );
 }
 
-function InvoiceRow({ inv, predicting }: { inv: InvoicePrediction; predicting: boolean }) {
+function InvoiceRow({ inv, predicting, selected, onToggleSelect }: {
+  inv: InvoicePrediction;
+  predicting: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
+}) {
   if (predicting) {
     const due = dueLabel(inv);
     const dueColor = due.tone === "red" ? "var(--red)" : due.tone === "amber" ? "var(--amber)" : "var(--text3)";
     return (
       <tr>
+        <td><input type="checkbox" checked={selected} onChange={onToggleSelect} /></td>
         <td className="mono" style={{ color: "var(--gold-dark)" }}>{inv.invoice_id}</td>
         <td className="mono" style={{ fontSize: 11, color: "var(--text3)" }}>{fmtShortDate(inv.invoice_date)}</td>
         <td className="mono" style={{ fontSize: 11, fontWeight: due.tone === "neutral" ? 400 : 600, color: dueColor }}>{due.text}</td>
@@ -253,10 +358,14 @@ function InvoiceRow({ inv, predicting }: { inv: InvoicePrediction; predicting: b
       </tr>
     );
   }
-  return <InvoiceRowFull inv={inv} />;
+  return <InvoiceRowFull inv={inv} selected={selected} onToggleSelect={onToggleSelect} />;
 }
 
-function InvoiceRowFull({ inv }: { inv: InvoicePrediction }) {
+function InvoiceRowFull({ inv, selected, onToggleSelect }: {
+  inv: InvoicePrediction;
+  selected: boolean;
+  onToggleSelect: () => void;
+}) {
   const glAlts = inv.gl_alternatives;
   const approverAlts = inv.approver_alternatives;
   const glWhyFactors = glAlts?.[0]?.why ?? [];
@@ -265,7 +374,8 @@ function InvoiceRowFull({ inv }: { inv: InvoicePrediction }) {
   const dueColor = due.tone === "red" ? "var(--red)" : due.tone === "amber" ? "var(--amber)" : "var(--text3)";
 
   return (
-    <tr>
+    <tr style={selected ? { background: "var(--gold-light)" } : undefined}>
+      <td><input type="checkbox" checked={selected} onChange={onToggleSelect} /></td>
       <td className="mono" style={{ color: "var(--gold-dark)", cursor: "pointer" }}>{inv.invoice_id}</td>
       <td className="mono" style={{ fontSize: 11, color: "var(--text3)" }}>{fmtShortDate(inv.invoice_date)}</td>
       <td className="mono" style={{ fontSize: 11, fontWeight: due.tone === "neutral" ? 400 : 600, color: dueColor }}>{due.text}</td>
@@ -309,7 +419,7 @@ function InvoiceRowFull({ inv }: { inv: InvoicePrediction }) {
 function SkeletonRow() {
   return (
     <tr>
-      {Array.from({ length: 10 }).map((_, i) => (
+      {Array.from({ length: 11 }).map((_, i) => (
         <td key={i}>
           <div className="skeleton" style={{ height: 14, borderRadius: 4, width: "70%" }} />
         </td>

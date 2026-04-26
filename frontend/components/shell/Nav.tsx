@@ -26,6 +26,9 @@ const NAV_ITEMS: { section: string; items: NavItem[] }[] = [
     { href: "/quality/predictions", label: "Prediction Quality" },
     { href: "/quality/overrides", label: "Human Overrides" },
   ]},
+  { section: "Setup", items: [
+    { href: "/integrations", label: "Integrations" },
+  ]},
 ];
 
 export default function Nav() {

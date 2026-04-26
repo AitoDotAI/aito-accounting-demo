@@ -101,21 +101,40 @@ export default function AnomaliesPage() {
                 (groups[cat] ||= []).push(f);
               }
               const labels: Record<string, string> = {
+                fraud_signal: "Potential fraud signals — escalate to compliance",
                 gl_mismatch: "GL code mismatches — likely data-entry errors",
                 amount_outlier: "Amount outliers — verify with vendor",
                 unfamiliar: "Unfamiliar patterns — first-time or rare combinations",
                 approver: "Routing changes — approver pattern shifted",
               };
-              return Object.entries(groups).map(([cat, flags]) => (
-                <div key={cat}>
-                  <div style={{ padding: "8px 16px 4px", fontSize: 11, fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", background: "var(--surface2)" }}>
-                    {labels[cat] ?? cat} &middot; {flags.length}
+              // Render fraud_signal first regardless of insertion order
+              const order = ["fraud_signal", "gl_mismatch", "amount_outlier", "approver", "unfamiliar"];
+              const ordered = order.filter((k) => k in groups).concat(
+                Object.keys(groups).filter((k) => !order.includes(k))
+              );
+              return ordered.map((cat) => {
+                const flags = groups[cat];
+                const isFraud = cat === "fraud_signal";
+                return (
+                  <div key={cat}>
+                    <div style={{
+                      padding: "8px 16px 4px",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: isFraud ? "var(--red)" : "var(--text3)",
+                      textTransform: "uppercase",
+                      letterSpacing: ".6px",
+                      background: isFraud ? "rgba(220, 53, 69, 0.08)" : "var(--surface2)",
+                      borderLeft: isFraud ? "3px solid var(--red)" : undefined,
+                    }}>
+                      {labels[cat] ?? cat} &middot; {flags.length}
+                    </div>
+                    {flags.map((f, i) => (
+                      <FlagRow key={`${cat}-${i}`} f={f} />
+                    ))}
                   </div>
-                  {flags.map((f, i) => (
-                    <FlagRow key={`${cat}-${i}`} f={f} />
-                  ))}
-                </div>
-              ));
+                );
+              });
             })()}
             {!data && !error && Array.from({ length: 5 }).map((_, i) => (
               <div key={`skel-${i}`} style={{ display: "flex", alignItems: "center", padding: 16, borderBottom: "1px solid var(--border2)", gap: 16 }}>
