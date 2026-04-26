@@ -56,21 +56,30 @@ uv sync
 # 6. Upload to Aito (creates tables, batches inserts, optimizes)
 ./do reset-data
 
-# 7. Build the frontend and start the server
+# 7. (Optional) Pre-compute every read-only view's JSON. Recommended
+#    for hosted demos -- views load in <20 ms instead of calling Aito.
+#    Skip this in dev; the API falls back to live Aito calls.
+./do precompute --workers 4
+
+# 8. Build the frontend and start the server
 ./do frontend-build
 ./do dev
 # Open http://localhost:8200
 ```
 
 The Next.js frontend is served from FastAPI on `localhost:8200` —
-single port, no CORS issues. The first request for a non-warmed
-customer takes ~15s; cached after that. Top 5 customers are
-pre-warmed on startup.
+single port, no CORS issues.
 
-To pre-warm more customers ahead of a demo:
-```bash
-./do warm-cache --top 20
-```
+**Performance modes**:
+- **With precomputed JSON** (`./do precompute` was run): all read views
+  serve from `data/precomputed/{customer_id}/*.json` in <20 ms. Only
+  Form Fill calls Aito at runtime.
+- **Without precomputed JSON**: read endpoints hit Aito live, with
+  L1 (in-memory) + L2 (`cache_entries` table) caching. First request
+  per customer takes ~15 s; cached for 5 min after.
+
+For deployments, see [`docs/deploy-azure.md`](docs/deploy-azure.md) —
+one-shot `./do azure-deploy` after a one-time Container Apps setup.
 
 ## Multi-tenancy at a glance
 
