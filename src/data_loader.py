@@ -259,7 +259,11 @@ def run(reset: bool = False) -> None:
 
     # Load and upload each table that has fixture data
     print("\nUploading data...")
-    fixture_names = ["customers", "corporate_entities", "employees", "invoices", "bank_transactions", "overrides"]
+    fixture_names = [
+        "customers", "corporate_entities", "employees",
+        "invoices", "bank_transactions", "overrides",
+        "help_articles", "help_impressions",
+    ]
     total_records = 0
     uploaded_tables = []
     for table_name in fixture_names:

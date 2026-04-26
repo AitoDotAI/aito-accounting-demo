@@ -132,6 +132,31 @@ async def rate_limit_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+@app.middleware("http")
+async def validate_customer_middleware(request: Request, call_next):
+    """Reject requests with an empty or unknown customer_id with 400.
+
+    Per CLAUDE.md prime directive #2 -- never silently coerce or
+    discard unexpected data. A frontend bug that drops customer_id
+    should surface immediately, not show "no invoices" for 30
+    seconds.
+    """
+    if request.url.path.startswith("/api/") and "customer_id" in request.query_params:
+        cid = request.query_params.get("customer_id", "")
+        if not cid:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "customer_id query parameter is required and must be non-empty"},
+            )
+        known = _load_known_customers()
+        if known and cid not in known:
+            return JSONResponse(
+                status_code=400,
+                content={"error": f"unknown customer_id: {cid!r}"},
+            )
+    return await call_next(request)
+
+
 # ── Customer list ─────────────────────────────────────────────────
 
 @app.get("/api/cache/status")
@@ -145,6 +170,40 @@ def cache_status(customer_id: str = Query(...)):
         "rules_warm": cache.get(f"rules:{customer_id}") is not None,
         "anomalies_warm": cache.get(f"anomalies:{customer_id}") is not None,
     }
+
+
+_KNOWN_CUSTOMER_IDS: set[str] | None = None
+
+
+def _load_known_customers() -> set[str]:
+    """Cache the list of valid customer ids so the validator doesn't
+    hit Aito on every request."""
+    global _KNOWN_CUSTOMER_IDS
+    if _KNOWN_CUSTOMER_IDS is None:
+        try:
+            from pathlib import Path
+            with open(Path(__file__).resolve().parent.parent / "data" / "customers.json") as f:
+                _KNOWN_CUSTOMER_IDS = {c["customer_id"] for c in json.load(f)}
+        except Exception:
+            _KNOWN_CUSTOMER_IDS = set()
+    return _KNOWN_CUSTOMER_IDS
+
+
+def validate_customer(customer_id: str) -> None:
+    """Raise 400 for empty or unknown customer_id.
+
+    Per CLAUDE.md prime directive #2 -- fail loudly on unexpected
+    data instead of returning a slow 200 with empty body.
+    """
+    from fastapi import HTTPException
+    if not customer_id:
+        raise HTTPException(status_code=400, detail="customer_id is required")
+    known = _load_known_customers()
+    if known and customer_id not in known:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown customer_id: {customer_id!r}",
+        )
 
 
 @app.get("/api/customers")
@@ -714,10 +773,19 @@ def help_search(
 ):
     """Contextual help articles ranked by Aito click-through-rate.
 
-    The same _predict pattern aito-demo uses for product
+    Same _predict pattern aito-demo uses for product
     recommendations: articles historically clicked in this context
     rise to the top.
+
+    Cached at the server for 10 min per (customer, page, query) tuple.
+    The underlying _recommend takes 30+ s under load; the user
+    experience is dominated by repeat queries during a session, so
+    server-side caching is what makes the drawer responsive.
     """
+    cache_key = f"help_search:{customer_id}:{page}:{q}:{limit}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
     from src.help_service import search_help
     articles = search_help(
         aito,
@@ -726,7 +794,9 @@ def help_search(
         query=q or None,
         limit=limit,
     )
-    return {"articles": articles}
+    result = {"articles": articles}
+    cache.set(cache_key, result, ttl=600)
+    return result
 
 
 @app.post("/api/help/impression")
@@ -755,10 +825,17 @@ def help_related(
 
     Powered by `_recommend WHERE prev_article_id=…, goal: clicked=true`
     against help_impressions. Filtered to the customer's eligibility
-    set (global + own internal).
+    set (global + own internal). Cached server-side -- the related
+    set for an article is stable across users.
     """
+    cache_key = f"help_related:{customer_id}:{article_id}:{limit}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
     from src.help_service import related_articles
-    return {"articles": related_articles(aito, article_id, customer_id, limit=limit)}
+    result = {"articles": related_articles(aito, article_id, customer_id, limit=limit)}
+    cache.set(cache_key, result, ttl=600)
+    return result
 
 
 @app.get("/api/schema")
