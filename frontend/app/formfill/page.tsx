@@ -75,6 +75,7 @@ export default function FormFillPage() {
   const [lastQuery, setLastQuery] = useState<object | null>(null);
   const [vendors, setVendors] = useState<string[]>([]);
   const [template, setTemplate] = useState<TemplateResponse | null>(null);
+  const [topTemplates, setTopTemplates] = useState<TemplateResponse[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -82,7 +83,10 @@ export default function FormFillPage() {
     apiFetch<{ vendors: string[] }>(`/api/formfill/vendors?customer_id=${customerId}`)
       .then((d) => setVendors(d.vendors))
       .catch(() => setVendors(["Kesko Oyj", "Telia Finland", "Fazer Bakeries", "SOK Corporation"]));
-  }, []);
+    apiFetch<{ templates: TemplateResponse[] }>(`/api/formfill/templates?customer_id=${customerId}`)
+      .then((d) => setTopTemplates(d.templates ?? []))
+      .catch(() => setTopTemplates([]));
+  }, [customerId]);
 
   const fetchPredictions = useCallback(async (values: Record<string, string>) => {
     const where: Record<string, string | number> = {};
@@ -170,6 +174,22 @@ export default function FormFillPage() {
     fetchPredictions(next);
   }, [template, userValues, fetchPredictions]);
 
+  const applyTopTemplate = useCallback((t: TemplateResponse) => {
+    if (!t.vendor || !t.fields) return;
+    const f = t.fields;
+    const next: Record<string, string> = { vendor: t.vendor };
+    if (f.gl_code) next.gl_code = f.gl_code;
+    if (f.approver) next.approver = f.approver;
+    if (f.cost_centre) next.cost_centre = f.cost_centre;
+    if (f.vat_pct != null) next.vat_pct = String(f.vat_pct);
+    if (f.payment_method) next.payment_method = f.payment_method;
+    if (f.due_days != null) next.due_days = String(f.due_days);
+    if (f.category) next.category = f.category;
+    setUserValues(next);
+    setTemplate(t);
+    fetchPredictions(next);
+  }, [fetchPredictions]);
+
   const handleClear = useCallback(() => {
     setUserValues({});
     setPredictions([]);
@@ -221,6 +241,7 @@ export default function FormFillPage() {
   const avgConf = predictedCount > 0
     ? predictions.filter((p) => p.predicted).reduce((sum, p) => sum + p.confidence, 0) / predictedCount
     : 0;
+  const formIsEmpty = Object.values(userValues).every((v) => !v);
 
   return (
     <>
@@ -242,6 +263,44 @@ export default function FormFillPage() {
           {submitMsg && (
             <div style={{ background: "var(--green-bg)", border: "1px solid #a8d8b0", borderRadius: 8, padding: "8px 14px", fontSize: "12.5px", color: "#2a8a3a", marginBottom: 8 }}>
               {submitMsg}
+            </div>
+          )}
+          {formIsEmpty && topTemplates.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", marginBottom: 8 }}>
+                Quick start &middot; recurring vendors for this customer
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 8 }}>
+                {topTemplates.map((t, i) => (
+                  <button
+                    key={i}
+                    onClick={() => applyTopTemplate(t)}
+                    style={{
+                      textAlign: "left",
+                      padding: 12,
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 6,
+                      cursor: "pointer",
+                      transition: "border-color .15s, box-shadow .15s",
+                      fontFamily: "inherit",
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--gold-mid)"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {t.vendor}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text3)", lineHeight: 1.5 }}>
+                      GL {t.fields?.gl_code} ({t.fields?.gl_label})<br />
+                      Approver: {t.fields?.approver}<br />
+                      <span style={{ color: "var(--gold-dark)" }}>
+                        {t.match_count} of {t.total_history} prior invoices &middot; {Math.round((t.confidence ?? 0) * 100)}%
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
           {template && template.confidence != null && template.confidence >= 0.40 && (

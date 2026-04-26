@@ -349,6 +349,43 @@ def formfill_template(customer_id: str = Query(...), vendor: str = Query(...)):
     return template or {"error": "not enough history"}
 
 
+@app.get("/api/formfill/templates")
+def formfill_templates(customer_id: str = Query(...), limit: int = 6):
+    """Return the customer's top vendor templates as quick-start cards.
+
+    Mines templates for each of the top-N most-frequent vendors, dropping
+    any that don't have a confident template. Used as the landing-page
+    'recently used' list in Form Fill so users start from a template
+    instead of a blank form.
+    """
+    from src.formfill_service import predict_template
+    from collections import Counter
+    cache_key = f"formfill_templates:{customer_id}:{limit}"
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
+    try:
+        sample = aito.search("invoices", {"customer_id": customer_id}, limit=200)
+    except AitoError:
+        return {"templates": []}
+
+    vendors = Counter(h["vendor"] for h in sample.get("hits", []) if h.get("vendor"))
+    top = [v for v, _ in vendors.most_common(limit * 2)]
+
+    templates = []
+    for vendor in top:
+        t = predict_template(aito, customer_id, vendor)
+        if t:
+            templates.append(t)
+        if len(templates) >= limit:
+            break
+
+    result = {"templates": templates}
+    cache.set(cache_key, result, ttl=600)
+    return result
+
+
 @app.post("/api/formfill/predict")
 def formfill_predict(body: dict):
     """Predict form fields — live Aito call with customer_id."""

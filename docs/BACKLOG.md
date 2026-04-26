@@ -21,14 +21,10 @@ front-page library and reuse compatible terminology, branding, and CTA flow.
 
 ## Active
 
-- [ ] **#2 Template-first Form Fill** — show "Recently used templates"
-  list before any input; users start from a template, not blank.
-
-## Todo (priority order)
-
-### Big wins
 - [ ] **#4 Data-flow tour** — toggle on each page that overlays which
   Aito calls produce which UI elements. Builds evaluator trust.
+
+## Todo (priority order)
 
 ### Polish
 
@@ -99,6 +95,10 @@ front-page library and reuse compatible terminology, branding, and CTA flow.
 - [x] **#5 Touchless drill-down** — Touchless rate and Review needed
   metric cards are clickable; filter invoice table; active filter
   shown in highlighted banner with "Clear filter ×" button
+- [x] **#2 Template-first Form Fill** — landing page shows "Quick start"
+  cards for top recurring vendors (template per vendor with GL,
+  approver, support count); one click fills all fields including
+  vendor; new `/api/formfill/templates` endpoint
 
 ### Foundation (earlier)
 - [x] 100K invoices, pre-computed predictions architecture
