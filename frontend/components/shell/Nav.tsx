@@ -69,9 +69,6 @@ export default function Nav() {
         </div>
       ))}
 
-      <div className="nav-user">
-        <div className="nav-item">Tiina M&#228;kinen</div>
-      </div>
     </nav>
   );
 }

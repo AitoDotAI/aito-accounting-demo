@@ -105,11 +105,14 @@ export default function HelpDrawer() {
     <>
       <button
         onClick={() => setOpen(!open)}
-        title="Help (?) "
+        title="Demo help — articles ranked by Aito"
         style={{
+          // Inside the midpane: offset from the viewport right by the
+          // AitoPanel width (268px) plus a 24px gutter. The button sits
+          // bottom-right of the main content area, not over the side panel.
           position: "fixed",
           bottom: 24,
-          right: 24,
+          right: "calc(268px + 24px)",
           width: 44,
           height: 44,
           borderRadius: "50%",
@@ -130,12 +133,15 @@ export default function HelpDrawer() {
       {open && (
         <div
           style={{
+            // Anchor right edge to the inner edge of the AitoPanel
+            // (not the viewport) so the drawer slides over the
+            // midpane and the AitoPanel stays visible.
             position: "fixed",
             top: 0,
-            right: 0,
+            right: 268,
             bottom: 0,
             width: 420,
-            maxWidth: "100vw",
+            maxWidth: "calc(100vw - 268px)",
             background: "var(--surface)",
             borderLeft: "1px solid var(--border)",
             boxShadow: "-4px 0 24px rgba(0,0,0,0.15)",
@@ -147,7 +153,7 @@ export default function HelpDrawer() {
           <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border2)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
               <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px" }}>
-                Help · ranked by Aito
+                Demo help
               </div>
               <div style={{ fontSize: 13, color: "var(--text2)", marginTop: 2 }}>
                 Context: <code style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: "var(--gold-dark)" }}>{pathname || "/"}</code>
