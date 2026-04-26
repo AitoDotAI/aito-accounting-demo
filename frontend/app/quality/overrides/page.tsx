@@ -12,14 +12,14 @@ import type { AitoPanelConfig } from "@/lib/types";
 const PANEL: AitoPanelConfig = {
   operation: "_relate (override mining)",
   stats: [
-    { value: "44", label: "Overrides" },
-    { value: "6", label: "Patterns" },
-    { value: "29", label: "GL overrides" },
+    { value: "_relate", label: "Operation" },
+    { value: "Live", label: "Predictions" },
+    { value: "$invoices", label: "Records" },
     { value: "Zero", label: "Training" },
   ],
   description:
     'Every override is fed through <code style="font-size:11px;color:var(--aito-accent)">_relate</code> to find emerging patterns. ' +
-    "Overrides are the primary signal for rule improvement.",
+    "Overrides are the primary signal for rule improvement — patterns surfaced here become rule candidates.",
   query: JSON.stringify(
     { from: "overrides", where: { field: "gl_code" }, relate: "corrected_value" },
     null, 2,
@@ -48,6 +48,7 @@ export default function OverridesPage() {
 
   const o = data?.overrides;
   const patterns = data?.override_patterns ?? [];
+  const topPattern = patterns[0];
 
   return (
     <>
@@ -55,13 +56,42 @@ export default function OverridesPage() {
       <div className="main">
         <TopBar breadcrumb="Quality" title="Human Overrides" subtitle="Every correction is a learning signal" live={live} />
         <div className="content">
+          {topPattern && (
+            <div style={{ background: "var(--gold-light)", border: "1px solid #d8bc70", borderRadius: 8, padding: "14px 18px", marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--gold-dark)", textTransform: "uppercase", letterSpacing: ".6px", marginBottom: 6 }}>
+                Headline finding
+              </div>
+              <div style={{ fontSize: 14, color: "var(--text)", lineHeight: 1.6 }}>
+                Reviewers corrected <strong>{topPattern.field}</strong> to{" "}
+                <strong>{topPattern.corrected_to}</strong> in{" "}
+                <strong>{topPattern.count}</strong> recent invoices
+                {topPattern.lift > 1 && <span style={{ color: "var(--text3)" }}> (lift {topPattern.lift}× over baseline)</span>}.
+                This is a rule candidate — promote it once support stabilises.
+              </div>
+            </div>
+          )}
           <div className="metrics">
             <div className="metric highlight"><div className="metric-label">Overrides</div><div className="metric-value">{o?.total ?? "--"}</div></div>
-            <div className="metric"><div className="metric-label">Patterns found</div><div className="metric-value">{patterns.length || "--"}</div><div className="metric-sub metric-up">New rule candidates</div></div>
-            <div className="metric"><div className="metric-label">Top override type</div><div className="metric-value" style={{ fontSize: 15 }}>GL code</div><div className="metric-sub metric-neutral">{o?.by_field?.gl_code ?? "--"} overrides</div></div>
-            <div className="metric"><div className="metric-label">Override rate</div><div className="metric-value">6%</div></div>
+            <div className="metric"><div className="metric-label">Patterns found</div><div className="metric-value">{patterns.length || "--"}</div><div className="metric-sub metric-neutral">Rule candidates</div></div>
+            <div className="metric"><div className="metric-label">Most-overridden field</div><div className="metric-value" style={{ fontSize: 15 }}>{o && Object.keys(o.by_field).length > 0 ? Object.entries(o.by_field).sort(([,a],[,b]) => b - a)[0][0] : "—"}</div><div className="metric-sub metric-neutral">{o?.by_field && Object.entries(o.by_field).sort(([,a],[,b]) => b - a)[0]?.[1]} corrections</div></div>
+            <div className="metric"><div className="metric-label">Active correctors</div><div className="metric-value">{o?.by_corrector ? Object.keys(o.by_corrector).length : "--"}</div></div>
           </div>
           <div className="quality-grid">
+            <div className="quality-card">
+              <div className="qc-header"><span className="qc-title">Emerging patterns from overrides</span><span className="card-hint">From <code>_relate</code> on overrides</span></div>
+              <div className="qc-body">
+                {patterns.length === 0 && <div style={{ color: "var(--text3)", fontSize: 12, lineHeight: 1.6 }}>No patterns found yet — patterns surface once 5+ overrides target the same value.</div>}
+                {patterns.map((p, i) => (
+                  <div key={i} className="rule-row" style={{ padding: "10px 0" }}>
+                    <div style={{ flex: 1 }}>
+                      <div className="rule-pattern">{p.field} &rarr; {p.corrected_to}</div>
+                      <div className="rule-arrow" style={{ marginTop: 3, fontSize: 11, color: "var(--text3)" }}>{p.count} overrides &middot; lift {p.lift}×</div>
+                    </div>
+                    <span style={{ fontSize: 11, color: "var(--text3)", fontStyle: "italic" }}>candidate rule</span>
+                  </div>
+                ))}
+              </div>
+            </div>
             <div className="quality-card">
               <div className="qc-header"><span className="qc-title">Overrides by field type</span></div>
               <div className="qc-body">
@@ -70,21 +100,6 @@ export default function OverridesPage() {
                     <div className="bar-label">{field}</div>
                     <div className="bar-track"><div className="bar-fill bar-fill-gold" style={{ width: `${(count / o.total) * 100}%` }} /></div>
                     <div className="bar-val">{count}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="quality-card">
-              <div className="qc-header"><span className="qc-title">Emerging patterns from overrides</span></div>
-              <div className="qc-body">
-                {patterns.length === 0 && <div style={{ color: "var(--text3)", fontSize: 12 }}>No patterns found yet</div>}
-                {patterns.map((p, i) => (
-                  <div key={i} className="rule-row" style={{ padding: "8px 0" }}>
-                    <div style={{ flex: 1 }}>
-                      <div className="rule-pattern">{p.field} &rarr; {p.corrected_to}</div>
-                      <div className="rule-arrow" style={{ marginTop: 3, fontSize: 11, color: "var(--text3)" }}>{p.count} overrides &middot; lift {p.lift}</div>
-                    </div>
-                    <button className="rule-action rule-promote" style={{ marginLeft: 10 }}>Add rule &rarr;</button>
                   </div>
                 ))}
               </div>

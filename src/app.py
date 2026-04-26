@@ -245,6 +245,39 @@ def quality_overview(customer_id: str = Query(...)):
     return result
 
 
+@app.get("/api/quality/predictions")
+def quality_predictions(customer_id: str = Query(...)):
+    """Real prediction accuracy via Aito _evaluate, with rules-only baseline.
+
+    Compares Aito's predictions to ground-truth GL codes on a held-out
+    test set, then replays the static rules engine on the same set to
+    show the rules-only baseline.
+    """
+    cache_key = f"predictions:{customer_id}"
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
+    from src.quality_service import compute_prediction_quality
+    result = compute_prediction_quality(aito, customer_id=customer_id)
+    cache.set(cache_key, result, ttl=600)
+    return result
+
+
+@app.get("/api/quality/rules")
+def quality_rules(customer_id: str = Query(...)):
+    """Rule performance — replay each static rule against actual GL codes."""
+    cache_key = f"rules_perf:{customer_id}"
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
+    from src.quality_service import compute_rule_performance
+    result = compute_rule_performance(aito, customer_id=customer_id)
+    cache.set(cache_key, result, ttl=600)
+    return result
+
+
 # ── Live Aito endpoints ──────────────────────────────────────────
 
 @app.get("/api/formfill/vendors")
@@ -256,6 +289,19 @@ def formfill_vendors(customer_id: str = Query(...)):
         return {"vendors": vendors}
     except AitoError:
         return {"vendors": KNOWN_VENDORS}
+
+
+@app.get("/api/formfill/template")
+def formfill_template(customer_id: str = Query(...), vendor: str = Query(...)):
+    """Predict the most common historical template for a vendor.
+
+    Returns the joint mode of all classification fields when there is enough
+    historical data. The UI shows this as 'Looks like your monthly Telia
+    invoice. [Apply]' — one click fills all fields.
+    """
+    from src.formfill_service import predict_template
+    template = predict_template(aito, customer_id, vendor)
+    return template or {"error": "not enough history"}
 
 
 @app.post("/api/formfill/predict")

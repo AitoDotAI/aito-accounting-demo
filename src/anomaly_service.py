@@ -21,6 +21,8 @@ class AnomalyFlag:
     amount: float
     title: str
     description: str
+    recommendation: str
+    category: str  # "gl_mismatch", "amount_outlier", "unfamiliar", "approver"
     anomaly_score: float
     severity: str  # "high", "medium", "low"
 
@@ -31,6 +33,8 @@ class AnomalyFlag:
             "amount": self.amount,
             "title": self.title,
             "description": self.description,
+            "recommendation": self.recommendation,
+            "category": self.category,
             "anomaly_score": round(self.anomaly_score, 2),
             "severity": self.severity,
         }
@@ -94,7 +98,7 @@ def scan_invoice(client: AitoClient, invoice: dict) -> AnomalyFlag | None:
         return None
 
     # Build human-readable description
-    title, desc = _describe_anomaly(
+    title, desc, recommendation, category = _describe_anomaly(
         invoice, gl_predicted, gl_p, approver_predicted, approver_p,
     )
 
@@ -104,6 +108,8 @@ def scan_invoice(client: AitoClient, invoice: dict) -> AnomalyFlag | None:
         amount=amount,
         title=title,
         description=desc,
+        recommendation=recommendation,
+        category=category,
         anomaly_score=anomaly_score,
         severity=classify_severity(anomaly_score),
     )
@@ -115,52 +121,65 @@ def _describe_anomaly(
     gl_p: float,
     approver_predicted: str,
     approver_p: float,
-) -> tuple[str, str]:
-    """Generate a human-readable title and description for an anomaly."""
+) -> tuple[str, str, str, str]:
+    """Generate (title, description, recommendation, category) for an anomaly.
+
+    Each anomaly category gets a concrete actionable next step rather than
+    a generic numeric score.
+    """
     vendor = invoice["vendor"]
     amount = invoice["amount"]
     stated_gl = invoice.get("gl_code")
-    anomaly_score = 1.0 - max(gl_p, approver_p)
 
-    # GL code mismatch
+    # GL code mismatch — highest signal, suggests data-entry error or shifted policy
     if stated_gl and stated_gl != gl_predicted and gl_p > 0.50:
         pred_label = GL_LABELS.get(gl_predicted, gl_predicted)
         stated_label = GL_LABELS.get(stated_gl, stated_gl)
         return (
-            f"GL code mismatch — predicted {gl_predicted} ({pred_label}) but stated as {stated_gl} ({stated_label})",
-            f"{vendor} · Aito predicts {gl_predicted} ({pred_label}) with {gl_p:.0%} confidence, "
-            f"but invoice uses {stated_gl} ({stated_label}) · score {anomaly_score:.2f}",
+            f"GL code mismatch — uses {stated_gl} ({stated_label}), expected {gl_predicted} ({pred_label})",
+            f"For {vendor}, {int(gl_p * 100)} of 100 historical invoices use GL {gl_predicted} ({pred_label}). "
+            f"This invoice uses GL {stated_gl} ({stated_label}) instead.",
+            f"Send back to processor — confirm whether GL {stated_gl} is intentional or a data-entry error.",
+            "gl_mismatch",
         )
 
-    # Low confidence on everything — unknown pattern
+    # Both predictions weak — unfamiliar pattern (new vendor, unusual combination)
     if gl_p < 0.40 and approver_p < 0.40:
         return (
             f"Unfamiliar pattern — {vendor}",
-            f"Low prediction confidence for all fields · "
-            f"GL {gl_predicted} ({gl_p:.0%}), approver {approver_predicted} ({approver_p:.0%}) "
-            f"· score {anomaly_score:.2f}",
+            f"Aito has limited history for this vendor + amount + category combination. "
+            f"GL prediction confidence {int(gl_p * 100)}%, approver {int(approver_p * 100)}%.",
+            "Verify this is a known supplier; if first-time vendor, escalate to procurement for onboarding.",
+            "unfamiliar",
         )
 
-    # Low GL confidence specifically
+    # Low GL confidence — unusual GL for this vendor
     if gl_p < 0.50:
+        pred_label = GL_LABELS.get(gl_predicted, gl_predicted)
         return (
             f"Unusual GL assignment — {vendor}",
-            f"GL code prediction confidence only {gl_p:.0%} for {vendor} "
-            f"€{amount:,.2f} · score {anomaly_score:.2f}",
+            f"Aito's top GL prediction is {gl_predicted} ({pred_label}) but only at "
+            f"{int(gl_p * 100)}% confidence — this vendor's GL pattern is inconsistent.",
+            f"Confirm with vendor or processor; consider promoting a stable rule once pattern stabilizes.",
+            "unfamiliar",
         )
 
-    # Low approver confidence
+    # Low approver confidence — routing anomaly
     if approver_p < 0.50:
         return (
             f"Unusual routing — {vendor}",
-            f"Approver prediction confidence only {approver_p:.0%} for {vendor} "
-            f"€{amount:,.2f} · score {anomaly_score:.2f}",
+            f"Approver prediction is {approver_predicted} but only at {int(approver_p * 100)}% confidence. "
+            f"This vendor's approval routing has changed or is irregular.",
+            "Verify with the previous approver before processing.",
+            "approver",
         )
 
-    # Generic
+    # Generic catch-all
     return (
         f"Anomalous invoice — {vendor}",
-        f"Combined prediction confidence below threshold · score {anomaly_score:.2f}",
+        f"Combined prediction confidence below threshold for this invoice.",
+        "Review manually — does not match any single anomaly pattern.",
+        "unfamiliar",
     )
 
 

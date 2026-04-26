@@ -83,9 +83,14 @@ export default function MatchingPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
-    setData(null); setLive(false); setError(false);
+    setData(null); setLive(false); setError(false); setExpanded(null);
     apiFetch<MatchResponse>(`/api/matching/pairs?customer_id=${customerId}`)
-      .then((d) => { setData(d); setLive(true); })
+      .then((d) => {
+        setData(d); setLive(true);
+        // Auto-expand the first matched row so users discover the "why" feature
+        const firstMatched = d.pairs.find((p) => p.status === "matched" && p.explanation && p.explanation.length > 0);
+        if (firstMatched) setExpanded(firstMatched.invoice_id);
+      })
       .catch(() => setError(true));
   }, [customerId]);
 

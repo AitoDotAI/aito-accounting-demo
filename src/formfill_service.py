@@ -40,6 +40,64 @@ def _label_map_for_field(field_name: str) -> dict | None:
     return None
 
 
+def predict_template(client: AitoClient, customer_id: str, vendor: str) -> dict | None:
+    """Find the most common historical invoice 'template' for this vendor.
+
+    A template is the joint mode of (gl_code, approver, cost_centre, vat_pct,
+    payment_method, due_days, category). When confidence is high, the user
+    can apply all fields with one click instead of confirming each.
+    """
+    try:
+        result = client.search("invoices", {"customer_id": customer_id, "vendor": vendor}, limit=50)
+    except AitoError:
+        return None
+
+    hits = result.get("hits", [])
+    if len(hits) < 3:
+        return None
+
+    # Count joint occurrences
+    from collections import Counter
+
+    def key_of(inv: dict) -> tuple:
+        return (
+            inv.get("gl_code"),
+            inv.get("approver"),
+            inv.get("cost_centre"),
+            inv.get("vat_pct"),
+            inv.get("payment_method"),
+            inv.get("due_days"),
+            inv.get("category"),
+        )
+
+    counts = Counter(key_of(inv) for inv in hits)
+    if not counts:
+        return None
+
+    (gl, approver, cc, vat, pay, due, cat), n = counts.most_common(1)[0]
+    confidence = n / len(hits)
+
+    if confidence < 0.30:  # too noisy to call it a template
+        return None
+
+    return {
+        "vendor": vendor,
+        "match_count": n,
+        "total_history": len(hits),
+        "confidence": round(confidence, 2),
+        "fields": {
+            "gl_code": gl,
+            "gl_label": GL_LABELS.get(gl, gl) if gl else None,
+            "approver": approver,
+            "cost_centre": cc,
+            "vat_pct": vat,
+            "payment_method": pay,
+            "due_days": due,
+            "category": cat,
+        },
+    }
+
+
 def format_value(value: str, fmt: str) -> str:
     """Format a predicted value for display."""
     if fmt == "gl":

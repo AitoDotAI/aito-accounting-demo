@@ -48,6 +48,24 @@ interface PredictResponse {
   avg_confidence: number;
 }
 
+interface TemplateResponse {
+  vendor?: string;
+  match_count?: number;
+  total_history?: number;
+  confidence?: number;
+  fields?: {
+    gl_code: string | null;
+    gl_label: string | null;
+    approver: string | null;
+    cost_centre: string | null;
+    vat_pct: number | null;
+    payment_method: string | null;
+    due_days: number | null;
+    category: string | null;
+  };
+  error?: string;
+}
+
 export default function FormFillPage() {
   const { customerId } = useCustomer();
   const [userValues, setUserValues] = useState<Record<string, string>>({});
@@ -56,6 +74,7 @@ export default function FormFillPage() {
   const [live, setLive] = useState(false);
   const [lastQuery, setLastQuery] = useState<object | null>(null);
   const [vendors, setVendors] = useState<string[]>([]);
+  const [template, setTemplate] = useState<TemplateResponse | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -106,6 +125,18 @@ export default function FormFillPage() {
     }
   }, []);
 
+  const fetchTemplate = useCallback(async (vendor: string) => {
+    if (!vendor) { setTemplate(null); return; }
+    try {
+      const tpl = await apiFetch<TemplateResponse>(
+        `/api/formfill/template?customer_id=${customerId}&vendor=${encodeURIComponent(vendor)}`,
+      );
+      setTemplate(tpl.error ? null : tpl);
+    } catch {
+      setTemplate(null);
+    }
+  }, [customerId]);
+
   const handleChange = useCallback((field: string, value: string) => {
     setUserValues((prev) => {
       const next = { ...prev, [field]: value };
@@ -113,19 +144,37 @@ export default function FormFillPage() {
       debounceRef.current = setTimeout(() => fetchPredictions(next), 300);
       return next;
     });
-  }, [fetchPredictions]);
+    if (field === "vendor") fetchTemplate(value);
+  }, [fetchPredictions, fetchTemplate]);
 
   const handleVendorSelect = useCallback((vendor: string) => {
     const next = { ...userValues, vendor };
     setUserValues(next);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     fetchPredictions(next);
-  }, [userValues, fetchPredictions]);
+    fetchTemplate(vendor);
+  }, [userValues, fetchPredictions, fetchTemplate]);
+
+  const applyTemplate = useCallback(() => {
+    if (!template?.fields) return;
+    const f = template.fields;
+    const next = { ...userValues };
+    if (f.gl_code) next.gl_code = f.gl_code;
+    if (f.approver) next.approver = f.approver;
+    if (f.cost_centre) next.cost_centre = f.cost_centre;
+    if (f.vat_pct != null) next.vat_pct = String(f.vat_pct);
+    if (f.payment_method) next.payment_method = f.payment_method;
+    if (f.due_days != null) next.due_days = String(f.due_days);
+    if (f.category) next.category = f.category;
+    setUserValues(next);
+    fetchPredictions(next);
+  }, [template, userValues, fetchPredictions]);
 
   const handleClear = useCallback(() => {
     setUserValues({});
     setPredictions([]);
     setLastQuery(null);
+    setTemplate(null);
   }, []);
 
   const getPrediction = (fieldName: string): FieldPrediction | undefined =>
@@ -150,6 +199,19 @@ export default function FormFillPage() {
           }
         />
         <div className="content">
+          {template && template.confidence != null && template.confidence >= 0.40 && (
+            <div style={{ background: "var(--surface2)", border: "1px solid var(--border2)", borderRadius: 8, padding: "12px 16px", marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ flex: 1, fontSize: "12.5px", color: "var(--text2)", lineHeight: 1.5 }}>
+                <strong style={{ color: "var(--gold-dark)" }}>Template match:</strong>{" "}
+                {template.match_count} of {template.total_history} prior invoices for{" "}
+                <strong>{template.vendor}</strong> use the same routing
+                {template.fields?.gl_label && <> (GL {template.fields.gl_code} {template.fields.gl_label}, approver {template.fields.approver})</>}.
+              </div>
+              <button className="btn btn-primary" onClick={applyTemplate} style={{ whiteSpace: "nowrap" }}>
+                Apply template
+              </button>
+            </div>
+          )}
           {predictedCount > 0 && (
             <div style={{ background: "var(--gold-light)", border: "1px solid #d8bc70", borderRadius: 8, padding: "10px 16px", fontSize: "12.5px", color: "var(--gold-dark)", display: "flex", alignItems: "center", gap: 8 }}>
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.3"/><path d="M7 4v3.5L9 9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
@@ -222,7 +284,12 @@ export default function FormFillPage() {
               <div className="field-row">
                 <div className="field-group">
                   <div className="field-label">Invoice date</div>
-                  <input className="field-input" defaultValue="2026-04-18" readOnly />
+                  <input
+                    className="field-input"
+                    type="date"
+                    value={userValues.invoice_date || new Date().toISOString().slice(0, 10)}
+                    onChange={(e) => handleChange("invoice_date", e.target.value)}
+                  />
                 </div>
                 <PredictedField
                   label="Due terms"
@@ -285,10 +352,6 @@ export default function FormFillPage() {
                 whyFactors={getPrediction("payment_method")?.alternatives?.[0]?.why}
                 onChange={handleChange}
               />
-              <div className="field-group">
-                <div className="field-label">Project code</div>
-                <input className="field-input" placeholder="Optional" />
-              </div>
             </div>
           </div>
         </div>

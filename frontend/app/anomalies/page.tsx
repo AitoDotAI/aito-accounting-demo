@@ -35,6 +35,8 @@ interface AnomalyFlag {
   amount: number;
   title: string;
   description: string;
+  recommendation: string;
+  category: string;
   anomaly_score: number;
   severity: "high" | "medium" | "low";
 }
@@ -83,9 +85,9 @@ export default function AnomaliesPage() {
             <div className="metric"><div className="metric-label">Scanned</div><div className="metric-value">{m?.scanned ?? "--"}</div></div>
           </div>
           <div className="card">
-            <div className="card-header"><span className="card-title">Flagged transactions</span><span className="card-hint">Ranked by anomaly score &middot; inverse _predict</span></div>
+            <div className="card-header"><span className="card-title">Flagged transactions</span><span className="card-hint">Inverse <code>_predict</code> &middot; reasons and recommended action shown</span></div>
             {(data?.flags ?? []).map((f, i) => (
-              <div key={i} className="anomaly-row">
+              <div key={i} className="anomaly-row" style={{ alignItems: "flex-start" }}>
                 <div className={`anomaly-icon ${f.severity}`}>
                   {f.severity === "high" ? (
                     <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2L1 12h12L7 2z" stroke="#8b1a1a" strokeWidth="1.3"/><path d="M7 6v3M7 10.5v.5" stroke="#8b1a1a" strokeWidth="1.3" strokeLinecap="round"/></svg>
@@ -96,6 +98,12 @@ export default function AnomaliesPage() {
                 <div className="anomaly-body">
                   <div className="anomaly-title">{f.title}</div>
                   <div className="anomaly-sub">{f.description}</div>
+                  {f.recommendation && (
+                    <div style={{ marginTop: 6, padding: "6px 10px", background: "var(--surface2)", borderLeft: "3px solid var(--gold-mid)", borderRadius: 3, fontSize: "11.5px", color: "var(--text2)" }}>
+                      <strong style={{ color: "var(--gold-dark)", marginRight: 6 }}>Recommended:</strong>
+                      {f.recommendation}
+                    </div>
+                  )}
                 </div>
                 <div>{SEVERITY_BADGE[f.severity]}</div>
                 <div className="anomaly-amount" style={{ marginLeft: 16 }}>{fmtAmount(f.amount)}</div>

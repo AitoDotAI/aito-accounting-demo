@@ -136,6 +136,8 @@ class TestAnomalyFlag:
             amount=45000.00,
             title="Unfamiliar pattern — Brand New Corp",
             description="Low confidence all fields",
+            recommendation="Verify vendor identity",
+            category="unfamiliar",
             anomaly_score=0.71,
             severity="medium",
         )

@@ -31,6 +31,10 @@ interface PredictionData {
   override_rate: number;
   dangerous_errors: number;
   high_conf_accuracy: number;
+  base_accuracy?: number;
+  rules_coverage?: number;
+  rules_accuracy_within?: number;
+  rules_total_accuracy?: number;
   confidence_table: ConfBand[];
   accuracy_by_type: { label: string; value: number }[];
   total_evaluated: number;
@@ -72,6 +76,33 @@ export default function PredictionQualityPage() {
             <div className="metric"><div className="metric-label">Dangerous errors</div><div className="metric-value">{data ? `${data.dangerous_errors}%` : "--"}</div><div className="metric-sub metric-neutral">High-conf wrong pred.</div></div>
           </div>
           {error && <ErrorState />}
+          {data && data.rules_coverage != null && (
+            <div style={{ background: "var(--surface2)", border: "1px solid var(--border2)", borderRadius: 8, padding: "16px 20px", marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", marginBottom: 12 }}>
+                Rules-only baseline vs Aito
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+                <div>
+                  <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 4 }}>Rules-only</div>
+                  <div style={{ fontSize: 22, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600 }}>
+                    {data.rules_coverage}% <span style={{ fontSize: 12, color: "var(--text3)" }}>covered</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--text2)", marginTop: 4 }}>
+                    {data.rules_accuracy_within}% accurate within covered &middot; {data.rules_total_accuracy}% overall
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: "var(--gold-dark)", marginBottom: 4, fontWeight: 600 }}>With Aito</div>
+                  <div style={{ fontSize: 22, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600, color: "var(--gold-dark)" }}>
+                    100% <span style={{ fontSize: 12, color: "var(--text3)" }}>covered</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--text2)", marginTop: 4 }}>
+                    {data.overall_accuracy}% accurate overall &middot; closes the {Math.max(0, 100 - (data.rules_coverage ?? 0))}pp coverage gap
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           {data && (
             <div className="quality-grid">
               <div className="quality-card">
