@@ -6,9 +6,9 @@
   
     [internal] [own-internal  ] Approval policy: invoices over €10,000
     [internal] [own-internal  ] Cost centre rules at Customer 0000
-    [internal] [own-internal  ] Vendor onboarding at Customer 0000
     [app     ] [global        ] How GL code prediction works
-    [app     ] [global        ] Reading the touchless rate
+    [legal   ] [global        ] Late payment interest in Finnish B2B
+    [internal] [own-internal  ] Override policy at Customer 0000
   
   ok
   ok

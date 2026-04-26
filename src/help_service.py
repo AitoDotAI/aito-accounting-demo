@@ -38,75 +38,76 @@ def search_help(
 ) -> list[dict]:
     """Return click-through-ranked help articles for the current context.
 
-    Articles available to a customer = those with customer_id="*"
-    (global app/legal docs) plus their own internal ones. We do two
-    `_recommend` passes (global + customer-specific) and merge —
-    Aito's `where` doesn't OR cleanly on customer_id without a $or
-    expression, and two passes keep the where clauses simple.
+    One `_recommend` call against the user's impression history,
+    filtered post-hoc to only articles available to this customer
+    (global "*" plus own internal). Articles the customer has never
+    been eligible to see can't appear in their impression history,
+    so other-customer internal articles are naturally excluded —
+    but we filter again as a belt-and-braces check.
+
+    On cold start (no impression history), falls back to a direct
+    search of the help_articles table.
     """
-    base_where: dict = {}
+    base_where: dict = {"customer_id": customer_id}
     if page:
         base_where["page"] = page
     if query:
-        # query goes through Aito's text analyzer
         base_where["query"] = query
 
-    ranked: list[tuple[float, str]] = []  # (score, article_id)
-
-    for cid_filter in ("*", customer_id):
-        try:
-            result = client._request("POST", "/_recommend", json={
-                "from": "help_impressions",
-                "where": {**base_where, "customer_id": cid_filter},
-                "recommend": "article_id",
-                "goal": {"clicked": True},
-                "select": ["$p", "feature"],
-                "limit": limit,
-            })
-        except AitoError:
-            continue
-        for hit in result.get("hits", []):
-            # Aito returns dicts with "feature" (the value) and "$p"
-            # (probability the goal would be achieved). Some payloads
-            # also use "$value" — handle both shapes defensively.
-            article_id = hit.get("feature") or hit.get("$value")
-            if article_id is None:
-                continue
-            ranked.append((float(hit.get("$p", 0)), article_id))
-
-    # Sort by score, dedupe
-    seen = set()
-    ordered_ids = []
-    for score, aid in sorted(ranked, key=lambda x: -x[0]):
-        if aid in seen:
-            continue
-        seen.add(aid)
-        ordered_ids.append(aid)
-        if len(ordered_ids) >= limit:
-            break
-
-    if not ordered_ids:
-        # Cold start: fall back to category=app articles + customer's internal
-        try:
-            global_result = client.search("help_articles", {"customer_id": "*"}, limit=limit)
-            internal_result = client.search(
-                "help_articles", {"customer_id": customer_id}, limit=3,
-            )
-            return (internal_result.get("hits", []) + global_result.get("hits", []))[:limit]
-        except AitoError:
-            return []
-
-    # Hydrate: fetch each article and preserve the ranked order
-    articles_by_id: dict[str, dict] = {}
+    # Build the eligibility set once: which articles is this customer
+    # allowed to see? Used for filtering both _recommend results and
+    # the cold-start fallback.
     try:
-        for aid in ordered_ids:
-            res = client.search("help_articles", {"article_id": aid}, limit=1)
-            if res.get("hits"):
-                articles_by_id[aid] = res["hits"][0]
+        eligible_global = client.search("help_articles", {"customer_id": "*"}, limit=200).get("hits", [])
+        eligible_own = client.search("help_articles", {"customer_id": customer_id}, limit=50).get("hits", [])
     except AitoError:
         return []
+    by_id = {a["article_id"]: a for a in eligible_global + eligible_own}
+    eligible_ids = set(by_id.keys())
 
-    return [articles_by_id[aid] for aid in ordered_ids if aid in articles_by_id]
+    # Aito _recommend returns ranked article_ids globally — its where
+    # clause biases ranking but doesn't restrict the candidate pool.
+    # Most high-$p hits are other-customer internal articles which we
+    # filter out via the eligibility set. We over-fetch generously
+    # then top up from the eligibility pool itself so the user always
+    # gets `limit` articles even if _recommend's signal is sparse.
+    try:
+        result = client._request("POST", "/_recommend", json={
+            "from": "help_impressions",
+            "where": base_where,
+            "recommend": "article_id",
+            "goal": {"clicked": True},
+            "limit": 100,
+        })
+    except AitoError:
+        result = {"hits": []}
+
+    ranked_ids: list[str] = []
+    seen: set[str] = set()
+    for hit in result.get("hits", []):
+        aid = hit.get("article_id")
+        if not aid or aid in seen or aid not in eligible_ids:
+            continue
+        seen.add(aid)
+        ranked_ids.append(aid)
+
+    # Top up to `limit` with eligible articles not yet ranked.
+    # Priority: own-internal page-context match, then own-internal,
+    # then global page-context match, then global remaining.
+    if len(ranked_ids) < limit:
+        own_match = [a["article_id"] for a in eligible_own if a.get("page_context") == page and page]
+        own_other = [a["article_id"] for a in eligible_own]
+        global_match = [a["article_id"] for a in eligible_global if a.get("page_context") == page and page]
+        global_other = [a["article_id"] for a in eligible_global]
+        for aid in own_match + own_other + global_match + global_other:
+            if aid in seen:
+                continue
+            seen.add(aid)
+            ranked_ids.append(aid)
+            if len(ranked_ids) >= limit:
+                break
+
+    return [by_id[aid] for aid in ranked_ids[:limit] if aid in by_id]
 
 
 def log_impression(

@@ -2,29 +2,27 @@
   "test_id": "book/test_07_help.py::test_help_search_top_articles_for_invoices_page",
   "snapshots": {
     "httpx": {
-      "hash": "sha256:07032f25fd5ebd1dd0dfc7f1c7be0048b171fa1819460b8fbf4f72366aeae422",
+      "hash": "sha256:de5fb0b408a875f62b71f035960860484b063b774942270baf07bfda3a2fa711",
       "state": "updated",
       "details": {
-        "count": 4,
+        "count": 3,
         "urls": [
-          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_recommend",
           "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_recommend",
           "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_search",
           "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_search"
         ],
         "hashes": [
-          "9d88b31eb6a1f7d499af74b8889581c8cdb1b737",
-          "a290093e66abf1992a1984de366b60afb2c3b93d",
-          "7c8e368bf29d378ed41a0ee8f28ca7b2caefcc3b",
-          "c9b942c949c1125bd787d7d8f0fb5a7f974330a8"
+          "e88e45f87a91c227c34104660722addb37722c73",
+          "2b702d18f02cf6336264ee5ad20ac512b2c6831f",
+          "4706e26edd9b01c06979f3c989de529554469e45"
         ]
       },
-      "timestamp": 1777210822.6988444
+      "timestamp": 1777211499.8267798
     }
   },
   "result": {
     "success": "ok",
     "snapshotting": "updated"
   },
-  "timestamp": 1777210822.6989932
+  "timestamp": 1777211499.8269227
 }

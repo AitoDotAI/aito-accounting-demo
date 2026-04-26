@@ -90,18 +90,21 @@ def test_help_search_top_articles_for_invoices_page(t: bt.TestCaseRun):
 
 @bt.snapshot_httpx()
 def test_help_evaluate_click_prediction(t: bt.TestCaseRun):
-    """Document Aito's click-prediction accuracy on help_impressions.
+    """Document the underlying click-prediction signal on help_impressions.
 
-    Honest framing: at this scale (2,700 impressions, ~36% baseline
-    CTR) and with our synthesized data (where the per-article click
-    decision has substantial noise), classification accuracy hovers
-    near baseAccuracy. That's expected — what we use _predict for is
-    *ranking* article_ids by click probability, not classifying
-    individual impressions.
+    `_recommend` ranks article_ids by predicted P(clicked=true | context).
+    `_evaluate` measures the same prediction problem; we run it here so
+    the snapshot captures the honest quality at this data scale.
 
-    The geometric-mean predicted probability (geomMeanP) is the more
-    relevant metric: it's the model's calibrated confidence in its
-    predictions, useful for setting a top-K cutoff.
+    With ~14k impressions and 26% baseline CTR:
+    - Per-impression *classification* accuracy hovers near baseAccuracy
+      (predicting "no click" gets ~74% right by default). This isn't
+      the metric to optimize.
+    - The *ranking* the same model produces is meaningfully useful:
+      measured directly (top-half vs bottom-half avg actual CTR), the
+      lift is roughly 1.5–2× — the user-facing benefit.
+
+    Sanity bounds only — specific accuracy numbers shift on data regen.
     """
     c = get_client()
 

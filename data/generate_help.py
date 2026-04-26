@@ -255,21 +255,25 @@ def main():
     impression_id = 0
     timestamp_base = 1714000000  # ~mid-2024
 
+    # Density: 80 impressions per (customer, page). With ~25 eligible
+    # articles per customer this gives ~3 impressions per (customer,
+    # page, article) — enough for Aito's _recommend to find a signal
+    # above per-(article) noise. Click bias is the same.
     for cust in customers:
         cid = cust["customer_id"]
-        # Articles available to this customer = all global + this customer's internal
         available = [a for a in articles if a["customer_id"] in ("*", cid)]
         for page in pages:
-            for _ in range(15):
+            for _ in range(80):
                 article = rng.choice(available)
-                # Click likelihood: 25% baseline, +30% if page_context matches, +15% if global app article
-                p_click = 0.25
+                # Click likelihood: 15% baseline, +35% if page_context matches,
+                # +10% if app, +20% if own-customer internal
+                p_click = 0.15
                 if article.get("page_context") == page:
-                    p_click += 0.30
+                    p_click += 0.35
                 if article["category"] == "app":
                     p_click += 0.10
                 if article["category"] == "internal" and article["customer_id"] == cid:
-                    p_click += 0.15
+                    p_click += 0.20
                 clicked = rng.random() < min(0.85, p_click)
                 impressions.append({
                     "impression_id": f"IMP-{impression_id:08d}",
