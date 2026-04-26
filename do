@@ -31,6 +31,11 @@ Commands:
     book-update       Update book test snapshots
     book-capture      Capture fresh snapshots from live Aito
 
+  Deployment:
+    docker-build      Build the Docker image (frontend + API + precomputed)
+    docker-run        Run the image locally on http://localhost:8200
+    azure-deploy      Push image + deploy to Azure (see docs/deploy-azure.md)
+
   Other:
     screenshots       Capture screenshots of all views
     fmt               Format code
@@ -130,6 +135,65 @@ cmd_precompute() {
 cmd_test() {
   cd "$SCRIPT_DIR"
   uv run pytest tests/ -v
+}
+
+# ── Deployment ────────────────────────────────────────────────────
+
+DOCKER_IMAGE="${DOCKER_IMAGE:-predictive-ledger}"
+DOCKER_TAG="${DOCKER_TAG:-latest}"
+
+cmd_docker_build() {
+  cd "$SCRIPT_DIR"
+  if [ ! -d "data/precomputed" ] || [ -z "$(ls -A data/precomputed 2>/dev/null)" ]; then
+    echo "Warning: data/precomputed/ is empty. Run ./do precompute first," >&2
+    echo "or the image will fall back to live Aito calls on every request." >&2
+  fi
+  docker build -t "${DOCKER_IMAGE}:${DOCKER_TAG}" .
+  echo
+  echo "Built ${DOCKER_IMAGE}:${DOCKER_TAG}"
+  echo "Run with: ./do docker-run"
+}
+
+cmd_docker_run() {
+  cd "$SCRIPT_DIR"
+  if [ ! -f .env ]; then
+    echo "Error: .env file not found. Aito credentials must be in .env." >&2
+    exit 1
+  fi
+  docker run --rm -it \
+    --env-file .env \
+    -p 8200:8200 \
+    "${DOCKER_IMAGE}:${DOCKER_TAG}"
+}
+
+cmd_azure_deploy() {
+  cd "$SCRIPT_DIR"
+  if [ ! -f docs/deploy-azure.md ]; then
+    echo "See docs/deploy-azure.md for one-time Azure setup." >&2
+    exit 1
+  fi
+  : "${AZURE_RESOURCE_GROUP:?set AZURE_RESOURCE_GROUP (e.g. predictive-ledger-rg)}"
+  : "${AZURE_REGISTRY:?set AZURE_REGISTRY (your ACR name, no .azurecr.io suffix)}"
+  : "${AZURE_APP_NAME:?set AZURE_APP_NAME (e.g. predictive-ledger)}"
+
+  local full="${AZURE_REGISTRY}.azurecr.io/${DOCKER_IMAGE}:${DOCKER_TAG}"
+
+  echo "→ Building image"
+  docker build -t "$full" .
+
+  echo "→ Pushing to ${AZURE_REGISTRY}.azurecr.io"
+  az acr login --name "$AZURE_REGISTRY"
+  docker push "$full"
+
+  echo "→ Updating Container App ${AZURE_APP_NAME}"
+  az containerapp update \
+    --name "$AZURE_APP_NAME" \
+    --resource-group "$AZURE_RESOURCE_GROUP" \
+    --image "$full"
+
+  echo
+  echo "Deployed. Tail logs with:"
+  echo "  az containerapp logs show -n $AZURE_APP_NAME -g $AZURE_RESOURCE_GROUP --follow"
 }
 
 cmd_fmt() {
@@ -235,6 +299,9 @@ case "${1:-help}" in
   book)            cmd_book ;;
   book-update)     cmd_book_update ;;
   book-capture)    cmd_book_capture ;;
+  docker-build)    cmd_docker_build ;;
+  docker-run)      cmd_docker_run ;;
+  azure-deploy)    cmd_azure_deploy ;;
   fmt)             cmd_fmt ;;
   check)           cmd_check ;;
   *)

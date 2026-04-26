@@ -2,23 +2,32 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useCustomer } from "@/lib/customer-context";
+import { apiFetch } from "@/lib/api";
 
 interface NavItem {
   href: string;
   label: string;
-  badge?: string;
+  badgeKey?: "invoices" | "matching" | "anomalies";
   badgeRed?: boolean;
+}
+
+interface Badges {
+  invoices: number;
+  matching: number;
+  anomalies: number;
 }
 
 const NAV_ITEMS: { section: string; items: NavItem[] }[] = [
   { section: "Payables", items: [
-    { href: "/invoices", label: "Invoice Processing", badge: "12" },
-    { href: "/matching", label: "Payment Matching", badge: "5" },
+    { href: "/invoices", label: "Invoice Processing", badgeKey: "invoices" },
+    { href: "/matching", label: "Payment Matching", badgeKey: "matching" },
     { href: "/formfill", label: "Smart Form Fill" },
   ]},
   { section: "Accounting", items: [
     { href: "/rulemining", label: "Rule Mining" },
-    { href: "/anomalies", label: "Anomaly Detection", badge: "3", badgeRed: true },
+    { href: "/anomalies", label: "Anomaly Detection", badgeKey: "anomalies", badgeRed: true },
   ]},
   { section: "Quality", items: [
     { href: "/quality/overview", label: "System Overview" },
@@ -34,6 +43,17 @@ const NAV_ITEMS: { section: string; items: NavItem[] }[] = [
 
 export default function Nav() {
   const pathname = usePathname();
+  const { customerId } = useCustomer();
+  const [badges, setBadges] = useState<Badges | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setBadges(null);
+    apiFetch<Badges>(`/api/nav/badges?customer_id=${encodeURIComponent(customerId)}`)
+      .then((d) => { if (active) setBadges(d); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [customerId]);
 
   return (
     <nav className="nav">
@@ -52,20 +72,24 @@ export default function Nav() {
       {NAV_ITEMS.map((section) => (
         <div key={section.section}>
           <div className="nav-section">{section.section}</div>
-          {section.items.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`nav-item ${pathname === item.href ? "active" : ""}`}
-            >
-              {item.label}
-              {item.badge && (
-                <span className={`nav-badge ${item.badgeRed ? "red" : ""}`}>
-                  {item.badge}
-                </span>
-              )}
-            </Link>
-          ))}
+          {section.items.map((item) => {
+            const count = item.badgeKey && badges ? badges[item.badgeKey] : undefined;
+            const showBadge = count !== undefined && count > 0;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`nav-item ${pathname === item.href ? "active" : ""}`}
+              >
+                {item.label}
+                {showBadge && (
+                  <span className={`nav-badge ${item.badgeRed ? "red" : ""}`}>
+                    {count}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
         </div>
       ))}
 

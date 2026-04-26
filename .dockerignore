@@ -1,0 +1,39 @@
+# Build outputs / caches
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+**/node_modules/
+frontend/.next/
+frontend/out/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Local artifacts the image doesn't need
+.git/
+.github/
+.idea/
+.vscode/
+docs/
+books/
+workbooks/
+screenshots/
+test-results/
+playwright-report/
+tests/
+book/
+booktest.ini
+
+# Secrets — these MUST come from runtime env, not the image
+.env
+.env.*
+!.env.example
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Misc
+*.log
+README.md

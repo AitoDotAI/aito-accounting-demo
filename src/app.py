@@ -169,6 +169,28 @@ def demo_today_endpoint():
     return {"date": demo_today().isoformat()}
 
 
+@app.get("/api/nav/badges")
+def nav_badges(customer_id: str = Query(...)):
+    """Counts shown on left-nav items.
+
+    Reads from the same precomputed JSON the views use, so the badges
+    always agree with the page they link to.
+    """
+    inv = precomputed.load(customer_id, "invoices_pending") or {}
+    match = precomputed.load(customer_id, "matching_pairs") or {}
+    anom = precomputed.load(customer_id, "anomalies_scan") or {}
+
+    inv_metrics = inv.get("metrics", {})
+    match_metrics = match.get("metrics", {})
+    anom_metrics = anom.get("metrics", {})
+
+    return {
+        "invoices": inv_metrics.get("review_count", 0),
+        "matching": match_metrics.get("unmatched", 0),
+        "anomalies": anom_metrics.get("high", 0),
+    }
+
+
 @app.get("/api/health")
 def health():
     cached = cache.get("health")
