@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.aito_client import AitoClient, AitoError
-from src import cache
+from src import cache, precomputed
 from src.config import load_config
 from src.formfill_service import predict_fields
 from src.invoice_service import predict_batch, compute_metrics
@@ -37,7 +37,17 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _warm_top_customers():
-    """Warm cache for top customers on startup."""
+    """Warm cache for top customers on startup.
+
+    Skipped entirely when data/precomputed/ contains any customer
+    folder — precomputed JSON serves as the warm layer.
+    """
+    if (_PROJECT_ROOT / "data" / "precomputed").is_dir() and any(
+        (_PROJECT_ROOT / "data" / "precomputed").iterdir()
+    ):
+        print("Precomputed data found — skipping cache warmup.")
+        return
+
     import threading
     from concurrent.futures import ThreadPoolExecutor
 
@@ -246,48 +256,48 @@ def invoices_raw(customer_id: str = Query(...), per_page: int = 20):
 
 @app.get("/api/invoices/pending")
 def invoices_pending(customer_id: str = Query(...), page: int = 1, per_page: int = 20):
-    """Predict GL code and approver for pending invoices."""
-    cache_key = f"invoices:{customer_id}"
-    cached = cache.get(cache_key)
-    if cached:
-        data = cached
+    """Predict GL code and approver for pending invoices.
+
+    Serves data/precomputed/{customer_id}/invoices_pending.json when
+    present (hosted demo), falls back to a live Aito compute otherwise
+    (dev workflow).
+    """
+    pre = precomputed.load(customer_id, "invoices_pending")
+    if pre is not None:
+        data = pre
     else:
-        # Per-key lock prevents N concurrent misses from doing N
-        # independent computes. The first request computes; the rest
-        # block, then read the freshly-cached value.
-        with cache.compute_lock(cache_key):
-            cached = cache.get(cache_key)
-            if cached:
-                data = cached
-            else:
-                try:
-                    result = aito.search("invoices", {"customer_id": customer_id}, limit=per_page)
-                    sample_invoices = result.get("hits", [])
-                except AitoError:
-                    return {"invoices": [], "metrics": {}, "error": "Could not fetch invoices"}
+        cache_key = f"invoices:{customer_id}"
+        data = cache.get(cache_key)
+        if data is None:
+            with cache.compute_lock(cache_key):
+                data = cache.get(cache_key)
+                if data is None:
+                    try:
+                        result = aito.search("invoices", {"customer_id": customer_id}, limit=per_page)
+                        sample_invoices = result.get("hits", [])
+                    except AitoError:
+                        return {"invoices": [], "metrics": {}, "error": "Could not fetch invoices"}
 
-                # Mine the customer's rules once and cache.
-                rules_key = f"mined_rules:{customer_id}"
-                rules = cache.get(rules_key)
-                if rules is None:
-                    with cache.compute_lock(rules_key):
-                        rules = cache.get(rules_key)
-                        if rules is None:
-                            from src.quality_service import mine_rules_for_customer
-                            rules = mine_rules_for_customer(aito, customer_id)
-                            cache.set(rules_key, rules, ttl=1800)
+                    rules_key = f"mined_rules:{customer_id}"
+                    rules = cache.get(rules_key)
+                    if rules is None:
+                        with cache.compute_lock(rules_key):
+                            rules = cache.get(rules_key)
+                            if rules is None:
+                                from src.quality_service import mine_rules_for_customer
+                                rules = mine_rules_for_customer(aito, customer_id)
+                                cache.set(rules_key, rules, ttl=1800)
 
-                # Parallelize predictions for faster response
-                from concurrent.futures import ThreadPoolExecutor
-                from src.invoice_service import predict_invoice
-                with ThreadPoolExecutor(max_workers=8) as pool:
-                    predictions = list(pool.map(
-                        lambda inv: predict_invoice(aito, {**inv, "customer_id": customer_id}, rules=rules),
-                        sample_invoices,
-                    ))
-                metrics = compute_metrics(predictions)
-                data = {"invoices": [p.to_dict() for p in predictions], "metrics": metrics}
-                cache.set(cache_key, data, ttl=300)
+                    from concurrent.futures import ThreadPoolExecutor
+                    from src.invoice_service import predict_invoice
+                    with ThreadPoolExecutor(max_workers=8) as pool:
+                        predictions = list(pool.map(
+                            lambda inv: predict_invoice(aito, {**inv, "customer_id": customer_id}, rules=rules),
+                            sample_invoices,
+                        ))
+                    metrics = compute_metrics(predictions)
+                    data = {"invoices": [p.to_dict() for p in predictions], "metrics": metrics}
+                    cache.set(cache_key, data, ttl=300)
 
     invoices = data.get("invoices", [])
     total = len(invoices)
@@ -304,6 +314,9 @@ def invoices_pending(customer_id: str = Query(...), page: int = 1, per_page: int
 @app.get("/api/matching/pairs")
 def matching_pairs(customer_id: str = Query(...)):
     """Match bank transactions to invoices for a customer."""
+    pre = precomputed.load(customer_id, "matching_pairs")
+    if pre is not None:
+        return pre
     cache_key = f"matching:{customer_id}"
     cached = cache.get(cache_key)
     if cached:
@@ -348,6 +361,9 @@ def rules_drilldown(
 @app.get("/api/rules/candidates")
 def rules_candidates(customer_id: str = Query(...)):
     """Mine rule candidates for a customer."""
+    pre = precomputed.load(customer_id, "rules_candidates")
+    if pre is not None:
+        return pre
     cache_key = f"rules:{customer_id}"
     cached = cache.get(cache_key)
     if cached:
@@ -360,6 +376,9 @@ def rules_candidates(customer_id: str = Query(...)):
 @app.get("/api/anomalies/scan")
 def anomalies_scan(customer_id: str = Query(...)):
     """Scan invoices for anomalies for a customer."""
+    pre = precomputed.load(customer_id, "anomalies_scan")
+    if pre is not None:
+        return pre
     cache_key = f"anomalies:{customer_id}"
     cached = cache.get(cache_key)
     if cached:
@@ -372,6 +391,9 @@ def anomalies_scan(customer_id: str = Query(...)):
 @app.get("/api/quality/overview")
 def quality_overview(customer_id: str = Query(...)):
     """Quality metrics for a customer."""
+    pre = precomputed.load(customer_id, "quality_overview")
+    if pre is not None:
+        return pre
     cache_key = f"quality:{customer_id}"
     cached = cache.get(cache_key)
     if cached:
@@ -445,6 +467,9 @@ def quality_predictions(customer_id: str = Query(...)):
     test set, then replays the static rules engine on the same set to
     show the rules-only baseline.
     """
+    pre = precomputed.load(customer_id, "prediction_accuracy")
+    if pre is not None:
+        return pre
     cache_key = f"predictions:{customer_id}"
     cached = cache.get(cache_key)
     if cached:
@@ -515,6 +540,9 @@ def quality_rules_drift(customer_id: str = Query(...)):
 @app.get("/api/quality/rules")
 def quality_rules(customer_id: str = Query(...)):
     """Rule performance — replay each static rule against actual GL codes."""
+    pre = precomputed.load(customer_id, "rule_performance")
+    if pre is not None:
+        return pre
     cache_key = f"rules_perf:{customer_id}"
     cached = cache.get(cache_key)
     if cached:

@@ -121,9 +121,10 @@ cmd_generate_data() {
 }
 
 cmd_precompute() {
-  echo "Pre-computing predictions (this may take several minutes)..."
   cd "$SCRIPT_DIR"
-  uv run python data/precompute_predictions.py
+  echo "Pre-computing predictions for all customers..."
+  echo "  (~3min/customer sequentially; pass --workers 4 for ~4x speedup)"
+  uv run python data/precompute_predictions.py "$@"
 }
 
 cmd_test() {
@@ -225,7 +226,7 @@ case "${1:-help}" in
   load-data)       cmd_load_data ;;
   reset-data)      cmd_reset_data ;;
   generate-data)   cmd_generate_data "${@:2}" ;;
-  precompute)      cmd_precompute ;;
+  precompute)      cmd_precompute "${@:2}" ;;
   screenshots)     cmd_screenshots ;;
   test)            cmd_test ;;
   fetch-companies) cmd_fetch_companies ;;
