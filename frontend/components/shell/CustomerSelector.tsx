@@ -26,6 +26,9 @@ export default function CustomerSelector() {
   const [query, setQuery] = useState("");
   const ref = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  // Computed when the popup opens, used for position: fixed coords.
+  const [popupPos, setPopupPos] = useState<{ top: number; right: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -49,7 +52,19 @@ export default function CustomerSelector() {
   }, [open]);
 
   useEffect(() => {
-    if (open) inputRef.current?.focus();
+    if (open) {
+      inputRef.current?.focus();
+      // Compute popup position from the button's bounding rect, so
+      // position: fixed places it correctly relative to viewport
+      // (and escapes any parent stacking context).
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (rect) {
+        setPopupPos({
+          top: rect.bottom + 4,
+          right: window.innerWidth - rect.right,
+        });
+      }
+    }
   }, [open]);
 
   // Group customers by tier; filter by query
@@ -84,6 +99,7 @@ export default function CustomerSelector() {
         }}
       />
       <button
+        ref={buttonRef}
         onClick={() => setOpen(!open)}
         style={{
           padding: "5px 10px",
@@ -110,13 +126,12 @@ export default function CustomerSelector() {
         <span style={{ color: "var(--text3)", fontSize: 10 }}>{open ? "▴" : "▾"}</span>
       </button>
 
-      {open && (
+      {open && popupPos && (
         <div
           style={{
-            position: "absolute",
-            top: "100%",
-            right: 0,
-            marginTop: 4,
+            position: "fixed",
+            top: popupPos.top,
+            right: popupPos.right,
             width: 320,
             maxHeight: 420,
             overflowY: "auto",
@@ -124,7 +139,7 @@ export default function CustomerSelector() {
             border: "1px solid var(--border)",
             borderRadius: 6,
             boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
-            zIndex: 100,
+            zIndex: 1000,
           }}
         >
           <div style={{ padding: 8, borderBottom: "1px solid var(--border2)", position: "sticky", top: 0, background: "var(--surface)" }}>

@@ -38,7 +38,7 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 .nav-user{margin-top:auto;padding:12px 8px;border-top:1px solid var(--nav-border)}
 
 /* TOPBAR */
-.topbar{background:var(--surface);border-bottom:1px solid var(--border2);padding:0 24px;height:54px;display:flex;align-items:center;gap:14px;flex-shrink:0;position:relative;z-index:1}
+.topbar{background:var(--surface);border-bottom:1px solid var(--border2);padding:0 24px;height:54px;display:flex;align-items:center;gap:14px;flex-shrink:0;position:relative;z-index:50}
 .topbar-breadcrumb{font-size:11px;color:var(--text3);font-weight:500}
 .topbar-title{font-size:15px;font-weight:600;color:var(--text)}
 .topbar-sep{width:1px;height:20px;background:var(--border2)}

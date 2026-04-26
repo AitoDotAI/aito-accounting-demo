@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import type { Alternative } from "@/lib/types";
 
 interface PredictionBadgeProps {
@@ -12,31 +13,66 @@ interface PredictionBadgeProps {
 
 export default function PredictionBadge({ value, confidence, alternatives, onSelect }: PredictionBadgeProps) {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number; minWidth: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
+
+  const updatePosition = useCallback(() => {
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    setPos({
+      top: rect.bottom + 4,
+      left: rect.left,
+      minWidth: Math.max(220, rect.width),
+    });
+  }, []);
 
   useEffect(() => {
+    if (!open) return;
+    updatePosition();
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (
+        popupRef.current && !popupRef.current.contains(e.target as Node) &&
+        ref.current && !ref.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
     }
-    if (open) document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
+    document.addEventListener("mousedown", handleClick);
+    window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("resize", updatePosition);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("resize", updatePosition);
+    };
+  }, [open, updatePosition]);
 
   const hasAlts = alternatives && alternatives.length > 1;
 
   return (
-    <div ref={ref} style={{ position: "relative", display: "inline-block" }}>
+    <div ref={ref} style={{ display: "inline-block" }}>
       <span
         className="pred-badge"
         onClick={() => hasAlts && setOpen(!open)}
         style={hasAlts ? {} : { cursor: "default" }}
       >
         {value}
-        {hasAlts && <span style={{ fontSize: 9, opacity: 0.6 }}>{open ? "\u25B4" : "\u25BE"}</span>}
+        {hasAlts && <span style={{ fontSize: 9, opacity: 0.6 }}>{open ? "▴" : "▾"}</span>}
       </span>
 
-      {open && alternatives && (
-        <div className="alternatives-dropdown">
+      {open && alternatives && pos && createPortal(
+        <div
+          ref={popupRef}
+          className="alternatives-dropdown"
+          style={{
+            position: "fixed",
+            top: pos.top,
+            left: pos.left,
+            minWidth: pos.minWidth,
+            zIndex: 1000,
+          }}
+        >
           {alternatives.map((alt, i) => (
             <div
               key={i}
@@ -52,7 +88,8 @@ export default function PredictionBadge({ value, confidence, alternatives, onSel
               </span>
             </div>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
