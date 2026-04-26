@@ -170,6 +170,43 @@ def health():
     return result
 
 
+@app.get("/api/invoices/by_vendor")
+def invoices_by_vendor(
+    customer_id: str = Query(...),
+    vendor: str = Query(...),
+    limit: int = 12,
+):
+    """Recent invoices from one vendor for one customer.
+
+    Drives the "History" tab of the Invoices detail panel — shows
+    the user the historical pattern Aito learned from when ranking
+    GL codes for this vendor.
+    """
+    from src.date_window import shift_iso
+    try:
+        result = aito.search(
+            "invoices",
+            {"customer_id": customer_id, "vendor": vendor},
+            limit=limit,
+        )
+    except AitoError as exc:
+        return {"invoices": [], "error": str(exc)}
+
+    rows = []
+    for hit in result.get("hits", []):
+        rows.append({
+            "invoice_id": hit.get("invoice_id"),
+            "invoice_date": shift_iso(hit.get("invoice_date")),
+            "amount": hit.get("amount"),
+            "category": hit.get("category"),
+            "gl_code": hit.get("gl_code"),
+            "approver": hit.get("approver"),
+            "vat_pct": hit.get("vat_pct"),
+        })
+    rows.sort(key=lambda r: r.get("invoice_date") or "", reverse=True)
+    return {"invoices": rows}
+
+
 @app.get("/api/invoices/raw")
 def invoices_raw(customer_id: str = Query(...), per_page: int = 20):
     """Bare invoice list — no predictions. Fast (~200ms vs ~10s).

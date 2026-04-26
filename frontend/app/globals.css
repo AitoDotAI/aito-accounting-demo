@@ -20,7 +20,7 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 /* APP SHELL */
 .app{display:flex;height:100vh;overflow:hidden}
 .nav{width:230px;min-width:230px;background:var(--nav);display:flex;flex-direction:column;overflow-y:auto;border-right:1px solid var(--nav-border)}
-.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;position:relative}
 .aito-panel{width:268px;min-width:268px;background:var(--aito-bg);display:flex;flex-direction:column;overflow-y:auto;border-left:1px solid var(--aito-border);z-index:1}
 
 /* NAV */

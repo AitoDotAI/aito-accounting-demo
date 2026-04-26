@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Nav from "@/components/shell/Nav";
 import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
@@ -9,6 +9,8 @@ import PredictionBadge from "@/components/prediction/PredictionBadge";
 import WhyTooltip from "@/components/prediction/WhyTooltip";
 import ErrorState from "@/components/shell/ErrorState";
 import TourBadge from "@/components/shell/TourBadge";
+import DetailSplit from "@/components/shell/DetailSplit";
+import InvoiceDetail from "@/components/invoices/InvoiceDetail";
 import { useCustomer } from "@/lib/customer-context";
 import { demoToday } from "@/lib/demo-time";
 import { apiFetch, fmtAmount } from "@/lib/api";
@@ -124,6 +126,13 @@ export default function InvoicesPage() {
       default: return true;
     }
   });
+
+  // Detail-pane open state: which invoice is "viewed" (vs the
+  // checkbox `selected` set used for batch override).
+  const [viewedId, setViewedId] = useState<string | null>(null);
+  const viewed = viewedId ? invoices.find((i) => i.invoice_id === viewedId) ?? null : null;
+  // Reset viewed invoice on customer change
+  useEffect(() => { setViewedId(null); }, [customerId]);
 
   // Batch override: track selected invoices and the bulk-apply GL
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -321,23 +330,35 @@ export default function InvoicesPage() {
                     predicting={!live}
                     selected={selected.has(inv.invoice_id)}
                     onToggleSelect={() => toggleSelect(inv.invoice_id)}
+                    viewed={viewedId === inv.invoice_id}
+                    onView={() => setViewedId(viewedId === inv.invoice_id ? null : inv.invoice_id)}
                   />
                 ))}
               </tbody>
             </table>
           </div>
         </div>
+        {viewed && (
+          <DetailDock
+            title={`${viewed.invoice_id} · ${viewed.vendor} · €${viewed.amount.toLocaleString()}`}
+            onClose={() => setViewedId(null)}
+          >
+            <InvoiceDetail inv={viewed} />
+          </DetailDock>
+        )}
       </div>
       <AitoPanel config={PANEL_CONFIG} />
     </>
   );
 }
 
-function InvoiceRow({ inv, predicting, selected, onToggleSelect }: {
+function InvoiceRow({ inv, predicting, selected, onToggleSelect, viewed, onView }: {
   inv: InvoicePrediction;
   predicting: boolean;
   selected: boolean;
   onToggleSelect: () => void;
+  viewed: boolean;
+  onView: () => void;
 }) {
   if (predicting) {
     const due = dueLabel(inv);
@@ -358,13 +379,15 @@ function InvoiceRow({ inv, predicting, selected, onToggleSelect }: {
       </tr>
     );
   }
-  return <InvoiceRowFull inv={inv} selected={selected} onToggleSelect={onToggleSelect} />;
+  return <InvoiceRowFull inv={inv} selected={selected} onToggleSelect={onToggleSelect} viewed={viewed} onView={onView} />;
 }
 
-function InvoiceRowFull({ inv, selected, onToggleSelect }: {
+function InvoiceRowFull({ inv, selected, onToggleSelect, viewed, onView }: {
   inv: InvoicePrediction;
   selected: boolean;
   onToggleSelect: () => void;
+  viewed: boolean;
+  onView: () => void;
 }) {
   const glAlts = inv.gl_alternatives;
   const approverAlts = inv.approver_alternatives;
@@ -373,10 +396,25 @@ function InvoiceRowFull({ inv, selected, onToggleSelect }: {
   const due = dueLabel(inv);
   const dueColor = due.tone === "red" ? "var(--red)" : due.tone === "amber" ? "var(--amber)" : "var(--text3)";
 
+  const rowBg = viewed ? "var(--surface2)" : selected ? "var(--gold-light)" : undefined;
   return (
-    <tr style={selected ? { background: "var(--gold-light)" } : undefined}>
+    <tr style={rowBg ? { background: rowBg } : undefined}>
       <td><input type="checkbox" checked={selected} onChange={onToggleSelect} /></td>
-      <td className="mono" style={{ color: "var(--gold-dark)", cursor: "pointer" }}>{inv.invoice_id}</td>
+      <td
+        className="mono"
+        onClick={onView}
+        style={{
+          color: viewed ? "var(--gold-dark)" : "var(--gold-dark)",
+          cursor: "pointer",
+          fontWeight: viewed ? 700 : 400,
+          textDecoration: "underline",
+          textDecorationStyle: "dotted",
+          textDecorationColor: "var(--gold-mid)",
+        }}
+        title="Click to open detail panel"
+      >
+        {inv.invoice_id}
+      </td>
       <td className="mono" style={{ fontSize: 11, color: "var(--text3)" }}>{fmtShortDate(inv.invoice_date)}</td>
       <td className="mono" style={{ fontSize: 11, fontWeight: due.tone === "neutral" ? 400 : 600, color: dueColor }}>{due.text}</td>
       <td>{inv.vendor}</td>
@@ -425,5 +463,87 @@ function SkeletonRow() {
         </td>
       ))}
     </tr>
+  );
+}
+
+// ── Detail dock ──────────────────────────────────────────────────
+//
+// Click an invoice id → details slide up from the bottom of the
+// .main pane. Resizable height; persisted via localStorage.
+
+function DetailDock({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+  const [height, setHeight] = useState(360);
+  const draggingRef = useRef(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = localStorage.getItem("invoice-detail-dock-height");
+    if (stored) {
+      const n = parseInt(stored, 10);
+      if (!isNaN(n) && n >= 200 && n <= 700) setHeight(n);
+    }
+  }, []);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!draggingRef.current) return;
+      const newH = Math.max(200, Math.min(700, window.innerHeight - e.clientY));
+      setHeight(newH);
+    };
+    const onUp = () => {
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      localStorage.setItem("invoice-detail-dock-height", String(Math.round(height)));
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+  }, [height]);
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        bottom: 0,
+        height,
+        background: "var(--surface)",
+        borderTop: "1px solid var(--border2)",
+        boxShadow: "0 -4px 12px rgba(13,21,32,.06)",
+        display: "flex",
+        flexDirection: "column",
+        zIndex: 5,
+      }}
+    >
+      {/* Drag handle */}
+      <div
+        onMouseDown={(e) => {
+          e.preventDefault();
+          draggingRef.current = true;
+          document.body.style.cursor = "row-resize";
+          document.body.style.userSelect = "none";
+        }}
+        title="Drag to resize"
+        style={{
+          height: 6,
+          background: "var(--border2)",
+          cursor: "row-resize",
+          flexShrink: 0,
+          position: "relative",
+        }}
+      >
+        <div style={{ position: "absolute", top: 1, left: "50%", transform: "translateX(-50%)", width: 36, height: 2, background: "var(--text3)", borderRadius: 1, opacity: 0.4 }} />
+      </div>
+      <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border2)", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--surface2)", flexShrink: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{title}</div>
+        <button onClick={onClose} title="Close" style={{ background: "transparent", border: "none", color: "var(--text3)", fontSize: 18, cursor: "pointer", padding: "0 4px", lineHeight: 1 }}>×</button>
+      </div>
+      <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+        {children}
+      </div>
+    </div>
   );
 }
