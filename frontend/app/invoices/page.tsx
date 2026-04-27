@@ -160,7 +160,7 @@ export default function InvoicesPage() {
           subtitle={metrics ? `${metrics.total} pending \u00B7 ${metrics.review_count} require review` : "Loading..."}
           live={live}
         />
-        <div className="content">
+        <div className="content" style={viewed ? { paddingBottom: 540 } : undefined}>
           <div className="metrics">
             <div
               className={`metric highlight ${filter === "touchless" ? "metric-active" : ""}`}

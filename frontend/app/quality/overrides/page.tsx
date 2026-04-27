@@ -19,10 +19,20 @@ const PANEL: AitoPanelConfig = {
     { value: "Indexed", label: "Model" },
   ],
   description:
-    'Every override is fed through <code style="font-size:11px;color:var(--aito-accent)">_relate</code> to find emerging patterns. ' +
-    "Overrides are the primary signal for rule improvement — patterns surfaced here become rule candidates.",
+    'Two-pass <code style="font-size:11px;color:var(--aito-accent)">_relate</code> ' +
+    'on the overrides table: pass 1 finds the most-corrected target ' +
+    'values, pass 2 walks the schema link to <code>invoices.vendor</code> ' +
+    'to discover which input drove the correction. Output rows have ' +
+    'the same input&nbsp;&rarr;&nbsp;output shape as Rule Mining, so ' +
+    'they can be promoted directly into the rules table.',
   query: JSON.stringify(
-    { from: "overrides", where: { field: "gl_code" }, relate: "corrected_value" },
+    {
+      pass2_input_to_output: {
+        from: "overrides",
+        where: { field: "gl_code", corrected_value: "5400" },
+        relate: "invoice_id.vendor",
+      },
+    },
     null, 2,
   ),
   links: [{ label: "API reference: _relate", url: "https://aito.ai/docs/api/#post-api-v1-relate" }],
@@ -31,7 +41,14 @@ const PANEL: AitoPanelConfig = {
 interface QualityData {
   automation: { automation_rate: number };
   overrides: { total: number; by_field: Record<string, number>; by_corrector: Record<string, number> };
-  override_patterns: { corrected_to: string; field: string; count: number; lift: number }[];
+  override_patterns: {
+    corrected_to: string;
+    field: string;
+    count: number;
+    lift: number;
+    input_field?: string | null;
+    input_value?: string | null;
+  }[];
 }
 
 export default function OverridesPage() {
@@ -82,15 +99,41 @@ export default function OverridesPage() {
               <div className="qc-header"><span className="qc-title">Emerging patterns from overrides</span><span className="card-hint">From <code>_relate</code> on overrides</span></div>
               <div className="qc-body">
                 {patterns.length === 0 && <div style={{ color: "var(--text3)", fontSize: 12, lineHeight: 1.6 }}>No patterns found yet — patterns surface once 5+ overrides target the same value.</div>}
-                {patterns.map((p, i) => (
-                  <div key={i} className="rule-row" style={{ padding: "10px 0" }}>
-                    <div style={{ flex: 1 }}>
-                      <div className="rule-pattern">{p.field} &rarr; {p.corrected_to}</div>
-                      <div className="rule-arrow" style={{ marginTop: 3, fontSize: 11, color: "var(--text3)" }}>{p.count} overrides &middot; <LiftHint value={p.lift} /></div>
+                {patterns.map((p, i) => {
+                  const inputField = p.input_field?.replace(/^invoice_id\./, "");
+                  return (
+                    <div key={i} className="rule-row" style={{ padding: "10px 0" }}>
+                      <div style={{ flex: 1 }}>
+                        <div className="rule-pattern" style={{ fontSize: 13 }}>
+                          {p.input_value ? (
+                            <>
+                              <code style={{ fontFamily: "'IBM Plex Mono', monospace", color: "var(--text3)" }}>
+                                {inputField}
+                              </code>
+                              {" = "}
+                              <strong>{p.input_value}</strong>
+                              <span style={{ color: "var(--text3)", margin: "0 8px" }}>&rarr;</span>
+                            </>
+                          ) : null}
+                          <code style={{ fontFamily: "'IBM Plex Mono', monospace", color: "var(--text3)" }}>
+                            {p.field}
+                          </code>
+                          {" corrected to "}
+                          <strong style={{ color: "var(--gold-dark)" }}>{p.corrected_to}</strong>
+                        </div>
+                        <div className="rule-arrow" style={{ marginTop: 3, fontSize: 11, color: "var(--text3)" }}>
+                          {p.count} matching overrides &middot; <LiftHint value={p.lift} />
+                          {p.input_value ? (
+                            <span> &middot; via <code>_relate</code> on overrides linked to invoice.{inputField}</span>
+                          ) : (
+                            <span> &middot; not yet localised to a specific input</span>
+                          )}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 11, color: "var(--text3)", fontStyle: "italic", whiteSpace: "nowrap" }}>candidate rule</span>
                     </div>
-                    <span style={{ fontSize: 11, color: "var(--text3)", fontStyle: "italic" }}>candidate rule</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
             <div className="quality-card">

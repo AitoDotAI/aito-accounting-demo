@@ -51,27 +51,70 @@ def compute_override_stats(client: AitoClient, customer_id: str | None = None) -
 
 
 def compute_override_patterns(client: AitoClient, customer_id: str | None = None) -> list[dict]:
-    """Find emerging patterns from overrides using _relate."""
-    patterns = []
+    """Find emerging patterns from overrides as input -> output rules.
+
+    Two-pass _relate:
+    1. Find the most common (field, corrected_value) tuples over all
+       overrides for this customer.
+    2. For each, _relate against the invoice's vendor to surface the
+       input feature that drove the correction.
+
+    The resulting rows mirror Rule Mining's shape:
+        invoice.vendor=X & field=gl_code -> corrected_to=4400
+    Each row carries the support (count of matching overrides) and
+    the lift over base rate so the operator can promote it.
+    """
+    patterns: list[dict] = []
     try:
-        where = {"field": "gl_code"}
+        where: dict = {"field": "gl_code"}
         if customer_id:
             where["customer_id"] = customer_id
         result = client.relate("overrides", where, "corrected_value")
     except AitoError:
         return patterns
 
+    # Pass 1: collect top corrected_value targets
+    targets: list[tuple[str, int, float]] = []  # (corrected_value, count, lift)
     for hit in result.get("hits", []):
-        related = hit.get("related", {})
-        corrected = related.get("corrected_value", {}).get("$has")
+        corrected = hit.get("related", {}).get("corrected_value", {}).get("$has")
         if corrected is None:
             continue
-        fs = hit.get("fs", {})
-        f_on = int(fs.get("fOnCondition", 0))
-        lift = hit.get("lift", 0)
+        f_on = int(hit.get("fs", {}).get("fOnCondition", 0))
+        lift = float(hit.get("lift", 0) or 0)
         if f_on < 2:
             continue
-        patterns.append({"corrected_to": corrected, "field": "gl_code", "count": f_on, "lift": round(lift, 1)})
+        targets.append((corrected, f_on, lift))
+
+    # Pass 2: for each target, find the strongest input-side driver
+    for corrected, count, marginal_lift in targets[:8]:
+        driver_field = "invoice_id.vendor"
+        driver_value: str | None = None
+        driver_count = count
+        driver_lift = marginal_lift
+        try:
+            sub_where: dict = {"field": "gl_code", "corrected_value": corrected}
+            if customer_id:
+                sub_where["customer_id"] = customer_id
+            sub = client.relate("overrides", sub_where, driver_field)
+            sub_hits = sub.get("hits", [])
+            if sub_hits:
+                top = sub_hits[0]
+                rel = top.get("related", {})
+                driver_value = rel.get(driver_field, {}).get("$has")
+                driver_count = int(top.get("fs", {}).get("fOnCondition", 0))
+                driver_lift = round(float(top.get("lift", marginal_lift) or marginal_lift), 1)
+        except AitoError:
+            pass
+
+        patterns.append({
+            "corrected_to": corrected,
+            "field": "gl_code",
+            "count": driver_count if driver_value else count,
+            "lift": round(driver_lift if driver_value else marginal_lift, 1),
+            # input -> output shape
+            "input_field": driver_field if driver_value else None,
+            "input_value": driver_value,
+        })
 
     return patterns
 
