@@ -146,11 +146,21 @@ class AitoClient:
         Note: Aito returns the predicted value in "feature", not in a
         key named after the field.
         """
+        # $why with highlight: per-factor returns the matched text
+        # tokens wrapped in posPreTag/posPostTag so the UI can paint
+        # the source words for Text fields like description. Without
+        # `highlight` Aito only returns propositions like
+        # {description: {$match: "monthly"}} -- with it, the response
+        # also tells you which exact span matched.
         query = {
             "from": table,
             "where": where,
             "predict": predict_field,
-            "select": ["$p", "feature", "$why"],
+            "select": [
+                "$p",
+                "feature",
+                {"$why": {"highlight": {"posPreTag": "<mark>", "posPostTag": "</mark>"}}},
+            ],
         }
         return self._request("POST", "/_predict", json=query)
 

@@ -60,8 +60,22 @@ def _extract_why_factors(why: dict | None) -> list[dict]:
     """Extract human-readable factors from Aito $why structure.
 
     Aito $why is nested: {type: "product", factors: [...]} where each
-    factor may be a lift on a proposition like {vendor: {$has: "Kesko"}}.
-    We flatten this into a simple list of {field, value, lift} entries.
+    factor may be a lift on a proposition like
+    `{vendor: {$has: "Kesko"}}`. With `highlight` requested in the
+    select, factors on Text fields also carry an `highlight` array
+    of `{field, highlight: "matched <mark>tokens</mark>"}`.
+
+    We preserve the per-factor *grouping* -- a single factor may
+    correspond to a conjunction across multiple fields ($and) -- so
+    the UI can render "When description is <mark>...</mark> and
+    category is <mark>...</mark>" as one card with one lift.
+
+    Returns a list of factor dicts:
+        {type: "base", base_p: 0.46, target_value: "..."}        # base probability
+        {type: "pattern", lift: 2.0, propositions: [             # one pattern card
+            {field: "description", highlight: "Monthly <mark>...</mark>"},
+            {field: "category", value: "telecom"},
+        ]}
 
     Linked-field factors (customer_id.name, customer_id.size_tier,
     customer_id.customer_id) are dropped: every query already filters
@@ -71,50 +85,85 @@ def _extract_why_factors(why: dict | None) -> list[dict]:
     if not why or not isinstance(why, dict):
         return []
 
-    factors: list[dict] = []
-    _walk_why(why, factors)
-    factors = [f for f in factors if not f.get("field", "").startswith("customer_id.")]
-    # Sort by lift descending, take top 5
-    factors.sort(key=lambda f: abs(f.get("lift", 0)), reverse=True)
-    return factors[:5]
+    out: list[dict] = []
+    _walk_why_grouped(why, out)
+    # Drop pattern factors that only mention customer_id linked fields,
+    # and inside each pattern strip those propositions too.
+    filtered: list[dict] = []
+    for f in out:
+        if f.get("type") == "pattern":
+            props = [p for p in f.get("propositions", []) if not p.get("field", "").startswith("customer_id.")]
+            if not props:
+                continue
+            filtered.append({**f, "propositions": props})
+        else:
+            filtered.append(f)
+    # Order: base first, then patterns by descending |lift|, top 5
+    base = [f for f in filtered if f.get("type") == "base"]
+    patterns = [f for f in filtered if f.get("type") == "pattern"]
+    patterns.sort(key=lambda f: abs(f.get("lift", 1) - 1), reverse=True)
+    return base + patterns[:5]
 
 
-def _walk_why(node: dict, factors: list[dict]) -> None:
-    """Recursively walk the $why tree to find proposition lifts."""
-    if node.get("type") == "relatedPropositionLift":
+def _walk_why_grouped(node: dict, out: list[dict]) -> None:
+    """Walk the $why tree and emit one entry per top-level factor.
+
+    Unlike the older flat-walker, this keeps each
+    `relatedPropositionLift` together with its conjunction of
+    propositions so the renderer can show grouped pattern cards.
+    """
+    t = node.get("type")
+    if t == "baseP":
         prop = node.get("proposition", {})
-        lift = node.get("value", 0)
-        _extract_propositions(prop, lift, factors)
-    if node.get("type") == "baseP":
-        # Base probability — useful context
+        base_p = float(node.get("value", 0) or 0)
+        target_value = None
+        for _f, cond in prop.items():
+            if isinstance(cond, dict) and "$has" in cond:
+                target_value = str(cond["$has"])
+                break
+        out.append({"type": "base", "base_p": round(base_p, 4), "target_value": target_value})
+    elif t == "relatedPropositionLift":
         prop = node.get("proposition", {})
-        base_p = node.get("value", 0)
-        for field_name, condition in prop.items():
-            if isinstance(condition, dict) and "$has" in condition:
-                factors.append({
-                    "field": field_name,
-                    "value": str(condition["$has"]),
-                    "lift": round(base_p, 4),
-                    "type": "base",
-                })
+        lift = float(node.get("value", 0) or 0)
+        highlights = node.get("highlight") or []
+        # Flatten $and into a list of (field, value, highlight?) tuples
+        propositions: list[dict] = []
+        _collect_props(prop, propositions)
+        # Merge highlights from response into the proposition list
+        # `highlight: [{field: "invoices.description", highlight: "..."}]`
+        hl_by_field: dict[str, str] = {}
+        for h in highlights:
+            f = h.get("field", "")
+            # Aito returns "invoices.description"; strip the table prefix
+            if "." in f:
+                f = f.split(".", 1)[1]
+            hl_by_field[f] = h.get("highlight", "")
+        for p in propositions:
+            if p["field"] in hl_by_field:
+                p["highlight"] = hl_by_field[p["field"]]
+        out.append({"type": "pattern", "lift": round(lift, 2), "propositions": propositions})
+    # Don't recurse into product/related children -- the top-level
+    # tree usually has one product node containing the relevant
+    # baseP + relatedPropositionLift children.
     for child in node.get("factors", []):
         if isinstance(child, dict):
-            _walk_why(child, factors)
+            _walk_why_grouped(child, out)
 
 
-def _extract_propositions(prop: dict, lift: float, factors: list[dict]) -> None:
-    """Extract field/value pairs from a proposition, handling $and arrays."""
+def _collect_props(prop: dict, out: list[dict]) -> None:
     if "$and" in prop:
-        for sub_prop in prop["$and"]:
-            _extract_propositions(sub_prop, lift, factors)
-    else:
-        for field_name, condition in prop.items():
-            if isinstance(condition, dict) and "$has" in condition:
-                factors.append({
-                    "field": field_name,
-                    "value": str(condition["$has"]),
-                    "lift": round(lift, 2),
-                })
+        for sub in prop["$and"]:
+            _collect_props(sub, out)
+        return
+    for field_name, cond in prop.items():
+        if not isinstance(cond, dict):
+            continue
+        # $has = exact value match (categorical fields)
+        if "$has" in cond:
+            out.append({"field": field_name, "value": str(cond["$has"])})
+        # $match = text token match (Text fields)
+        elif "$match" in cond:
+            out.append({"field": field_name, "value": str(cond["$match"])})
 
 
 @dataclass
@@ -213,7 +262,14 @@ def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None 
     rule_match = check_rules(invoice, rules=rules)
     if rule_match:
         gl_code, approver, rule_name = rule_match
-        rule_why = [{"field": "rule", "value": rule_name, "lift": 1.0}]
+        # Mined-rule explanations look like a single pattern card with
+        # one proposition (the rule name) and lift 1.0 — same grouped
+        # shape as Aito _predict $why factors so the renderer is uniform.
+        rule_why = [{
+            "type": "pattern",
+            "lift": 1.0,
+            "propositions": [{"field": "rule", "value": rule_name}],
+        }]
         gl_label = GL_LABELS.get(gl_code, gl_code)
         return InvoicePrediction(
             invoice_id=invoice_id,

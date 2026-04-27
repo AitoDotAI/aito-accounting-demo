@@ -2,13 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
-
-interface WhyFactor {
-  field: string;
-  value: string;
-  lift: number;
-  type?: "base" | string;
-}
+import type { WhyFactor } from "@/lib/types";
 
 interface WhyTooltipProps {
   label: string;
@@ -74,21 +68,7 @@ export default function WhyTooltip({ label, factors }: WhyTooltipProps) {
         >
           <div className="why-title">Why {label}?</div>
           <div className="why-subtitle">Contributing factors from Aito $why</div>
-          {factors.map((f, i) => (
-            <div key={i} className="why-factor">
-              <span className="why-factor-field">
-                {f.type === "base" ? "base P" : f.field}
-              </span>
-              <span className="why-factor-value">
-                {f.type === "base" ? `(${f.value})` : `= "${f.value}"`}
-              </span>
-              <span className="why-factor-lift">
-                {f.type === "base"
-                  ? `${(f.lift * 100).toFixed(1)}%`
-                  : f.lift > 1 ? `${f.lift.toFixed(1)}x` : `${f.lift.toFixed(2)}x`}
-              </span>
-            </div>
-          ))}
+          {factors.map((f, i) => <FactorRow key={i} f={f} />)}
           <div className="why-footer">
             Lift {">"} 1 means this feature makes the prediction more likely; base P is the prior probability of the predicted value.
           </div>
@@ -96,5 +76,50 @@ export default function WhyTooltip({ label, factors }: WhyTooltipProps) {
         document.body,
       )}
     </>
+  );
+}
+
+function FactorRow({ f }: { f: WhyFactor }) {
+  // Base probability factor
+  if (f.type === "base") {
+    return (
+      <div className="why-factor">
+        <span className="why-factor-field">base P</span>
+        <span className="why-factor-value">({f.target_value ?? ""})</span>
+        <span className="why-factor-lift">{((f.base_p ?? 0) * 100).toFixed(1)}%</span>
+      </div>
+    );
+  }
+  // New grouped pattern shape
+  if (f.type === "pattern" && f.propositions) {
+    const liftStr = (f.lift ?? 1) > 1 ? `${(f.lift ?? 1).toFixed(1)}x` : `${(f.lift ?? 1).toFixed(2)}x`;
+    return (
+      <div className="why-factor" style={{ alignItems: "flex-start" }}>
+        <span className="why-factor-field" style={{ minWidth: 0, maxWidth: "70%" }}>
+          {f.propositions.map((p, pi) => (
+            <span key={pi} style={{ display: "block", lineHeight: 1.4 }}>
+              {p.field.replace(/^invoice_id\./, "")}
+              {p.highlight ? " contains " : " = "}
+              {p.highlight ? (
+                <span dangerouslySetInnerHTML={{ __html: p.highlight }} />
+              ) : (
+                <strong>{p.value}</strong>
+              )}
+            </span>
+          ))}
+        </span>
+        <span className="why-factor-lift">{liftStr}</span>
+      </div>
+    );
+  }
+  // Legacy flat shape
+  return (
+    <div className="why-factor">
+      <span className="why-factor-field">{f.field}</span>
+      <span className="why-factor-value">= &quot;{f.value}&quot;</span>
+      <span className="why-factor-lift">
+        {(f.lift ?? 0) > 1 ? `${(f.lift ?? 0).toFixed(1)}x` : `${(f.lift ?? 0).toFixed(2)}x`}
+      </span>
+    </div>
   );
 }

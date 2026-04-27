@@ -26,11 +26,29 @@ export interface Alternative {
   why?: WhyFactor[];
 }
 
+/**
+ * Grouped $why factor.
+ *  - type: "base"   -> base_p (prior probability for target_value)
+ *  - type: "pattern" -> a single conjunction lift, with one or more
+ *                       propositions (field, value, optional highlight
+ *                       string of HTML <mark> tags from Aito).
+ */
 export interface WhyFactor {
+  type?: "base" | "pattern";
+  lift?: number;
+  base_p?: number;
+  target_value?: string | null;
+  propositions?: WhyProposition[];
+  // Legacy flat shape from old precomputed JSON: field/value/lift at top level.
+  field?: string;
+  value?: string;
+}
+
+export interface WhyProposition {
   field: string;
   value: string;
-  lift: number;
-  type?: "base" | string;
+  /** HTML string with <mark>...</mark> tags around matching tokens (Text fields). */
+  highlight?: string;
 }
 
 export interface InvoiceMetrics {

@@ -97,11 +97,28 @@ export default function InvoiceDetail({ inv }: { inv: InvoicePrediction }) {
 // row highlights the source field on the left -- and tokens within
 // the description that drove the match get a yellow background.
 
+interface WhyProposition {
+  field: string;
+  value: string;
+  highlight?: string;
+}
+
+interface WhyFactor {
+  type?: "base" | "pattern";
+  lift?: number;
+  base_p?: number;
+  target_value?: string | null;
+  propositions?: WhyProposition[];
+  // Legacy flat shape (old precomputed JSON without grouping):
+  field?: string;
+  value?: string;
+}
+
 interface Alternative {
   value: string;
   display: string;
   confidence: number;
-  why?: { field: string; value: string; lift: number; type?: string }[];
+  why?: WhyFactor[];
 }
 
 interface Highlight {
@@ -274,44 +291,7 @@ function AlternativesCard({
               <div style={{ height: "100%", width: `${pct}%`, background: isTop ? "var(--gold-dark)" : "var(--gold-light)" }} />
             </div>
             {isTop && a.why && a.why.length > 0 && (
-              <div style={{ marginTop: 8, paddingLeft: 10, borderLeft: "2px solid var(--border2)" }}>
-                <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", marginBottom: 4 }}>
-                  $why factors · hover a row to highlight the source
-                </div>
-                {a.why.slice(0, 5).map((w, i) => (
-                  <div
-                    key={i}
-                    onMouseEnter={() => onHoverFactor({ field: w.field, value: w.value })}
-                    onMouseLeave={() => onHoverFactor({ field: null, value: null })}
-                    style={{
-                      fontSize: 11, color: "var(--text2)", padding: "3px 4px",
-                      display: "flex", justifyContent: "space-between", gap: 8,
-                      borderRadius: 3, cursor: "default",
-                    }}
-                    onMouseOver={(e) => (e.currentTarget.style.background = "var(--surface2)")}
-                    onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
-                  >
-                    <span>
-                      <code style={{ fontFamily: "'IBM Plex Mono', monospace", color: "var(--text3)" }}>
-                        {w.type === "base" ? "base P" : w.field}
-                      </code>
-                      {w.type === "base" ? ` (${w.value})` : (
-                        <>
-                          {" = "}
-                          <strong>{w.value}</strong>
-                        </>
-                      )}
-                    </span>
-                    {w.type === "base" ? (
-                      <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text3)" }}>
-                        {(w.lift * 100).toFixed(1)}%
-                      </span>
-                    ) : (
-                      <LiftHint value={w.lift} prefix="" />
-                    )}
-                  </div>
-                ))}
-              </div>
+              <WhyCards why={a.why} confidence={a.confidence} onHoverFactor={onHoverFactor} />
             )}
           </div>
         );
@@ -451,6 +431,148 @@ function RoutingTab({ inv }: { inv: InvoicePrediction }) {
         backfills this timeline from the prediction_log + overrides tables, plus webhook events from
         the ERP.
       </div>
+    </div>
+  );
+}
+
+// ── $why factor cards ─────────────────────────────────────────────
+//
+// One card per factor. Mirrors aito-demo's InvoicingPage layout:
+// - "Base probability" card with the historical rate of the target
+// - "Pattern match" cards showing "When <field> is <highlighted-tokens>
+//   and <field2> is <value>" with the lift multiplier
+// - Calculation summary: 46% × 2.0 × ... = 99%
+//
+// Hovering a card highlights the source field on the left; if the
+// proposition is on `description`, the matched tokens are already
+// wrapped in <mark>...</mark> by Aito's `highlight` mode and we render
+// them via dangerouslySetInnerHTML.
+
+function WhyCards({
+  why,
+  confidence,
+  onHoverFactor,
+}: {
+  why: WhyFactor[];
+  confidence: number;
+  onHoverFactor: (h: { field: string | null; value: string | null }) => void;
+}) {
+  const base = why.find((f) => f.type === "base");
+  const patterns = why.filter((f) => f.type === "pattern");
+  const legacy = why.filter((f) => !f.type && f.field);  // old precomputed JSON
+
+  const baseP = base?.base_p ?? 0;
+  const lifts = patterns.map((p) => p.lift ?? 1);
+
+  return (
+    <div style={{ marginTop: 10, paddingLeft: 10, borderLeft: "2px solid var(--border2)" }}>
+      <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", marginBottom: 6 }}>
+        Why this prediction · hover a card to highlight the source
+      </div>
+
+      {base && (
+        <div style={{
+          background: "var(--surface2)", borderRadius: 4,
+          padding: "8px 10px", marginBottom: 6,
+          display: "flex", justifyContent: "space-between", gap: 8,
+        }}>
+          <div>
+            <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px" }}>
+              Base probability
+            </div>
+            <div style={{ fontSize: 11, color: "var(--text2)" }}>
+              Historical rate for <strong>{base.target_value || "this value"}</strong>
+            </div>
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
+            {(baseP * 100).toFixed(0)}%
+          </div>
+        </div>
+      )}
+
+      {patterns.map((f, i) => {
+        const props = f.propositions ?? [];
+        const firstField = props[0]?.field ?? null;
+        const firstValue = props[0]?.highlight ? props[0].value : (props[0]?.value ?? null);
+        return (
+          <div
+            key={i}
+            onMouseEnter={() => onHoverFactor({ field: firstField, value: firstValue })}
+            onMouseLeave={() => onHoverFactor({ field: null, value: null })}
+            style={{
+              background: "var(--gold-light)",
+              borderLeft: "3px solid var(--gold-dark)",
+              borderRadius: 4,
+              padding: "8px 10px", marginBottom: 6,
+              display: "flex", justifyContent: "space-between", gap: 12,
+              cursor: "default",
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 10, color: "var(--gold-dark)", textTransform: "uppercase", letterSpacing: ".6px", fontWeight: 600 }}>
+                Pattern match
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text2)", lineHeight: 1.55 }}>
+                When{" "}
+                {props.map((p, pi) => {
+                  const sep = pi === 0 ? "" : pi === props.length - 1 ? " and " : ", ";
+                  const fieldLabel = p.field.replace(/^invoice_id\./, "");
+                  const valueNode = p.highlight ? (
+                    <span dangerouslySetInnerHTML={{ __html: p.highlight }} />
+                  ) : (
+                    <strong>{p.value}</strong>
+                  );
+                  return (
+                    <span key={pi}>
+                      {sep}
+                      <code style={{ fontFamily: "'IBM Plex Mono', monospace", color: "var(--text3)" }}>{fieldLabel}</code>
+                      {p.highlight ? " contains " : " = "}
+                      {valueNode}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+            <LiftHint value={f.lift ?? 1} prefix="× " />
+          </div>
+        );
+      })}
+
+      {/* Legacy flat factors (from old precomputed JSON) */}
+      {legacy.map((f, i) => (
+        <div
+          key={`legacy-${i}`}
+          onMouseEnter={() => onHoverFactor({ field: f.field ?? null, value: f.value ?? null })}
+          onMouseLeave={() => onHoverFactor({ field: null, value: null })}
+          style={{
+            fontSize: 11, color: "var(--text2)", padding: "3px 4px",
+            display: "flex", justifyContent: "space-between", gap: 8,
+          }}
+        >
+          <span>
+            <code style={{ fontFamily: "'IBM Plex Mono', monospace", color: "var(--text3)" }}>{f.field}</code>
+            {" = "}<strong>{f.value}</strong>
+          </span>
+          <LiftHint value={f.lift ?? 1} prefix="" />
+        </div>
+      ))}
+
+      {(base || lifts.length > 0) && (
+        <div style={{
+          marginTop: 8, padding: "8px 10px",
+          background: "var(--surface)", borderRadius: 4,
+          display: "flex", alignItems: "baseline", justifyContent: "center", flexWrap: "wrap",
+          fontSize: 12, color: "var(--text2)", gap: 4,
+          fontFamily: "'IBM Plex Mono', monospace",
+        }}>
+          <span>{(baseP * 100).toFixed(0)}%</span>
+          {lifts.map((lift, i) => (
+            <span key={i}> × {lift.toFixed(1)}</span>
+          ))}
+          <span style={{ color: "var(--text3)" }}> = </span>
+          <span style={{ fontWeight: 700, color: "var(--gold-dark)" }}>{(confidence * 100).toFixed(0)}%</span>
+        </div>
+      )}
     </div>
   );
 }
