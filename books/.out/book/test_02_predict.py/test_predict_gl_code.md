@@ -1,8 +1,0 @@
-# GL code prediction (per-customer)
-
-
-  Kardex Finland Oy                   -> GL 4400   p=0.9719
-  Cafetering Oy                       -> GL 4100   p=0.7533
-  Pukaron Pihviparoni Oy              -> GL 4100   p=0.7862
-
-Predictions are scoped to CUST-0000's invoice history.

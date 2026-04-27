@@ -45,3 +45,4 @@ data/corporate_entities_raw.json
 data/customers.json
 data/employees.json
 data/corporate_entities.json
+books/.out/

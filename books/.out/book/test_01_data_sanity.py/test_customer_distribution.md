@@ -1,7 +1,0 @@
-# Customer size distribution
-
-
-  enterprise      3 customers,      4,000 planned invoices
-  large          12 customers,      4,000 planned invoices
-  midmarket      48 customers,      4,048 planned invoices
-  small         192 customers,      4,096 planned invoices

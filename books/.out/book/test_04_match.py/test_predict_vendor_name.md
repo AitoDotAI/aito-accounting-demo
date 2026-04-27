@@ -1,8 +1,0 @@
-# Vendor resolution: _predict vendor_name
-
-
-  SECURITY VENTURE OY       -> Security Venture Oy       [ok]
-  KIINTEISTÖ OY TÖRMÄNIITYN -> Security Venture Oy       [MISS]
-  AB TRANSPORT HELGE KULL O -> Security Venture Oy       [MISS]
-  EEE ENERGY ECOLOGY ENGINE -> Security Venture Oy       [MISS]
-  SECURITY VENTURE OY       -> Security Venture Oy       [ok]

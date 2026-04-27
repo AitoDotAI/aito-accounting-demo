@@ -1,2 +1,0 @@
-{"name": "book/test_05_evaluate.py::test_evaluate_approver", "result": "DIFF", "duration_ms": 14585.806608200073, "timestamp": 1777311012.6144598, "ai_review": null}
-{"name": "book/test_05_evaluate.py::test_evaluate_gl_code", "result": "DIFF", "duration_ms": 14278.26476097107, "timestamp": 1777311012.6144795, "ai_review": null}
