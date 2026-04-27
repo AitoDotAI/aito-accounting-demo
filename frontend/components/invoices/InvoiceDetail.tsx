@@ -138,7 +138,9 @@ function PredictionTab({ inv }: { inv: InvoicePrediction }) {
 }
 
 function InvoiceInputs({ inv, hl }: { inv: InvoicePrediction; hl: Highlight }) {
-  const rows: { field: string; label: string; value: React.ReactNode }[] = [
+  // Compact 2-column grid for the structured fields, then a full-
+  // width description row at the bottom so long text wraps naturally.
+  const grid: { field: string; label: string; value: React.ReactNode }[] = [
     { field: "vendor", label: "Vendor", value: inv.vendor },
     { field: "vendor_country", label: "Country", value: inv.vendor_country || "—" },
     { field: "category", label: "Category", value: inv.category || "—" },
@@ -146,12 +148,30 @@ function InvoiceInputs({ inv, hl }: { inv: InvoicePrediction; hl: Highlight }) {
     { field: "vat_pct", label: "VAT %", value: inv.vat_pct != null ? `${inv.vat_pct}%` : "—" },
     { field: "invoice_date", label: "Invoice date", value: inv.invoice_date || "—" },
     { field: "due_days", label: "Due terms", value: inv.due_days != null ? `${inv.due_days} days` : "—" },
-    {
-      field: "description",
-      label: "Description",
-      value: <DescriptionCell text={inv.description ?? ""} highlightedTokens={hl.field === "description" ? hl.value : null} />,
-    },
   ];
+
+  const cell = (r: { field: string; label: string; value: React.ReactNode }) => {
+    const lit = hl.field === r.field;
+    return (
+      <div
+        key={r.field}
+        style={{
+          fontSize: 12, padding: "6px 10px", borderRadius: 4,
+          background: lit ? "var(--gold-light)" : "var(--surface2)",
+          borderLeft: lit ? "3px solid var(--gold-dark)" : "3px solid transparent",
+          transition: "background .12s, border-color .12s",
+          minWidth: 0,
+        }}
+      >
+        <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", marginBottom: 2 }}>
+          {r.label}
+        </div>
+        <div style={{ color: "var(--text)", lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis" }}>{r.value}</div>
+      </div>
+    );
+  };
+
+  const descLit = hl.field === "description";
   return (
     <div>
       <div style={{
@@ -160,26 +180,21 @@ function InvoiceInputs({ inv, hl }: { inv: InvoicePrediction; hl: Highlight }) {
       }}>
         Invoice inputs · Aito conditions on these
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {rows.map((r) => {
-          const lit = hl.field === r.field;
-          return (
-            <div
-              key={r.field}
-              style={{
-                fontSize: 12, padding: "6px 10px", borderRadius: 4,
-                background: lit ? "var(--gold-light)" : "var(--surface2)",
-                borderLeft: lit ? "3px solid var(--gold-dark)" : "3px solid transparent",
-                transition: "background .12s, border-color .12s",
-              }}
-            >
-              <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", marginBottom: 2 }}>
-                {r.label}
-              </div>
-              <div style={{ color: "var(--text)", lineHeight: 1.4 }}>{r.value}</div>
-            </div>
-          );
-        })}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 6 }}>
+        {grid.map(cell)}
+      </div>
+      <div style={{
+        fontSize: 12, padding: "6px 10px", borderRadius: 4,
+        background: descLit ? "var(--gold-light)" : "var(--surface2)",
+        borderLeft: descLit ? "3px solid var(--gold-dark)" : "3px solid transparent",
+        transition: "background .12s, border-color .12s",
+      }}>
+        <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", marginBottom: 2 }}>
+          Description
+        </div>
+        <div style={{ color: "var(--text)", lineHeight: 1.5 }}>
+          <DescriptionCell text={inv.description ?? ""} highlightedTokens={descLit ? hl.value : null} />
+        </div>
       </div>
     </div>
   );

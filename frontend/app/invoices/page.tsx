@@ -466,17 +466,19 @@ function DetailDock({ title, children, onClose }: { title: string; children: Rea
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const stored = localStorage.getItem("invoice-detail-dock-height");
+    // v2 key: previous version stored 360 by default; the new inputs +
+    // predictions split needs >= 480 to render without scrolling.
+    const stored = localStorage.getItem("invoice-detail-dock-height-v2");
     if (stored) {
       const n = parseInt(stored, 10);
-      if (!isNaN(n) && n >= 200 && n <= 700) setHeight(n);
+      if (!isNaN(n) && n >= 200 && n <= 800) setHeight(n);
     }
   }, []);
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!draggingRef.current) return;
-      const newH = Math.max(200, Math.min(700, window.innerHeight - e.clientY));
+      const newH = Math.max(200, Math.min(800, window.innerHeight - e.clientY));
       setHeight(newH);
     };
     const onUp = () => {
@@ -484,7 +486,7 @@ function DetailDock({ title, children, onClose }: { title: string; children: Rea
       draggingRef.current = false;
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
-      localStorage.setItem("invoice-detail-dock-height", String(Math.round(height)));
+      localStorage.setItem("invoice-detail-dock-height-v2", String(Math.round(height)));
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
