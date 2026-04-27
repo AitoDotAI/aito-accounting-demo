@@ -159,23 +159,27 @@ def _build_explanation(txn: dict, invoice: dict, aito_p: float, aito_why: dict |
     """Build explanation from Aito $why factors + amount proximity."""
     factors = []
 
-    # Aito $why factors — text token lifts and base probability
+    # Aito $why factors — text token lifts and base probability.
+    # _extract_why_factors returns the grouped shape:
+    #   {type: "base", base_p: 0.46, target_value: ...}
+    #   {type: "pattern", lift: 2.0, propositions: [{field, value, highlight?}]}
     if aito_why:
-        why_factors = _extract_why_factors(aito_why)
-        for wf in why_factors:
-            is_base = wf.get("type") == "base"
-            if is_base:
+        for wf in _extract_why_factors(aito_why):
+            if wf.get("type") == "base":
+                base_p = wf.get("base_p", 0)
                 factors.append({
-                    "factor": wf["field"],
-                    "detail": f'"{wf["value"]}" (prior {wf["lift"]:.4f})',
+                    "factor": "base rate",
+                    "detail": f'"{wf.get("target_value", "")}" (prior {base_p:.4f})',
                     "signal": "partial",
                 })
-            else:
-                factors.append({
-                    "factor": wf["field"],
-                    "detail": f'"{wf["value"]}" (lift {wf["lift"]}x)',
-                    "signal": "strong" if wf["lift"] > 2 else "partial",
-                })
+            elif wf.get("type") == "pattern":
+                lift = wf.get("lift", 1)
+                for prop in wf.get("propositions", []):
+                    factors.append({
+                        "factor": prop["field"],
+                        "detail": f'"{prop["value"]}" (lift {lift}x)',
+                        "signal": "strong" if lift > 2 else "partial",
+                    })
 
     # Amount proximity — Aito's _predict already includes amount in
     # the where clause, so the $why lift on amount surfaces the match
