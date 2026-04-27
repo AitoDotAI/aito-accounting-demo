@@ -70,7 +70,7 @@ export default function PredictedField({
           placeholder={isPredicted ? "" : `Enter ${label.toLowerCase()}`}
         />
         {isPredicted && whyFactors && whyFactors.length > 0 && (
-          <WhyTooltip label={value} factors={whyFactors} />
+          <WhyTooltip label={value} factors={whyFactors} confidence={confidence} />
         )}
       </div>
       {isPredicted && confidence != null && (

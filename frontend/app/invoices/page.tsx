@@ -417,7 +417,7 @@ function InvoiceRowFull({ inv, selected, onToggleSelect, viewed, onView }: {
               confidence={inv.approver_confidence}
               alternatives={approverAlts}
             />
-            <WhyTooltip label={inv.approver} factors={approverWhyFactors} />
+            <WhyTooltip label={inv.approver} factors={approverWhyFactors} confidence={inv.approver_confidence} />
           </div>
         ) : (
           <span className="badge badge-amber">Review needed</span>
@@ -431,7 +431,7 @@ function InvoiceRowFull({ inv, selected, onToggleSelect, viewed, onView }: {
               confidence={inv.gl_confidence}
               alternatives={glAlts}
             />
-            <WhyTooltip label={`GL ${inv.gl_code}`} factors={glWhyFactors} />
+            <WhyTooltip label={`GL ${inv.gl_code}`} factors={glWhyFactors} confidence={inv.gl_confidence} />
           </div>
         ) : (
           <span className="badge badge-amber">Review needed</span>
