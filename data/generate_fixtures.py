@@ -56,10 +56,16 @@ COST_CENTRES = {
 
 PAYMENT_METHODS = ["SEPA Credit Transfer", "SEPA Credit Transfer", "SEPA Credit Transfer", "Credit Card", "Wire Transfer"]
 
-# Date range: 24 months
+# Date range: 24 months. END_DATE is the demo's frozen "today" so
+# the latest invoices line up with where the UI thinks "now" is.
 START_DATE = date(2024, 5, 1)
 END_DATE = date(2026, 4, 30)
+DEMO_TODAY = END_DATE
 TOTAL_DAYS = (END_DATE - START_DATE).days
+# Pending (un-routed) invoices concentrate in the last N days so the
+# demo's "Pending invoices" list looks like a believable accounting
+# backlog instead of a dump of 700-day-overdue rows.
+PENDING_RECENT_DAYS = 45
 
 # ── Invoice description templates ─────────────────────────────────
 # Category-specific English templates with {vendor} and {ref} slots.
@@ -231,8 +237,15 @@ def lognormal_amount(mean: float, std: float) -> float:
 
 
 def random_date() -> str:
+    """Random invoice date across the full 24-month history."""
     days = random.randint(0, TOTAL_DAYS)
     return (START_DATE + timedelta(days=days)).isoformat()
+
+
+def recent_date(rng: random.Random) -> str:
+    """Pending-invoice date: 0..PENDING_RECENT_DAYS before DEMO_TODAY."""
+    days_ago = rng.randint(0, PENDING_RECENT_DAYS)
+    return (DEMO_TODAY - timedelta(days=days_ago)).isoformat()
 
 
 def finnish_reference(rng: random.Random) -> str:
@@ -554,16 +567,21 @@ def generate_invoices_for_customer(
 
         amount = lognormal_amount(vdef["amount_mean"], vdef["amount_mean"] * vdef["amount_std_ratio"])
         desc = generate_description(vdef["category"])
-        inv_date = random_date()
+
+        # Routing first -- determines the date distribution.
+        routed = rng.random() >= 0.12
+        routed_by = "rule" if rng.random() < 0.20 else ("aito" if rng.random() < 0.90 else "human") if routed else "none"
+
+        # Routed (history) invoices span the full 24-month range so
+        # rule mining sees patterns over time. Pending (un-routed) ones
+        # concentrate in the last 45 days -- matches a real accounting
+        # backlog rather than a dump of 600-day-overdue rows.
+        inv_date = random_date() if routed else recent_date(rng)
 
         # Processor and approver from employees
         dept_employees = [e for e in employees if e["department"] in ("Finance", "Procurement")]
         processor = rng.choice(dept_employees) if dept_employees else rng.choice(employees)
         approver = rng.choice(approvers)
-
-        # Routing
-        routed = rng.random() >= 0.12
-        routed_by = "rule" if rng.random() < 0.20 else ("aito" if rng.random() < 0.90 else "human") if routed else "none"
 
         # Occasional GL anomaly (2%)
         gl_code = vdef["gl_code"]

@@ -177,21 +177,18 @@ def _build_explanation(txn: dict, invoice: dict, aito_p: float, aito_why: dict |
                     "signal": "strong" if wf["lift"] > 2 else "partial",
                 })
 
-    # Amount proximity — computed outside Aito since _predict on
-    # vendor_name within bank_transactions doesn't cross-reference
-    # invoice amounts. Amount matching narrows which invoice for a
-    # given vendor.
+    # Amount proximity — Aito's _predict already includes amount in
+    # the where clause, so the $why lift on amount surfaces the match
+    # quality. Only add a hand-computed factor when amounts disagree
+    # enough that the user should question the match (>= 5% off);
+    # exact / near-exact would just double-count Aito's own signal.
     diff = abs(invoice["amount"] - txn["amount"])
-    if diff == 0:
-        factors.append({"factor": "amount", "detail": f"exact match ({txn['amount']})", "signal": "strong"})
-    elif diff < invoice["amount"] * 0.005:
-        factors.append({"factor": "amount", "detail": f"within 0.5% (diff {diff:.2f})", "signal": "strong"})
-    elif diff < invoice["amount"] * 0.02:
-        factors.append({"factor": "amount", "detail": f"within 2% (diff {diff:.2f})", "signal": "partial"})
-    elif diff < invoice["amount"] * 0.05:
-        factors.append({"factor": "amount", "detail": f"within 5% (diff {diff:.2f})", "signal": "partial"})
-    else:
-        factors.append({"factor": "amount", "detail": f"differs by {diff:.2f}", "signal": "weak"})
+    if invoice["amount"] > 0 and diff >= invoice["amount"] * 0.05:
+        factors.append({
+            "factor": "amount",
+            "detail": f"differs by {diff:.2f}",
+            "signal": "weak",
+        })
 
     return factors
 

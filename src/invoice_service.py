@@ -62,12 +62,18 @@ def _extract_why_factors(why: dict | None) -> list[dict]:
     Aito $why is nested: {type: "product", factors: [...]} where each
     factor may be a lift on a proposition like {vendor: {$has: "Kesko"}}.
     We flatten this into a simple list of {field, value, lift} entries.
+
+    Linked-field factors (customer_id.name, customer_id.size_tier,
+    customer_id.customer_id) are dropped: every query already filters
+    on customer_id, so those propositions are restating the scope, not
+    explaining the prediction.
     """
     if not why or not isinstance(why, dict):
         return []
 
-    factors = []
+    factors: list[dict] = []
     _walk_why(why, factors)
+    factors = [f for f in factors if not f.get("field", "").startswith("customer_id.")]
     # Sort by lift descending, take top 5
     factors.sort(key=lambda f: abs(f.get("lift", 0)), reverse=True)
     return factors[:5]
@@ -223,6 +229,11 @@ def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None 
         where["customer_id"] = invoice["customer_id"]
     if "category" in invoice:
         where["category"] = invoice["category"]
+    # Description is a Text field in the schema; including it lets
+    # Aito's analyzer match on tokens like "Monthly mobile
+    # subscription" -> telecom GL, on top of the structured signals.
+    if invoice.get("description"):
+        where["description"] = invoice["description"]
 
     try:
         gl_result = client.predict("invoices", where, "gl_code")

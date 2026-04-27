@@ -437,6 +437,19 @@ export default function FormFillPage() {
 
             <div className="form-section">
               <div className="form-section-title">Routing &amp; classification</div>
+              <div style={{
+                fontSize: 12, color: "var(--text2)", lineHeight: 1.5,
+                marginBottom: 12, padding: "8px 12px",
+                background: "var(--surface2)", borderLeft: "3px solid var(--gold-mid)",
+                borderRadius: "0 4px 4px 0",
+              }}>
+                Aito predicts these fields from what you've filled above —
+                vendor, amount, category, date.
+                Click the <strong>?</strong> next to any predicted value to
+                see which inputs drove it (lift &gt; 1×) and what the
+                alternatives were. Edit any field to override; the rest
+                re-predict against the new context.
+              </div>
 
               <PredictedField
                 label="GL Account"

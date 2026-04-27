@@ -7,6 +7,7 @@ interface WhyFactor {
   field: string;
   value: string;
   lift: number;
+  type?: "base" | string;
 }
 
 interface WhyTooltipProps {
@@ -75,15 +76,21 @@ export default function WhyTooltip({ label, factors }: WhyTooltipProps) {
           <div className="why-subtitle">Contributing factors from Aito $why</div>
           {factors.map((f, i) => (
             <div key={i} className="why-factor">
-              <span className="why-factor-field">{f.field}</span>
-              <span className="why-factor-value">= &quot;{f.value}&quot;</span>
+              <span className="why-factor-field">
+                {f.type === "base" ? "base P" : f.field}
+              </span>
+              <span className="why-factor-value">
+                {f.type === "base" ? `(${f.value})` : `= "${f.value}"`}
+              </span>
               <span className="why-factor-lift">
-                {f.lift > 1 ? `${f.lift.toFixed(1)}x` : `${f.lift.toFixed(2)}x`}
+                {f.type === "base"
+                  ? `${(f.lift * 100).toFixed(1)}%`
+                  : f.lift > 1 ? `${f.lift.toFixed(1)}x` : `${f.lift.toFixed(2)}x`}
               </span>
             </div>
           ))}
           <div className="why-footer">
-            Lift {">"} 1 means this feature makes the prediction more likely
+            Lift {">"} 1 means this feature makes the prediction more likely; base P is the prior probability of the predicted value.
           </div>
         </div>,
         document.body,
