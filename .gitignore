@@ -45,4 +45,12 @@ data/corporate_entities_raw.json
 data/customers.json
 data/employees.json
 data/corporate_entities.json
+data/help_articles.json
+data/help_impressions.json
 books/.out/
+
+# Local Claude Code state
+.claude/
+
+# Internal scratch
+aito-account-demo-task.md
