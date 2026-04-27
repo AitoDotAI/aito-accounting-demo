@@ -2,8 +2,8 @@
   "test_id": "book/test_05_evaluate.py::test_evaluate_approver",
   "snapshots": {
     "httpx": {
-      "hash": "sha256:5c660f460ccfbc762e60646a838c1c7ad56c7e8118b1a6c4318ee360b45187ee",
-      "state": "intact",
+      "hash": "sha256:42b692d6c6bbca948ee4766d8ef4f6ae686ccb1fa211b50c72d146abde0f97c1",
+      "state": "updated",
       "details": {
         "count": 1,
         "urls": [
@@ -13,12 +13,12 @@
           "3978b71930757e42d90d7b0e806841ff2e7d6796"
         ]
       },
-      "timestamp": 1777211499.358965
+      "timestamp": 1777310998.3210294
     }
   },
   "result": {
-    "success": "ok",
-    "snapshotting": "intact"
+    "success": "diff",
+    "snapshotting": "updated"
   },
-  "timestamp": 1777211499.3591187
+  "timestamp": 1777310998.3220477
 }

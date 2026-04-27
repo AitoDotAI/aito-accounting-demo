@@ -2,8 +2,8 @@
   "test_id": "book/test_02_predict.py::test_multitenant_isolation",
   "snapshots": {
     "httpx": {
-      "hash": "sha256:a8153fad556478ff0bf6dd36bd0c102d35469b8b80c6a7568e4e039f41ff0f10",
-      "state": "intact",
+      "hash": "sha256:e0d2987e3d64d01b8ad33e7f751e61749236f44d0276ff98305e486f70abf816",
+      "state": "updated",
       "details": {
         "count": 9,
         "urls": [
@@ -18,10 +18,10 @@
           "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_search"
         ],
         "hashes": [
-          "5d06e0c87208ad1400f44813980b44aef681d82e",
-          "5f5d0486cbc389ebe3922f3a9377c3f0f50d0d78",
-          "7fef38cc1614be4eef78af38c2ed843437f5ed33",
-          "eb5182977b4e71a96be1569d588dad4820f2c8c8",
+          "2aa449540ff1a69a9af73498008cf1171ae99d51",
+          "505c1c6bb5c5d22b2a72ba3e8179823860d4d960",
+          "784d3765f6a5f7d85e84b1884287edb42fc37874",
+          "c35e2b89809644e4392c4d07d76ecdaed29b11f8",
           "018e385da888e46eb8d41149ad70b244f99ff531",
           "25ae77643b6c8d9804c04cfb9b32ce277a8ae9b5",
           "58ac98758962b56e895809c3698ff24b3b98f1f3",
@@ -29,12 +29,12 @@
           "e840ae0e9f8dcbd1b9e823db9819322f6078f607"
         ]
       },
-      "timestamp": 1777211498.8694665
+      "timestamp": 1777308105.9935095
     }
   },
   "result": {
-    "success": "ok",
-    "snapshotting": "intact"
+    "success": "diff",
+    "snapshotting": "updated"
   },
-  "timestamp": 1777211498.8696287
+  "timestamp": 1777308105.993987
 }

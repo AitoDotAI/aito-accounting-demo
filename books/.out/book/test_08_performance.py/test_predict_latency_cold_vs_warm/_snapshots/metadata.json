@@ -1,0 +1,28 @@
+{
+  "test_id": "book/test_08_performance.py::test_predict_latency_cold_vs_warm",
+  "snapshots": {
+    "httpx": {
+      "hash": "sha256:8a25f965d82b9b4b65e9fdcc7ae5444d9218b83cd45d630eaae785ea193c3c4b",
+      "state": "updated",
+      "details": {
+        "count": 3,
+        "urls": [
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_predict",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_search"
+        ],
+        "hashes": [
+          "9ddd16451c61372a0e268917b1ea3cf5f13f2bc3",
+          "bcff97ed333aebbf187ece5375645f869e98376d",
+          "018e385da888e46eb8d41149ad70b244f99ff531"
+        ]
+      },
+      "timestamp": 1777263178.3142805
+    }
+  },
+  "result": {
+    "success": "diff",
+    "snapshotting": "updated"
+  },
+  "timestamp": 1777263178.315027
+}

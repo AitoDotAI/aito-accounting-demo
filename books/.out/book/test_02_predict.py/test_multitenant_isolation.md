@@ -4,11 +4,11 @@ Same vendor should predict different GL codes per customer,
 because each customer has their own routing patterns.
 
 
-## Vendor: Security Venture Oy
+## Vendor: Kardex Finland Oy
 
-  CUST-0000 ( 2000 invoices): GL 5100   p=0.7095
-  CUST-0003 (  500 invoices): GL 5100   p=0.5856
-  CUST-0010 (  250 invoices): GL 5100   p=0.7656
-  CUST-0100 (   32 invoices): GL 4100   p=0.3370
+  CUST-0000 (16000 invoices): GL 4400   p=0.9719
+  CUST-0003 ( 4000 invoices): GL 6200   p=0.8160
+  CUST-0010 ( 2000 invoices): GL 4400   p=0.9582
+  CUST-0100 (  250 invoices): GL 6200   p=0.6654
 
 Different GL codes per customer = multi-tenancy working.

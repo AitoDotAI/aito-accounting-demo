@@ -2,8 +2,8 @@
   "test_id": "book/test_02_predict.py::test_cold_start_small_customer",
   "snapshots": {
     "httpx": {
-      "hash": "sha256:cf7b9d24687c383c667f860f337c343f485c3776a8688008076a8ee67ce58ce6",
-      "state": "intact",
+      "hash": "sha256:76b57a3becd16f412ead9992579823185b5ce394a0e9a238fb2d095a6b809c84",
+      "state": "updated",
       "details": {
         "count": 10,
         "urls": [
@@ -19,9 +19,9 @@
           "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_search"
         ],
         "hashes": [
-          "1eee4f4328597be9ebc798ba5262b5715ef5f59e",
-          "4dcc01007453c910bbcddbf0cb23a179e3d37591",
-          "5d8282c64a0d670af53c9c1278502e2ee6e2b375",
+          "000ee2c08f6b167e26eedd9bf0ccedafcd349021",
+          "0fee641ebb32ebcdf51466724923849714ad1a7e",
+          "85a92e2cf23372d0246919fb970d1101987d6b94",
           "306b99dd7ca8bcef4dd7517a17cfb8d5c96f36b7",
           "30aa4670c3c1df38e781e4bcaea7582b159c2ee3",
           "55284e30dd68a99bcbea94481814cc5505a83c5d",
@@ -31,12 +31,12 @@
           "fc57279ab6913f544e5418da227884faf4fa08fd"
         ]
       },
-      "timestamp": 1777211498.750785
+      "timestamp": 1777308102.9296508
     }
   },
   "result": {
-    "success": "ok",
-    "snapshotting": "intact"
+    "success": "diff",
+    "snapshotting": "updated"
   },
-  "timestamp": 1777211498.7509406
+  "timestamp": 1777308102.9301214
 }

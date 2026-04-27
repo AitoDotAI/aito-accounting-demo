@@ -22,4 +22,9 @@
      * [test_07_help.py::test_help_evaluate_on_unseen_customer](book/test_07_help.py::test_help_evaluate_on_unseen_customer.md)
      * [test_07_help.py::test_help_schema_exists](book/test_07_help.py::test_help_schema_exists.md)
      * [test_07_help.py::test_help_search_top_articles_for_invoices_page](book/test_07_help.py::test_help_search_top_articles_for_invoices_page.md)
+     * [test_08_performance.py::test_evaluate_latency](book/test_08_performance.py::test_evaluate_latency.md)
+     * [test_08_performance.py::test_predict_latency](book/test_08_performance.py::test_predict_latency.md)
+     * [test_08_performance.py::test_predict_latency_cold_vs_warm](book/test_08_performance.py::test_predict_latency_cold_vs_warm.md)
+     * [test_08_performance.py::test_relate_latency](book/test_08_performance.py::test_relate_latency.md)
+     * [test_08_performance.py::test_search_latency_by_tier](book/test_08_performance.py::test_search_latency_by_tier.md)
 

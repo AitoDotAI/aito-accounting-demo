@@ -548,10 +548,24 @@ def generate_invoices_for_customer(
     bank_txns = []
     overrides = []
 
-    # Find approvers (managers and above)
+    # Approver pool (managers and above)
     approvers = [e for e in employees if e["role"] in ("CEO", "Director", "Manager")]
     if not approvers:
         approvers = employees[:1]
+    managers = [e for e in approvers if e["role"] == "Manager"] or approvers
+    seniors = [e for e in approvers if e["role"] in ("CEO", "Director")] or approvers
+
+    # Deterministic per-category approver mapping (drawn from this
+    # customer's manager pool). This is the signal Aito learns:
+    # category -> approver, with amount escalation to a senior.
+    cat_rng = random.Random(hash(cid + ":approver"))
+    category_to_approver = {
+        cat: cat_rng.choice(managers) for cat in CATEGORIES
+    }
+    senior_approver = cat_rng.choice(seniors)
+    # Escalation threshold: invoices over this amount route to a
+    # senior signer regardless of category.
+    escalation_threshold = 10_000.0
 
     for i in range(n):
         # Pick vendor (weighted)
@@ -578,10 +592,18 @@ def generate_invoices_for_customer(
         # backlog rather than a dump of 600-day-overdue rows.
         inv_date = random_date() if routed else recent_date(rng)
 
-        # Processor and approver from employees
+        # Processor stays department-tied; approver is now deterministic
+        # by category, with amount escalation to a senior signer. ~3%
+        # of invoices stay random as noise (real-world: vacation cover,
+        # delegations) so Aito doesn't see a perfect signal.
         dept_employees = [e for e in employees if e["department"] in ("Finance", "Procurement")]
         processor = rng.choice(dept_employees) if dept_employees else rng.choice(employees)
-        approver = rng.choice(approvers)
+        if amount >= escalation_threshold:
+            approver = senior_approver
+        elif rng.random() < 0.03:
+            approver = rng.choice(approvers)
+        else:
+            approver = category_to_approver[vdef["category"]]
 
         # Occasional GL anomaly (2%)
         gl_code = vdef["gl_code"]

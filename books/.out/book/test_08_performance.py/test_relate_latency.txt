@@ -1,0 +1,21 @@
+  # _relate latency: vendor → gl_code
+  
+  This is the slow operator -- it returns the discovered
+  association rules between fields.
+  
+  
+  ## CUST-0000 — enterprise
+  
+  202.878 ms
+    rules returned: 10
+    top related gl_code lift=14.38
+    rules > 0: True
+  
+  
+  ## CUST-0015 — midmarket
+  
+  175.946 ms
+    rules returned: 10
+    top related gl_code lift=14.38
+    rules > 0: True
+  

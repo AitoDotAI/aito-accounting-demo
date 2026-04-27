@@ -1,0 +1,32 @@
+{
+  "test_id": "book/test_08_performance.py::test_search_latency_by_tier",
+  "snapshots": {
+    "httpx": {
+      "hash": "sha256:2bdc7225e647c1647a9a2ac871bca7410153f044bd3eab8186145367dac627fc",
+      "state": "updated",
+      "details": {
+        "count": 5,
+        "urls": [
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_search",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_search",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_search",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_search",
+          "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_search"
+        ],
+        "hashes": [
+          "3284de199c179ec58ce6c46651b027efa0cda2f4",
+          "95bac49089110a0df4755db69429b02b853babc8",
+          "a4bb257a91b47008ff4ad47f0364f6375ce1075c",
+          "b811b160bdb07982811de10b36c6b91e4814b540",
+          "c577f3281dceb9fd0a5642157751e71b5e356112"
+        ]
+      },
+      "timestamp": 1777263185.068004
+    }
+  },
+  "result": {
+    "success": "diff",
+    "snapshotting": "updated"
+  },
+  "timestamp": 1777263185.0689945
+}

@@ -2,8 +2,8 @@
   "test_id": "book/test_05_evaluate.py::test_evaluate_gl_code",
   "snapshots": {
     "httpx": {
-      "hash": "sha256:d39c48f50cbdcba72dbaee3f42d78a7e1b44fdac19e3833b8589fc6f9969882a",
-      "state": "intact",
+      "hash": "sha256:b262a0fa419b5b0e3d8529c5f508c3edce748aed750177d366f0d166f7f989f1",
+      "state": "updated",
       "details": {
         "count": 1,
         "urls": [
@@ -13,12 +13,12 @@
           "3e054ad1000141f2ca1396297539515329017088"
         ]
       },
-      "timestamp": 1777211499.3845513
+      "timestamp": 1777311012.611445
     }
   },
   "result": {
-    "success": "ok",
-    "snapshotting": "intact"
+    "success": "diff",
+    "snapshotting": "updated"
   },
-  "timestamp": 1777211499.3846917
+  "timestamp": 1777311012.612072
 }

@@ -1,9 +1,0 @@
-# Cold start: small customer prediction
-
-Small customers have fewer invoices. How confident is Aito?
-
-  CUST-0063 ( 32 invoices): vendor=DNA Kauppa Oy             -> GL 4400   p=0.1468
-  CUST-0064 ( 32 invoices): vendor=Restaurant Aurinkoranta O -> GL 4400   p=0.1470
-  CUST-0065 ( 32 invoices): vendor=Oy Transmeri Group Ab     -> GL 4400   p=0.1958
-
-Confidence decreases with fewer invoices — honest uncertainty.
