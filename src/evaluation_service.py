@@ -163,9 +163,17 @@ def run_evaluation(
     except AitoError as exc:
         return {"error": str(exc), "query": query}
 
-    accuracy = float(result.get("accuracy", 0))
-    base_accuracy = float(result.get("baseAccuracy", 0))
-    test_samples = int(result.get("testSamples", 0))
+    import math
+    def _safe_float(x: object, default: float = 0.0) -> float:
+        try:
+            v = float(x)  # type: ignore[arg-type]
+            return v if math.isfinite(v) else default
+        except (TypeError, ValueError):
+            return default
+
+    accuracy = _safe_float(result.get("accuracy", 0))
+    base_accuracy = _safe_float(result.get("baseAccuracy", 0))
+    test_samples = int(result.get("testSamples", 0) or 0)
     cases_raw = result.get("cases", [])
 
     # Aito _evaluate cases (verified via debug): each case has
@@ -197,11 +205,11 @@ def run_evaluation(
         "kpis": {
             "accuracy_pct": round(accuracy * 100, 2),
             "base_accuracy_pct": round(base_accuracy * 100, 2),
-            "accuracy_gain_pct": round(float(result.get("accuracyGain", accuracy - base_accuracy)) * 100, 2),
-            "mean_rank": round(float(result.get("meanRank", 0)), 2),
-            "geom_mean_p": round(float(result.get("geomMeanP", 0)), 4),
+            "accuracy_gain_pct": round(_safe_float(result.get("accuracyGain", accuracy - base_accuracy)) * 100, 2),
+            "mean_rank": round(_safe_float(result.get("meanRank", 0)), 2),
+            "geom_mean_p": round(_safe_float(result.get("geomMeanP", 0)), 4),
             "test_samples": test_samples,
-            "train_samples": int(result.get("trainSamples", 0)),
+            "train_samples": int(result.get("trainSamples", 0) or 0),
             "correct_predictions": correct_count if cases else round(accuracy * test_samples),
             "error_rate_pct": round((1 - accuracy) * 100, 2),
         },
