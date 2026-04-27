@@ -132,6 +132,9 @@ class InvoicePrediction:
     invoice_date: str | None = None
     due_days: int | None = None
     vat_pct: int | None = None
+    vendor_country: str | None = None
+    category: str | None = None
+    description: str | None = None
     gl_alternatives: list[dict] = field(default_factory=list)
     approver_alternatives: list[dict] = field(default_factory=list)
 
@@ -139,6 +142,9 @@ class InvoicePrediction:
         return {
             "invoice_id": self.invoice_id,
             "vendor": self.vendor,
+            "vendor_country": self.vendor_country,
+            "category": self.category,
+            "description": self.description,
             "amount": self.amount,
             "invoice_date": self.invoice_date,
             "due_days": self.due_days,
@@ -200,6 +206,9 @@ def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None 
     invoice_date = shift_iso(invoice.get("invoice_date"))
     due_days = invoice.get("due_days")
     vat_pct = invoice.get("vat_pct")
+    vendor_country = invoice.get("vendor_country")
+    category = invoice.get("category")
+    description = invoice.get("description")
 
     rule_match = check_rules(invoice, rules=rules)
     if rule_match:
@@ -209,6 +218,9 @@ def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None 
         return InvoicePrediction(
             invoice_id=invoice_id,
             vendor=vendor,
+            vendor_country=vendor_country,
+            category=category,
+            description=description,
             amount=amount,
             invoice_date=invoice_date,
             due_days=due_days,
@@ -242,6 +254,9 @@ def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None 
         return InvoicePrediction(
             invoice_id=invoice_id,
             vendor=vendor,
+            vendor_country=vendor_country,
+            category=category,
+            description=description,
             amount=amount,
             invoice_date=invoice_date,
             due_days=due_days,
@@ -272,6 +287,9 @@ def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None 
     return InvoicePrediction(
         invoice_id=invoice_id,
         vendor=vendor,
+        vendor_country=vendor_country,
+        category=category,
+        description=description,
         amount=amount,
         invoice_date=invoice_date,
         due_days=due_days,

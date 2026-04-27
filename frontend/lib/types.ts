@@ -1,6 +1,9 @@
 export interface InvoicePrediction {
   invoice_id: string;
   vendor: string;
+  vendor_country?: string;
+  category?: string;
+  description?: string;
   amount: number;
   invoice_date?: string;
   due_days?: number;
@@ -27,6 +30,7 @@ export interface WhyFactor {
   field: string;
   value: string;
   lift: number;
+  type?: "base" | string;
 }
 
 export interface InvoiceMetrics {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useCustomer } from "@/lib/customer-context";
 import { apiFetch, fmtAmount } from "@/lib/api";
 import LiftHint from "@/components/prediction/LiftHint";
@@ -90,24 +90,133 @@ export default function InvoiceDetail({ inv }: { inv: InvoicePrediction }) {
 }
 
 // ── Prediction tab ──────────────────────────────────────────────
-
-function PredictionTab({ inv }: { inv: InvoicePrediction }) {
-  const glAlts = inv.gl_alternatives ?? [];
-  const apprAlts = inv.approver_alternatives ?? [];
-
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-      <AlternativesCard title="GL code — top alternatives" predicted={inv.gl_code} alts={glAlts} format={(v) => v} />
-      <AlternativesCard title="Approver — top alternatives" predicted={inv.approver} alts={apprAlts} format={(v) => v} />
-    </div>
-  );
-}
+//
+// Two-column layout: left = inputs (vendor, amount, description, ...)
+// = the data Aito conditions on. Right = predictions (GL, approver)
+// with their top-3 alternatives and $why factors. Hovering a $why
+// row highlights the source field on the left -- and tokens within
+// the description that drove the match get a yellow background.
 
 interface Alternative {
   value: string;
   display: string;
   confidence: number;
-  why?: { field: string; value: string; lift: number }[];
+  why?: { field: string; value: string; lift: number; type?: string }[];
+}
+
+interface Highlight {
+  field: string | null;
+  value: string | null;
+}
+
+function PredictionTab({ inv }: { inv: InvoicePrediction }) {
+  const glAlts = inv.gl_alternatives ?? [];
+  const apprAlts = inv.approver_alternatives ?? [];
+  const [hl, setHl] = useState<Highlight>({ field: null, value: null });
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.3fr)", gap: 20 }}>
+      <InvoiceInputs inv={inv} hl={hl} />
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <AlternativesCard
+          title="GL code — top alternatives"
+          predicted={inv.gl_code}
+          alts={glAlts}
+          format={(v) => v}
+          onHoverFactor={setHl}
+        />
+        <AlternativesCard
+          title="Approver — top alternatives"
+          predicted={inv.approver}
+          alts={apprAlts}
+          format={(v) => v}
+          onHoverFactor={setHl}
+        />
+      </div>
+    </div>
+  );
+}
+
+function InvoiceInputs({ inv, hl }: { inv: InvoicePrediction; hl: Highlight }) {
+  const rows: { field: string; label: string; value: React.ReactNode }[] = [
+    { field: "vendor", label: "Vendor", value: inv.vendor },
+    { field: "vendor_country", label: "Country", value: inv.vendor_country || "—" },
+    { field: "category", label: "Category", value: inv.category || "—" },
+    { field: "amount", label: "Amount", value: fmtAmount(inv.amount) },
+    { field: "vat_pct", label: "VAT %", value: inv.vat_pct != null ? `${inv.vat_pct}%` : "—" },
+    { field: "invoice_date", label: "Invoice date", value: inv.invoice_date || "—" },
+    { field: "due_days", label: "Due terms", value: inv.due_days != null ? `${inv.due_days} days` : "—" },
+    {
+      field: "description",
+      label: "Description",
+      value: <DescriptionCell text={inv.description ?? ""} highlightedTokens={hl.field === "description" ? hl.value : null} />,
+    },
+  ];
+  return (
+    <div>
+      <div style={{
+        fontSize: 11, fontWeight: 600, color: "var(--text3)",
+        textTransform: "uppercase", letterSpacing: ".6px", marginBottom: 10,
+      }}>
+        Invoice inputs · Aito conditions on these
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {rows.map((r) => {
+          const lit = hl.field === r.field;
+          return (
+            <div
+              key={r.field}
+              style={{
+                fontSize: 12, padding: "6px 10px", borderRadius: 4,
+                background: lit ? "var(--gold-light)" : "var(--surface2)",
+                borderLeft: lit ? "3px solid var(--gold-dark)" : "3px solid transparent",
+                transition: "background .12s, border-color .12s",
+              }}
+            >
+              <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", marginBottom: 2 }}>
+                {r.label}
+              </div>
+              <div style={{ color: "var(--text)", lineHeight: 1.4 }}>{r.value}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function DescriptionCell({ text, highlightedTokens }: { text: string; highlightedTokens: string | null }) {
+  // Tokenize the description and highlight any token that appears in
+  // the $why value the user is hovering. Aito's analyzer is roughly
+  // word-level; doing the same on the client is good enough.
+  const tokens = useMemo(() => {
+    const set = new Set<string>();
+    if (highlightedTokens) {
+      for (const t of highlightedTokens.toLowerCase().split(/\W+/).filter((s) => s.length > 2)) {
+        set.add(t);
+      }
+    }
+    return set;
+  }, [highlightedTokens]);
+
+  if (!text) return <span style={{ color: "var(--text3)" }}>—</span>;
+  if (tokens.size === 0) return <span>{text}</span>;
+
+  const parts = text.split(/(\W+)/);
+  return (
+    <span>
+      {parts.map((p, i) => {
+        const hit = tokens.has(p.toLowerCase());
+        return hit ? (
+          <mark key={i} style={{ background: "#fff3a8", padding: "0 2px", borderRadius: 2 }}>
+            {p}
+          </mark>
+        ) : (
+          <span key={i}>{p}</span>
+        );
+      })}
+    </span>
+  );
 }
 
 function AlternativesCard({
@@ -115,11 +224,13 @@ function AlternativesCard({
   predicted,
   alts,
   format,
+  onHoverFactor,
 }: {
   title: string;
   predicted: string | null;
   alts: Alternative[];
   format: (v: string) => string;
+  onHoverFactor: (h: Highlight) => void;
 }) {
   if (alts.length === 0) {
     return (
@@ -149,15 +260,40 @@ function AlternativesCard({
             </div>
             {isTop && a.why && a.why.length > 0 && (
               <div style={{ marginTop: 8, paddingLeft: 10, borderLeft: "2px solid var(--border2)" }}>
-                <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", marginBottom: 4 }}>$why factors</div>
-                {a.why.slice(0, 4).map((w, i) => (
-                  <div key={i} style={{ fontSize: 11, color: "var(--text2)", padding: "2px 0", display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", marginBottom: 4 }}>
+                  $why factors · hover a row to highlight the source
+                </div>
+                {a.why.slice(0, 5).map((w, i) => (
+                  <div
+                    key={i}
+                    onMouseEnter={() => onHoverFactor({ field: w.field, value: w.value })}
+                    onMouseLeave={() => onHoverFactor({ field: null, value: null })}
+                    style={{
+                      fontSize: 11, color: "var(--text2)", padding: "3px 4px",
+                      display: "flex", justifyContent: "space-between", gap: 8,
+                      borderRadius: 3, cursor: "default",
+                    }}
+                    onMouseOver={(e) => (e.currentTarget.style.background = "var(--surface2)")}
+                    onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
+                  >
                     <span>
-                      <code style={{ fontFamily: "'IBM Plex Mono', monospace", color: "var(--text3)" }}>{w.field}</code>
-                      {" = "}
-                      <strong>{w.value}</strong>
+                      <code style={{ fontFamily: "'IBM Plex Mono', monospace", color: "var(--text3)" }}>
+                        {w.type === "base" ? "base P" : w.field}
+                      </code>
+                      {w.type === "base" ? ` (${w.value})` : (
+                        <>
+                          {" = "}
+                          <strong>{w.value}</strong>
+                        </>
+                      )}
                     </span>
-                    <LiftHint value={w.lift} prefix="" />
+                    {w.type === "base" ? (
+                      <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text3)" }}>
+                        {(w.lift * 100).toFixed(1)}%
+                      </span>
+                    ) : (
+                      <LiftHint value={w.lift} prefix="" />
+                    )}
                   </div>
                 ))}
               </div>

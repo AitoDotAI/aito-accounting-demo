@@ -461,7 +461,7 @@ function SkeletonRow() {
 // .main pane. Resizable height; persisted via localStorage.
 
 function DetailDock({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
-  const [height, setHeight] = useState(360);
+  const [height, setHeight] = useState(520);
   const draggingRef = useRef(false);
 
   useEffect(() => {
