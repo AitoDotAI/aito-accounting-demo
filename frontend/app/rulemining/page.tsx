@@ -79,6 +79,15 @@ interface DrilldownInvoice {
   matched_rule: boolean;
 }
 
+interface SubPattern {
+  field: string;
+  value: string;
+  support_match: number;
+  support_total: number;
+  support_ratio: number;
+  lift: number;
+}
+
 export default function RuleMiningPage() {
   const { customerId } = useCustomer();
   const [data, setData] = useState<RulesResponse | null>(null);
@@ -86,13 +95,40 @@ export default function RuleMiningPage() {
   const [error, setError] = useState(false);
   const [drilldown, setDrilldown] = useState<{ rule: RuleCandidate; invoices: DrilldownInvoice[] } | null>(null);
   const [drillLoading, setDrillLoading] = useState(false);
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [subPatterns, setSubPatterns] = useState<Record<string, SubPattern[] | "loading" | "error">>({});
 
   useEffect(() => {
     setData(null); setLive(false); setError(false); setDrilldown(null);
+    setExpandedKey(null); setSubPatterns({});
     apiFetch<RulesResponse>(`/api/rules/candidates?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
       .catch(() => setError(true));
   }, [customerId]);
+
+  const ruleKey = (c: RuleCandidate) => `${c.condition_field}=${c.condition_value}->${c.target_value}`;
+
+  const toggleExpand = async (c: RuleCandidate) => {
+    const key = ruleKey(c);
+    if (expandedKey === key) {
+      setExpandedKey(null);
+      return;
+    }
+    setExpandedKey(key);
+    if (subPatterns[key]) return;
+    setSubPatterns((s) => ({ ...s, [key]: "loading" }));
+    try {
+      const r = await apiFetch<{ sub_patterns: SubPattern[] }>(
+        `/api/rules/sub_patterns?customer_id=${encodeURIComponent(customerId)}` +
+        `&condition_field=${encodeURIComponent(c.condition_field)}` +
+        `&condition_value=${encodeURIComponent(c.condition_value)}` +
+        `&target_field=gl_code&target_value=${encodeURIComponent(c.target_value)}`,
+      );
+      setSubPatterns((s) => ({ ...s, [key]: r.sub_patterns }));
+    } catch {
+      setSubPatterns((s) => ({ ...s, [key]: "error" }));
+    }
+  };
 
   const openDrilldown = async (rule: RuleCandidate) => {
     setDrillLoading(true);
@@ -140,32 +176,95 @@ export default function RuleMiningPage() {
               <div style={{ fontSize: "10.5px", fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", textAlign: "center" }}>Strength</div>
               <div />
             </div>
-            {(data?.candidates ?? []).map((c, i) => (
-              <div
-                key={i}
-                className="rule-row"
-                onClick={() => openDrilldown(c)}
-                style={{ cursor: "pointer" }}
-                title="Click to see matching invoices"
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="rule-pattern">
-                    When <strong>{c.condition_field}</strong> = <code style={{ fontFamily: "'IBM Plex Mono', monospace", color: "var(--gold-dark)" }}>"{c.condition_value}"</code>
-                    {", "} GL is <strong>{c.target_value} ({c.target_label})</strong>
+            {(data?.candidates ?? []).map((c, i) => {
+              const key = ruleKey(c);
+              const expanded = expandedKey === key;
+              const subs = subPatterns[key];
+              return (
+                <div key={i} style={{ borderBottom: "1px solid var(--border2)" }}>
+                  <div
+                    className="rule-row"
+                    onClick={() => toggleExpand(c)}
+                    style={{ cursor: "pointer", borderBottom: "none" }}
+                    title="Click to chain-relate against secondary inputs"
+                  >
+                    <div style={{ flex: 1, minWidth: 0, display: "flex", gap: 8, alignItems: "flex-start" }}>
+                      <span style={{
+                        display: "inline-block", width: 12, color: "var(--text3)",
+                        transform: expanded ? "rotate(90deg)" : "none", transition: "transform .15s",
+                        fontSize: 11, lineHeight: "16px",
+                      }}>▸</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="rule-pattern">
+                          When <strong>{c.condition_field}</strong> = <code style={{ fontFamily: "'IBM Plex Mono', monospace", color: "var(--gold-dark)" }}>"{c.condition_value}"</code>
+                          {", "} GL is <strong>{c.target_value} ({c.target_label})</strong>
+                        </div>
+                        <div className="rule-arrow" style={{ marginTop: 4, fontSize: 11, color: "var(--text3)" }}>
+                          in {c.support_match} of {c.support_total} cases
+                          {c.lift > 1 && <> &middot; <LiftHint value={c.lift} /></>}
+                        </div>
+                      </div>
+                    </div>
+                    <div className={`rule-support ${supportClass(c.support_ratio)}`} style={{ minWidth: 80, textAlign: "right" }}>{Math.round(c.support_ratio * 100)}%</div>
+                    <div style={{ fontSize: 12, fontFamily: "'IBM Plex Mono', monospace", color: "var(--text2)", minWidth: 80, textAlign: "right" }}>{c.coverage}%</div>
+                    <div style={{ textAlign: "center" }}>{strengthBadge(c.strength)}</div>
+                    <div style={{ minWidth: 100, textAlign: "right" }}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openDrilldown(c); }}
+                        style={{
+                          fontSize: 11, color: "var(--text3)", background: "transparent",
+                          border: "none", cursor: "pointer", fontStyle: "italic",
+                          fontFamily: "inherit",
+                        }}
+                      >
+                        view invoices &rarr;
+                      </button>
+                    </div>
                   </div>
-                  <div className="rule-arrow" style={{ marginTop: 4, fontSize: 11, color: "var(--text3)" }}>
-                    in {c.support_match} of {c.support_total} cases
-                    {c.lift > 1 && <> &middot; <LiftHint value={c.lift} /></>}
-                  </div>
+                  {expanded && (
+                    <div style={{
+                      padding: "10px 24px 14px 44px",
+                      background: "var(--surface2)",
+                      fontSize: 12,
+                    }}>
+                      <div style={{
+                        fontSize: 10, fontWeight: 600, color: "var(--text3)",
+                        textTransform: "uppercase", letterSpacing: ".6px", marginBottom: 8,
+                      }}>
+                        Sub-patterns under this rule · chained <code style={{ fontFamily: "'IBM Plex Mono', monospace" }}>_relate</code> with{" "}
+                        <code style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{c.condition_field}={c.condition_value} & gl_code={c.target_value}</code>{" "}
+                        fixed in the where clause
+                      </div>
+                      {subs === "loading" && <div style={{ color: "var(--text3)" }}>Mining sub-patterns…</div>}
+                      {subs === "error" && <div style={{ color: "var(--red)" }}>Could not load sub-patterns.</div>}
+                      {Array.isArray(subs) && subs.length === 0 && (
+                        <div style={{ color: "var(--text3)" }}>No secondary patterns above lift 1.5×. The headline rule already explains the routing.</div>
+                      )}
+                      {Array.isArray(subs) && subs.length > 0 && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          {subs.map((s, si) => (
+                            <div key={si} style={{
+                              display: "flex", justifyContent: "space-between",
+                              padding: "6px 10px", background: "var(--surface)", borderRadius: 4,
+                            }}>
+                              <div style={{ flex: 1 }}>
+                                <code style={{ fontFamily: "'IBM Plex Mono', monospace", color: "var(--text3)" }}>{s.field}</code>
+                                {" = "}
+                                <strong>{s.value}</strong>
+                                <span style={{ fontSize: 11, color: "var(--text3)", marginLeft: 12 }}>
+                                  {s.support_match}/{s.support_total} ({Math.round(s.support_ratio * 100)}%)
+                                </span>
+                              </div>
+                              <LiftHint value={s.lift} />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <div className={`rule-support ${supportClass(c.support_ratio)}`} style={{ minWidth: 80, textAlign: "right" }}>{Math.round(c.support_ratio * 100)}%</div>
-                <div style={{ fontSize: 12, fontFamily: "'IBM Plex Mono', monospace", color: "var(--text2)", minWidth: 80, textAlign: "right" }}>{c.coverage}%</div>
-                <div style={{ textAlign: "center" }}>{strengthBadge(c.strength)}</div>
-                <div style={{ minWidth: 100, textAlign: "right" }}>
-                  {c.strength === "strong" && <span style={{ fontSize: 11, color: "var(--text3)", fontStyle: "italic" }}>drill in &rarr;</span>}
-                </div>
-              </div>
-            ))}
+              );
+            })}
             {!data && !error && Array.from({ length: 6 }).map((_, i) => (
               <div key={`skel-${i}`} style={{ display: "flex", alignItems: "center", padding: 14, borderBottom: "1px solid var(--border2)", gap: 16 }}>
                 <div style={{ flex: 1 }}>
