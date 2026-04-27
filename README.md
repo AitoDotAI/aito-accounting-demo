@@ -18,6 +18,14 @@ on a Finnish AP automation workload.
 
 ## See it in action
 
+![Predictive Ledger — Invoice Processing](screenshots/01-invoices.png)
+
+The Invoice Processing view: per-customer GL-code and approver
+predictions, due-date sorting, click any prediction for top-3
+alternatives + $why, switch customers via the topbar dropdown,
+master-detail dock for per-row deep-dive. Right rail shows the
+exact Aito query producing the data on screen.
+
 | View | What it does | Key Aito call |
 |------|--------------|---------------|
 | **Invoice Processing** | GL code + approver predictions, sorted by due date, with VAT and confidence | `_predict gl_code WHERE customer_id, vendor, amount, category` |

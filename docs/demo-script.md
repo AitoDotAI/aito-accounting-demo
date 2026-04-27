@@ -6,15 +6,18 @@
 ## Before you start
 
 1. `./do reset-data` has been run (data in Aito)
-2. `./do dev` started — wait ~10s for top-5 customer warmup
-   (or run `./do warm-cache --top 20` for a wider warm set)
-3. Browser wide enough for **nav + main + Aito side panel**
-4. Customer dropdown shows **CUST-0000 · enterprise (2,000)** with
-   a **green** "warm" dot
+2. `./do precompute` has been run (writes per-customer JSON to
+   `data/precomputed/`; views serve from disk in <50 ms)
+3. `./do dev` started — server is ready in <1 s when precomputed
+   data exists (cache warmup is skipped automatically)
+4. Browser wide enough for **nav + main + Aito side panel**
+5. Customer dropdown shows **CUST-0000 · enterprise (16,000)** with
+   a **green** "warm" dot. Each row in the dropdown shows a
+   green/amber dot indicating precomputed vs cold.
 
 ## The headline
 
-> "Same Aito instance, 256 customers, ~250K invoices in one shared
+> "Same Aito instance, 255 customers, 128K invoices in one shared
 > table. Each customer's predictions scoped by `customer_id` in the
 > `where` clause. No model training. No retraining. Add a row,
 > predictions update instantly. Watch."
@@ -173,10 +176,13 @@ Click **Quality → Override Patterns**.
 ## Common questions
 
 **"How does Aito handle 1M+ records?"**
-Aito's index makes `_predict` O(log n) on the constraint columns.
-This demo runs ~250K cleanly; the schema is sized for 1M. The
-two-layer cache (in-memory L1 + Aito-table L2) keeps repeat queries
-in single-digit milliseconds.
+Aito's index makes `_search` and `_predict` O(log n) on the
+constraint columns. Measured on this dataset (128K invoices,
+warm connection): `_search` 20 hits ≈ 85 ms, `_predict` ≈ 120 ms,
+`_relate` ≈ 80 ms — and the latency is flat across customer tiers
+(CUST-0000 with 16K invoices is no slower than CUST-0254 with
+125). For the hosted demo we precompute every read view at
+build time, so per-customer browser latency is <50 ms.
 
 **"What's the training time?"**
 Zero. `_predict` queries the index at request time. Add a row, the
@@ -195,7 +201,10 @@ the long tail. Showing both side-by-side answers the SOX-compliance
 question that mostly-ML systems can't.
 
 **"What's the minimum data for cold-start customers?"**
-CUST-0254 in this demo has 16 invoices and still produces useful
-predictions — but with honest low confidence on novel vendors. The
-Quality view shows the cold-start vs warm-customer accuracy
-difference directly.
+CUST-0254 in this demo has 125 invoices and still produces useful
+predictions — but with honest low confidence on novel vendors. In
+the precomputed build, small-tier customers (< 1500 invoices)
+deliberately ship with empty mined-rules and rule-performance —
+the persona is "just signed up, no patterns yet." The Quality
+view shows the cold-start vs warm-customer accuracy difference
+directly.

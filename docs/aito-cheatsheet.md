@@ -186,12 +186,101 @@ match known patterns.
   Indexing happens on ingest; there is no model training step, no
   pipeline, no waiting. Add a row, the next prediction reflects it.
 
+## Pattern: Multi-tenancy
+
+Single-table multi-tenancy: every query carries `customer_id` in
+the where clause. Aito treats this as a conditional probability
+filter, so two customers using the same vendor get different
+predictions.
+
+```javascript
+{
+  from: "invoices",
+  where: { customer_id: "CUST-0000", vendor: "Telia Finland" },
+  predict: "gl_code",
+}
+```
+
+The `customer_id` column is indexed; `_search`/`_predict`/`_relate`
+all stay flat across customer sizes (measured: ~85 ms for 20-hit
+search whether the customer has 16K or 125 invoices).
+
+## Pattern: Recommendations with `_recommend`
+
+For ranking by historical click-through rate (help articles, product
+suggestions), use `_recommend` with `goal:{clicked: true}` over an
+impressions table.
+
+```javascript
+{
+  from: "help_impressions",
+  where: { customer_id: "CUST-0000", page: "/invoices" },
+  recommend: "article_id",
+  goal: { clicked: true },
+  limit: 5,
+}
+```
+
+For session-aware "users who read X also read Y", chain via
+`prev_article_id`:
+
+```javascript
+{
+  from: "help_impressions",
+  where: { customer_id: "CUST-0000", prev_article_id: "ART-INVOICES-101" },
+  recommend: "article_id",
+  goal: { clicked: true },
+  limit: 4,
+}
+```
+
+`_recommend` returns top hits with `article_id` and `$p` at the top
+level — no nested `feature` field like `_predict`.
+
+## Pattern: Per-case evaluation results
+
+`_evaluate` with `select: ["accuracy", "baseAccuracy", "geomMeanP",
+"testSamples", "cases"]` returns per-test-case rows so you can build
+a green/red diff table, not just an aggregate accuracy.
+
+```javascript
+{
+  testSource: { from: "invoices", where: {...}, limit: 100 },
+  evaluate: { from: "invoices", where: {..., vendor: {$get: "vendor"}}, predict: "gl_code" },
+  select: ["accuracy", "baseAccuracy", "geomMeanP", "testSamples", "cases"],
+}
+```
+
+Each `cases[]` entry has:
+- `testCase` — the full row being predicted
+- `accurate` — boolean (top prediction matched ground truth)
+- `top: {feature, $p}` — what Aito predicted
+- `correct: {feature, $p}` — what the ground truth was
+
+NOT `case.$value` or `case.predicted` — those keys come from a
+different operator's response shape.
+
 ## Gotchas
 
 - `_predict` returns the value in `feature`, not in a key named after
   the predicted field. Always read `hit["feature"]`, not `hit["gl_code"]`.
+- `_recommend` returns the predicted column directly at top level
+  (e.g. `hit["article_id"]`, not `hit["feature"]`). Different from
+  `_predict`.
+- `_recommend` does NOT accept `select: ["$p", "feature"]` — returns
+  400 "field 'feature' not found." Use the default response shape.
 - `_relate` does not accept `select` — it always returns the full
   statistical breakdown (related, condition, lift, fs, ps, info, relation).
+- `_relate`'s response shape: `relate` field is the *condition*,
+  `to` would be invalid. Use `relate: <field>` and the condition
+  comes from the `where` clause.
 - Field names in queries must match the Aito schema exactly (case-sensitive).
 - `_predict` with `select` only supports `$p`, `feature`, `field`, `$why`.
   Using the field name in select causes a "field not found" error.
+- `_recommend` may relax the where filter and return rows outside
+  the requested constraint (e.g. articles for other customers). If
+  isolation matters, post-filter the result against the eligibility
+  set instead of trusting the where to be hard.
+- `_evaluate` is the slow operator (~8 s for 50 samples). It runs
+  leave-one-out cross-validation at query time. Precompute and
+  cache aggressively.

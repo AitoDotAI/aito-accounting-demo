@@ -1,6 +1,6 @@
 # Multi-Tenant Accounting Automation
 
-*Companion to [aito-demo's Invoice Processing](https://github.com/AitoDotAI/aito-demo/blob/main/docs/use-cases/08-invoice-processing.md). This use case extends the same `_predict` pattern to a SaaS context: 256 customers, 250K+ invoices, single shared Aito instance, per-customer predictions.*
+*Companion to [aito-demo's Invoice Processing](https://github.com/AitoDotAI/aito-demo/blob/main/docs/use-cases/08-invoice-processing.md). This use case extends the same `_predict` pattern to a SaaS context: 255 customers, 128K invoices, single shared Aito instance, per-customer predictions.*
 
 **[Live demo](https://predictive-ledger.aito.ai)** | **[Source code](https://github.com/AitoDotAI/aito-accounting-demo)**
 
@@ -46,21 +46,22 @@ The demo runs at a deliberately stressful shape:
 
 | Layer | Records | Notes |
 |------|---------|-------|
-| `customers` | 256 | Geometric series: 1×128K invoices, 2×64K, 4×32K, ... 128×1K |
+| `customers` | 255 | Geometric series: 1×16K invoices, 2×8K, 4×4K, ... 128×125 |
 | `corporate_entities` | ~1,400 | Real Finnish companies from the [PRH YTJ public registry](https://avoindata.prh.fi/fi/ytj/swagger-ui) |
-| `employees` | ~10,000 | Per-customer hierarchies (CEO → Director → Manager → Supervisor → Employee) |
-| `invoices` | ~250,000 | All carry `customer_id`; vendor pool shared, GL/approver routing per-customer |
-| `bank_transactions` | ~150,000 | Linked to invoices for `_predict invoice_id` matching |
-| `overrides` | ~15,000 | Human corrections, mined back as new rule candidates |
-| `prediction_log` | growing | Per-field submit log for measuring real accuracy |
+| `employees` | ~1,200 | Per-customer hierarchies (CEO → Director → Manager → Supervisor → Employee) |
+| `invoices` | 128,000 | All carry `customer_id`; vendor pool shared, GL/approver routing per-customer |
+| `bank_transactions` | ~68,000 | Linked to invoices for `_predict invoice_id` matching |
+| `overrides` | ~7,500 | Human corrections, mined back as new rule candidates |
+| `help_articles` | 120 | Per-customer + global product/legal docs ranked by CTR |
+| `help_impressions` | ~14,500 | Click stream for `_recommend WHERE prev_article_id` |
 
-The geometric size distribution is deliberate: **the same demo proves Aito works for both ends of the data spectrum.** The 128K-invoice customer shows 99%+ accuracy. The 1K-invoice customer still produces useful predictions but with honest low confidence — cold-start handled by Aito's probability scores, not a special code path.
+The geometric size distribution is deliberate: **the same demo proves Aito works for both ends of the data spectrum.** The 16K-invoice customer shows 99%+ accuracy. The 125-invoice customer still produces useful predictions but with honest low confidence — cold-start handled by Aito's probability scores, not a special code path.
 
 ## Five Aito calls power eight views
 
 ```
                        ┌────────────────────┐
-                       │  customers (256)   │
+                       │  customers (255)   │
                        └────────────────────┘
                               │ customer_id
        ┌──────────────────────┼──────────────────────┐
@@ -204,13 +205,13 @@ After warming the top 5 customers (parallel, ~30s on startup), every cached endp
 /api/quality/overview            3ms    (search aggregates)
 ```
 
-Cold (non-warmed) customers: ~15-25s for the first invoices/pending request, then cached. The two-layer cache ensures restarts don't reset the warm set.
+Cold (non-precomputed) customers: ~15-25s for the first invoices/pending request, then cached. For the hosted demo every customer is precomputed at build time, so the browser-perceived latency is <50 ms regardless of tenant.
 
 ## Things this demo proves
 
-1. **Single-table multi-tenancy works at scale.** 250K rows in one `invoices` table, 256 tenants, where-clause isolation, no slowdown.
-2. **No per-tenant training.** All 256 customers share the same Aito instance with no setup beyond inserting their data.
-3. **Cold-start is honest.** A customer with 16 invoices gets predictions with low confidence, not fake confidence.
+1. **Single-table multi-tenancy works at scale.** 128K rows in one `invoices` table, 255 tenants, where-clause isolation, no measurable slowdown across customer sizes (`_search` ~85 ms whether the customer has 16K or 125 invoices).
+2. **No per-tenant training.** All 255 customers share the same Aito instance with no setup beyond inserting their data.
+3. **Cold-start is honest.** A customer with 125 invoices gets predictions with low confidence, not fake confidence.
 4. **Hybrid rules + ML is achievable in one query path.** Mined rules + `_predict` fallback in `predict_invoice()`, ~30 lines.
 5. **Real evaluation is one Aito call.** `_evaluate` returns held-out accuracy with rule-baseline comparison, no ML harness needed.
 6. **Audit trail is built-in.** `prediction_log` table captures every field decision; `_relate` on overrides surfaces drift; `last_reviewed` columns satisfy SOX questions.
