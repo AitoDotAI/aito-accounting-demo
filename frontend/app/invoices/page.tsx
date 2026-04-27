@@ -92,17 +92,6 @@ export default function InvoicesPage() {
   useEffect(() => {
     setData(null); setLive(false); setError(false);
     let stillCurrent = true;
-    // Progressive load: paint the rows first (raw list, ~200ms), then
-    // overlay full predictions when they arrive (~10s on cold customer).
-    apiFetch<{ invoices: InvoicePrediction[] }>(`/api/invoices/raw?customer_id=${customerId}`)
-      .then((d) => {
-        if (!stillCurrent) return;
-        if (data === null) {
-          // Show raw list as placeholder (no predictions yet)
-          setData({ invoices: d.invoices, metrics: null as any });
-        }
-      })
-      .catch(() => {});
     apiFetch<InvoicesResponse>(`/api/invoices/pending?customer_id=${customerId}`)
       .then((d) => { if (stillCurrent) { setData(d); setLive(true); } })
       .catch(() => { if (stillCurrent) setError(true); });
