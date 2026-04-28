@@ -590,6 +590,65 @@ def quality_overview(customer_id: str = Query(...)):
     return result
 
 
+@app.get("/api/quality/audit")
+def quality_audit(customer_id: str = Query(...), limit: int = 25):
+    """Audit log surfaced from the prediction_log table.
+
+    SOX-style evidence: for every Form Fill submission, did the user
+    accept Aito's prediction or override it? Returns aggregate
+    accept-rate per field plus the N most recent rows.
+    """
+    cache_key = f"audit:{customer_id}:{limit}"
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+    try:
+        # Pull recent rows for this customer
+        recent = aito.search(
+            "prediction_log",
+            {"customer_id": customer_id},
+            limit=200,
+        )
+    except AitoError as exc:
+        return {"error": str(exc), "rows": [], "by_field": {}, "totals": {}}
+
+    hits = sorted(
+        recent.get("hits", []),
+        key=lambda r: r.get("timestamp", 0),
+        reverse=True,
+    )
+
+    # Aggregate per-field acceptance rate
+    by_field: dict[str, dict] = {}
+    for r in hits:
+        field = r.get("field", "?")
+        b = by_field.setdefault(field, {"total": 0, "accepted": 0, "overridden": 0})
+        b["total"] += 1
+        if r.get("accepted"):
+            b["accepted"] += 1
+        else:
+            b["overridden"] += 1
+    for f, b in by_field.items():
+        b["accept_rate"] = round(b["accepted"] / b["total"], 3) if b["total"] else 0
+
+    totals = {
+        "total": len(hits),
+        "accepted": sum(b["accepted"] for b in by_field.values()),
+        "overridden": sum(b["overridden"] for b in by_field.values()),
+    }
+    totals["accept_rate"] = (
+        round(totals["accepted"] / totals["total"], 3) if totals["total"] else 0
+    )
+
+    result = {
+        "rows": hits[:limit],
+        "by_field": by_field,
+        "totals": totals,
+    }
+    cache.set(cache_key, result, ttl=120)
+    return result
+
+
 @app.get("/api/quality/evaluations")
 def quality_evaluations(customer_id: str = Query(...)):
     """Run Aito _evaluate on every prediction task (parallel)."""

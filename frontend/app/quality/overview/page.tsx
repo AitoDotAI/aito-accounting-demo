@@ -39,17 +39,38 @@ function BarRow({ label, value, max, color }: { label: string; value: number; ma
   );
 }
 
+interface AuditRow {
+  log_id: string;
+  field: string;
+  predicted_value: string | null;
+  user_value: string | null;
+  source: string;
+  confidence: number;
+  accepted: boolean;
+  timestamp: number;
+}
+
+interface AuditData {
+  rows: AuditRow[];
+  by_field: Record<string, { total: number; accepted: number; overridden: number; accept_rate: number }>;
+  totals: { total: number; accepted: number; overridden: number; accept_rate: number };
+}
+
 export default function QualityOverviewPage() {
   const { customerId } = useCustomer();
   const [data, setData] = useState<QualityData | null>(null);
+  const [audit, setAudit] = useState<AuditData | null>(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    setData(null); setLive(false); setError(false);
+    setData(null); setAudit(null); setLive(false); setError(false);
     apiFetch<QualityData>(`/api/quality/overview?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
       .catch(() => setError(true));
+    apiFetch<AuditData>(`/api/quality/audit?customer_id=${encodeURIComponent(customerId)}&limit=12`)
+      .then((d) => setAudit(d))
+      .catch(() => {});
   }, [customerId]);
 
   const a = data?.automation;
@@ -108,6 +129,71 @@ export default function QualityOverviewPage() {
               </div>
             </div>
           </div>
+
+          {audit && audit.totals.total > 0 && (
+            <div className="quality-card" style={{ marginTop: 16 }}>
+              <div className="qc-header" style={{ display: "flex", justifyContent: "space-between" }}>
+                <span className="qc-title">Audit log · prediction_log table</span>
+                <span className="card-hint">SOX evidence: predicted vs accepted, per submission</span>
+              </div>
+              <div className="qc-body">
+                <div style={{ display: "flex", gap: 18, marginBottom: 14, fontSize: 12 }}>
+                  <span><strong>{audit.totals.total}</strong> total submissions</span>
+                  <span style={{ color: "var(--green)" }}><strong>{audit.totals.accepted}</strong> accepted ({Math.round(audit.totals.accept_rate * 100)}%)</span>
+                  <span style={{ color: "var(--gold-dark)" }}><strong>{audit.totals.overridden}</strong> overridden</span>
+                </div>
+
+                {Object.keys(audit.by_field).length > 0 && (
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", marginBottom: 6 }}>Accept rate by field</div>
+                    {Object.entries(audit.by_field).sort(([,a],[,b]) => b.total - a.total).map(([field, b]) => (
+                      <BarRow key={field} label={field} value={Math.round(b.accept_rate * 100)} max={100} color="bar-fill-blue" />
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", marginBottom: 6 }}>
+                  Most recent decisions
+                </div>
+                <div style={{ overflowX: "auto" }}>
+                  <table className="table" style={{ fontSize: 11, width: "100%" }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid var(--border2)" }}>When</th>
+                        <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid var(--border2)" }}>Field</th>
+                        <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid var(--border2)" }}>Predicted</th>
+                        <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid var(--border2)" }}>User value</th>
+                        <th style={{ textAlign: "right", padding: "4px 8px", borderBottom: "1px solid var(--border2)" }}>Conf.</th>
+                        <th style={{ textAlign: "center", padding: "4px 8px", borderBottom: "1px solid var(--border2)" }}>Outcome</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {audit.rows.map((r) => (
+                        <tr key={r.log_id} style={{ borderBottom: "1px solid var(--border2)" }}>
+                          <td className="mono" style={{ padding: "4px 8px", color: "var(--text3)", fontSize: 10 }}>
+                            {new Date(r.timestamp * 1000).toISOString().slice(0, 16).replace("T", " ")}
+                          </td>
+                          <td style={{ padding: "4px 8px", fontFamily: "'IBM Plex Mono', monospace" }}>{r.field}</td>
+                          <td style={{ padding: "4px 8px", color: "var(--text2)" }}>{r.predicted_value ?? "—"}</td>
+                          <td style={{ padding: "4px 8px", color: "var(--text)", fontWeight: r.accepted ? 400 : 600 }}>
+                            {r.user_value ?? "—"}
+                          </td>
+                          <td className="mono" style={{ padding: "4px 8px", textAlign: "right", color: "var(--text3)" }}>
+                            {(r.confidence * 100).toFixed(0)}%
+                          </td>
+                          <td style={{ padding: "4px 8px", textAlign: "center" }}>
+                            {r.accepted
+                              ? <span className="badge badge-green">Accepted</span>
+                              : <span className="badge badge-amber">Overridden</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
       <AitoPanel config={PANEL} />
