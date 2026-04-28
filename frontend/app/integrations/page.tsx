@@ -3,6 +3,7 @@
 import Nav from "@/components/shell/Nav";
 import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
+import { useCustomer } from "@/lib/customer-context";
 import type { AitoPanelConfig } from "@/lib/types";
 
 const PANEL: AitoPanelConfig = {
@@ -108,6 +109,10 @@ const INTEGRATIONS: Integration[] = [
 ];
 
 export default function IntegrationsPage() {
+  const { customerId } = useCustomer();
+  // Substitute the active customer into example payloads so copy-paste
+  // produces queries that match the rest of the demo's state.
+  const subst = (s: string) => s.replaceAll("CUST-0000", customerId);
   return (
     <>
       <Nav />
@@ -136,7 +141,7 @@ export default function IntegrationsPage() {
               </div>
               <div style={{ padding: 16 }}>
                 <div style={{ fontSize: 12.5, color: "var(--text2)", lineHeight: 1.6, marginBottom: 12 }}>
-                  {it.notes}
+                  {subst(it.notes)}
                 </div>
                 <pre style={{
                   background: "var(--surface2)",
@@ -150,7 +155,7 @@ export default function IntegrationsPage() {
                   margin: 0,
                   lineHeight: 1.5,
                 }}>
-{it.example_payload}
+{subst(it.example_payload)}
                 </pre>
               </div>
             </div>

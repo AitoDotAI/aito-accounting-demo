@@ -104,8 +104,11 @@ export default function PredictionQualityPage() {
     setInputs(defaults);
   }, [domain]);
 
-  // Run evaluation when (customerId, domain, predict, inputs, limit) changes
-  useEffect(() => {
+  // Run evaluation -- explicit Run button only, never on mount.
+  // _evaluate takes 5-15s; firing on every domain/predict/input
+  // change made the page feel like it was permanently spinning,
+  // and there was no way to recover from a stalled call.
+  const runEvaluation = () => {
     if (!domain || !predict || inputs.size === 0) return;
     setLoading(true);
     setData(null);
@@ -116,7 +119,23 @@ export default function PredictionQualityPage() {
       .then(setData)
       .catch((e) => setData({ error: String(e) }))
       .finally(() => setLoading(false));
-  }, [customerId, domainKey, predict, inputs, limit, domain]);
+  };
+
+  // Auto-run only the very first time we have a valid configuration
+  // for the default domain, so the page isn't blank on initial open.
+  // Subsequent changes are user-triggered.
+  const [didInitialRun, setDidInitialRun] = useState(false);
+  useEffect(() => {
+    if (didInitialRun) return;
+    if (!domain || !predict || inputs.size === 0) return;
+    setDidInitialRun(true);
+    runEvaluation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [domain, predict, inputs.size]);
+
+  // Reset the initial-run flag when the customer changes so a freshly
+  // selected customer also gets one auto-run.
+  useEffect(() => { setDidInitialRun(false); }, [customerId]);
 
   const toggleInput = (field: string) => {
     setInputs((prev) => {
@@ -252,6 +271,28 @@ export default function PredictionQualityPage() {
                     These map to <code style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{`{ $get: "fieldname" }`}</code> bindings in the where clause.
                   </div>
                 </div>
+
+                <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10 }}>
+                  <button
+                    onClick={runEvaluation}
+                    disabled={loading || !predict || inputs.size === 0}
+                    style={{
+                      flex: 1,
+                      background: loading ? "var(--surface2)" : "var(--gold-dark)",
+                      color: loading ? "var(--text3)" : "#f5e8c0",
+                      border: "none", padding: "8px 14px", borderRadius: 4,
+                      fontSize: 12, fontWeight: 600, fontFamily: "inherit",
+                      cursor: loading || !predict ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {loading ? "Running _evaluate…" : data ? "Re-run evaluation" : "Run evaluation"}
+                  </button>
+                </div>
+                {data && !loading && (
+                  <div style={{ fontSize: 10, color: "var(--text3)", marginTop: 6, textAlign: "center" }}>
+                    Click after changing domain / target / inputs to rerun.
+                  </div>
+                )}
               </div>
             </div>
 

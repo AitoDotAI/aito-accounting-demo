@@ -108,6 +108,27 @@ where data churn is bounded:
 
 The latency numbers above assume a freshly-optimised index.
 
+## Cold-path latency without precompute
+
+If `data/precomputed/` is empty (e.g. running `./do dev` against a
+fresh data load before precomputing), the read endpoints fall back
+to live Aito with the L1/L2 cache. First-touch on a customer is
+slow:
+
+| Endpoint | Cold | Warm (cache hit) |
+|----------|------|------------------|
+| `/api/invoices/pending` | 15-25 s | <50 ms |
+| `/api/matching/pairs` | 10-15 s | <10 ms |
+| `/api/anomalies/scan` | 5-10 s | <10 ms |
+| `/api/quality/predictions` | 8-12 s | <10 ms |
+| `/api/help/search` | 0.4-3 s | <5 ms |
+
+The cold cost is dominated by `_evaluate` (8 s on its own) and the
+sequential per-vendor `_relate` calls in rule mining. **For a
+hosted demo always run `./do precompute` so every customer is
+warm.** For dev workflows the L2 cache (`cache_entries` table)
+keeps a customer warm for 5 minutes after the first hit.
+
 ## What changes at scale
 
 - **Index optimisation time** scales linearly. 128 K rows
