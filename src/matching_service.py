@@ -79,14 +79,27 @@ def match_bank_txn_to_invoice(
         open_by_vendor.setdefault(inv["vendor"], []).append(inv)
 
     # _predict invoice_id traverses the link and returns invoice rows
-    # ranked by association with the bank transaction's features
+    # ranked by association with the bank transaction's features.
+    # $why with `highlight` returns the matched description tokens
+    # already wrapped in <mark> tags (Aito's text analyzer marks
+    # whichever spans of the bank description carried the signal).
     try:
         result = client._request("POST", "/_predict", json={
             "from": "bank_transactions",
             "where": {k: v for k, v in [("customer_id", txn.get("customer_id")), ("description", txn["description"]), ("amount", txn["amount"])] if v is not None},
             "predict": "invoice_id",
-            "select": ["$p", "invoice_id", "vendor", "amount", "$why"],
-            "limit": 20,
+            "select": [
+                "$p",
+                "invoice_id",
+                "vendor",
+                "amount",
+                {"$why": {"highlight": {"posPreTag": "<mark>", "posPostTag": "</mark>"}}},
+            ],
+            # `limit` constrains how many candidates Aito has to mark
+            # up. With highlight enabled on a Text field, scoring +
+            # marking 20 candidates was running >120s on long bank
+            # descriptions; 5 keeps the per-call budget bounded.
+            "limit": 5,
         })
     except AitoError:
         return None
@@ -156,52 +169,28 @@ def match_bank_txn_to_invoice(
 
 
 def _build_explanation(txn: dict, invoice: dict, aito_p: float, aito_why: dict | None = None) -> list[dict]:
-    """Build explanation from Aito $why factors + amount proximity."""
-    factors = []
+    """Pass through Aito $why factors in the grouped shape so the
+    matching page can render the same WhyCards UI as Invoice
+    Processing -- pattern cards with text-token highlights and lift
+    multipliers.
 
-    # Aito $why factors — text token lifts and base probability.
-    # _extract_why_factors returns the grouped shape:
-    #   {type: "base", base_p: 0.46, target_value: ...}
-    #   {type: "pattern", lift: 2.0, propositions: [{field, value, highlight?}]}
-    if aito_why:
-        for wf in _extract_why_factors(aito_why):
-            if wf.get("type") == "base":
-                base_p = wf.get("base_p", 0)
-                factors.append({
-                    "factor": "base rate",
-                    "detail": f'"{wf.get("target_value", "")}" (prior {base_p:.4f})',
-                    "signal": "partial",
-                })
-            elif wf.get("type") == "pattern":
-                lift = float(wf.get("lift", 1) or 1)
-                # Cardinality-1 matches in _predict invoice_id produce
-                # absurd four-digit lifts (only one invoice has this
-                # exact amount/description, so any signal looks "infinitely"
-                # more likely). Clamp the displayed value -- the actual
-                # contribution is "this is the unique match", not the
-                # raw multiplier.
-                if lift > 50:
-                    detail_lift = "exact match"
-                else:
-                    detail_lift = f"lift {lift:.1f}x"
-                for prop in wf.get("propositions", []):
-                    factors.append({
-                        "factor": prop["field"],
-                        "detail": f'"{prop["value"]}" ({detail_lift})',
-                        "signal": "strong" if lift > 2 else "partial",
-                    })
+    On top of that we append a synthetic "amount" factor only when the
+    txn and invoice amounts disagree by >= 5% (worth flagging as a
+    warning); exact/near-exact amounts would double-count Aito's own
+    $why on the amount field.
+    """
+    factors: list[dict] = list(_extract_why_factors(aito_why)) if aito_why else []
 
-    # Amount proximity — Aito's _predict already includes amount in
-    # the where clause, so the $why lift on amount surfaces the match
-    # quality. Only add a hand-computed factor when amounts disagree
-    # enough that the user should question the match (>= 5% off);
-    # exact / near-exact would just double-count Aito's own signal.
+    # Big-disagreement warning. Modelled as a pattern card with a
+    # single proposition and lift = 1.0 noted in propositions[0].value
+    # so the renderer can display it consistently.
     diff = abs(invoice["amount"] - txn["amount"])
     if invoice["amount"] > 0 and diff >= invoice["amount"] * 0.05:
         factors.append({
-            "factor": "amount",
-            "detail": f"differs by {diff:.2f}",
-            "signal": "weak",
+            "type": "pattern",
+            "lift": 0.5,  # negative-signal flag: cuts confidence
+            "propositions": [{"field": "amount", "value": f"differs by {diff:.2f}"}],
+            "highlights": [],
         })
 
     return factors

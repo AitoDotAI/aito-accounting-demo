@@ -7,6 +7,7 @@ import ErrorState from "@/components/shell/ErrorState";
 import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
 import ConfidenceBar from "@/components/prediction/ConfidenceBar";
+import WhyCards from "@/components/prediction/WhyCards";
 import { apiFetch, fmtAmount } from "@/lib/api";
 import type { AitoPanelConfig } from "@/lib/types";
 
@@ -42,6 +43,8 @@ interface MatchExplanation {
   signal: "strong" | "partial" | "weak";
 }
 
+import type { WhyFactor } from "@/lib/types";
+
 interface MatchPair {
   invoice_id: string;
   invoice_vendor: string;
@@ -52,7 +55,8 @@ interface MatchPair {
   bank_name: string | null;
   confidence: number;
   status: "matched" | "suggested" | "unmatched";
-  explanation?: MatchExplanation[];
+  /** $why factors in the same grouped shape as invoice predictions. */
+  explanation?: WhyFactor[];
 }
 
 interface MatchResponse {
@@ -170,17 +174,13 @@ export default function MatchingPage() {
                         )}
                       </td>
                     </tr>
-                    {isExpanded && p.explanation && (
+                    {isExpanded && p.explanation && p.explanation.length > 0 && (
                       <tr>
                         <td colSpan={3} style={{ padding: "0 20px 12px", background: "var(--surface2)" }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--gold-dark)", marginBottom: 6, marginTop: 8 }}>Why this match?</div>
-                          {p.explanation.map((e, i) => (
-                            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 8px", background: "var(--surface)", borderRadius: 4, marginBottom: 3, fontSize: 12 }}>
-                              <span style={{ width: 8, height: 8, borderRadius: "50%", background: SIGNAL_COLOR[e.signal], flexShrink: 0 }} />
-                              <span style={{ fontWeight: 500, minWidth: 90, color: "var(--text2)" }}>{e.factor}</span>
-                              <span style={{ color: "var(--text3)" }}>{e.detail}</span>
-                            </div>
-                          ))}
+                          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--gold-dark)", marginBottom: 6, marginTop: 8 }}>
+                            Why this match?
+                          </div>
+                          <WhyCards why={p.explanation} confidence={p.confidence} />
                         </td>
                       </tr>
                     )}

@@ -87,20 +87,10 @@ def _extract_why_factors(why: dict | None) -> list[dict]:
 
     out: list[dict] = []
     _walk_why_grouped(why, out)
-    # Drop pattern factors that only mention customer_id linked fields,
-    # and inside each pattern strip those propositions too.
-    filtered: list[dict] = []
-    for f in out:
-        if f.get("type") == "pattern":
-            props = [p for p in f.get("propositions", []) if not p.get("field", "").startswith("customer_id.")]
-            if not props:
-                continue
-            filtered.append({**f, "propositions": props})
-        else:
-            filtered.append(f)
-    # Order: base first, then patterns by descending |lift|, top 5
-    base = [f for f in filtered if f.get("type") == "base"]
-    patterns = [f for f in filtered if f.get("type") == "pattern"]
+    # Order: base first, then patterns by descending |lift - 1|. Top 5
+    # so a noisy long tail of small lifts doesn't fill the popup.
+    base = [f for f in out if f.get("type") == "base"]
+    patterns = [f for f in out if f.get("type") == "pattern"]
     patterns.sort(key=lambda f: abs(f.get("lift", 1) - 1), reverse=True)
     return base + patterns[:5]
 
@@ -108,9 +98,38 @@ def _extract_why_factors(why: dict | None) -> list[dict]:
 def _walk_why_grouped(node: dict, out: list[dict]) -> None:
     """Walk the $why tree and emit one entry per top-level factor.
 
-    Unlike the older flat-walker, this keeps each
-    `relatedPropositionLift` together with its conjunction of
-    propositions so the renderer can show grouped pattern cards.
+    Aito $why shape (verified against the live API with
+    select: [..., {"$why": {"highlight": {"posPreTag": ..., "posPostTag": ...}}}]):
+
+      relatedPropositionLift = {
+        type: "relatedPropositionLift",
+        value: <lift>,
+        proposition: {<field>: {$has: <value>}}                     # single
+                  or {$and: [{<f1>: {$has: ...}}, {<f2>: {$has: ...}}, ...]}
+        highlight: [
+          {field: "$context.<fieldname>",                           # NOT "invoices.<x>"
+           highlight: "<full original text with <mark> around matched tokens>",
+           score: <float>},
+          ...
+        ]
+      }
+
+    The `highlight` array is per-field (not per-proposition), and
+    each entry's `highlight` string is the FULL value of that field
+    in the request, with the matched tokens wrapped in mark tags.
+    Multiple `$has` propositions on the same field collapse into
+    ONE highlight entry with all matched tokens marked inside the
+    same context string.
+
+    We emit:
+      {type: "base", base_p: float, target_value: str}
+      {type: "pattern", lift: float,
+        highlights: [{field, html}, ...]   # when Aito returned highlights
+        propositions: [{field, value}, ...]} # always, as a fallback for fields without highlights
+
+    customer_id and customer_id.* propositions/highlights are dropped:
+    every query already filters on customer_id, so those factors are
+    just restating the scope.
     """
     t = node.get("type")
     if t == "baseP":
@@ -123,25 +142,43 @@ def _walk_why_grouped(node: dict, out: list[dict]) -> None:
                 break
         out.append({"type": "base", "base_p": round(base_p, 4), "target_value": target_value})
     elif t == "relatedPropositionLift":
-        prop = node.get("proposition", {})
         lift = float(node.get("value", 0) or 0)
-        highlights = node.get("highlight") or []
-        # Flatten $and into a list of (field, value, highlight?) tuples
+        # Drop noise: lifts close to 1.0 contribute nothing.
+        if abs(lift - 1.0) < 0.05:
+            return
+
+        # 1. Flatten propositions (handles $and).
         propositions: list[dict] = []
-        _collect_props(prop, propositions)
-        # Merge highlights from response into the proposition list
-        # `highlight: [{field: "invoices.description", highlight: "..."}]`
-        hl_by_field: dict[str, str] = {}
-        for h in highlights:
-            f = h.get("field", "")
-            # Aito returns "invoices.description"; strip the table prefix
-            if "." in f:
-                f = f.split(".", 1)[1]
-            hl_by_field[f] = h.get("highlight", "")
-        for p in propositions:
-            if p["field"] in hl_by_field:
-                p["highlight"] = hl_by_field[p["field"]]
-        out.append({"type": "pattern", "lift": round(lift, 2), "propositions": propositions})
+        _collect_props(node.get("proposition", {}), propositions)
+        # Drop customer_id-scope propositions.
+        propositions = [
+            p for p in propositions
+            if p["field"] != "customer_id"
+            and not p["field"].startswith("customer_id.")
+        ]
+        if not propositions:
+            return  # Entire factor was customer_id scope -- nothing left to show.
+
+        # 2. Highlights, keyed by field. Strip the "$context." prefix
+        # and skip customer_id-scoped highlights.
+        highlights: list[dict] = []
+        for h in node.get("highlight") or []:
+            field = h.get("field", "")
+            if field.startswith("$context."):
+                field = field[len("$context."):]
+            if field == "customer_id" or field.startswith("customer_id."):
+                continue
+            html = h.get("highlight", "")
+            if not html:
+                continue
+            highlights.append({"field": field, "html": html})
+
+        out.append({
+            "type": "pattern",
+            "lift": round(lift, 2),
+            "propositions": propositions,
+            "highlights": highlights,
+        })
     # Don't recurse into product/related children -- the top-level
     # tree usually has one product node containing the relevant
     # baseP + relatedPropositionLift children.

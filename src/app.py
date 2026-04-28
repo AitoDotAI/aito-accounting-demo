@@ -429,33 +429,12 @@ def invoices_pending(customer_id: str = Query(...), page: int = 1, per_page: int
     }
 
 
-def _clamp_matching_lifts(payload: dict) -> dict:
-    """Post-process matching pairs to clamp absurd lifts.
-
-    Cardinality-1 _predict invoice_id matches produce four-digit
-    lifts (only one invoice has this exact amount/description, so
-    the model thinks it's "infinitely" more likely). Old precomputed
-    JSON has those raw values. Replace lift > 50 with "exact match"
-    in the displayed detail string -- the underlying signal is "this
-    is the unique match", not the raw multiplier.
-    """
-    import re
-    pat = re.compile(r"\(lift (\d+(?:\.\d+)?)x\)")
-    for pair in payload.get("pairs", []):
-        for fac in pair.get("explanation", []):
-            d = fac.get("detail", "")
-            m = pat.search(d)
-            if m and float(m.group(1)) > 50:
-                fac["detail"] = pat.sub("(exact match)", d)
-    return payload
-
-
 @app.get("/api/matching/pairs")
 def matching_pairs(customer_id: str = Query(...)):
     """Match bank transactions to invoices for a customer."""
     pre = precomputed.load(customer_id, "matching_pairs")
     if pre is not None:
-        return _clamp_matching_lifts(pre)
+        return pre
     cache_key = f"matching:{customer_id}"
     cached = cache.get(cache_key)
     if cached:

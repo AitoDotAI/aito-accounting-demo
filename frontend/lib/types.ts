@@ -29,9 +29,12 @@ export interface Alternative {
 /**
  * Grouped $why factor.
  *  - type: "base"   -> base_p (prior probability for target_value)
- *  - type: "pattern" -> a single conjunction lift, with one or more
- *                       propositions (field, value, optional highlight
- *                       string of HTML <mark> tags from Aito).
+ *  - type: "pattern" -> a single conjunction lift. Two parallel arrays:
+ *      highlights[] — Aito's per-field highlighted contexts (text fields)
+ *      propositions[] — flattened {field, value} list (always populated)
+ *    The renderer prefers highlights when present (they include the
+ *    full context with <mark> tags around matched tokens) and falls
+ *    back to propositions for fields without text highlights.
  */
 export interface WhyFactor {
   type?: "base" | "pattern";
@@ -39,6 +42,7 @@ export interface WhyFactor {
   base_p?: number;
   target_value?: string | null;
   propositions?: WhyProposition[];
+  highlights?: WhyHighlight[];
   // Legacy flat shape from old precomputed JSON: field/value/lift at top level.
   field?: string;
   value?: string;
@@ -47,8 +51,13 @@ export interface WhyFactor {
 export interface WhyProposition {
   field: string;
   value: string;
-  /** HTML string with <mark>...</mark> tags around matching tokens (Text fields). */
-  highlight?: string;
+}
+
+/** Per-field text highlight from Aito with <mark>...</mark> in the context. */
+export interface WhyHighlight {
+  field: string;
+  /** Full context string for this field, with matched tokens wrapped in <mark>. */
+  html: string;
 }
 
 export interface InvoiceMetrics {

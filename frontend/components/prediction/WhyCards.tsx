@@ -62,17 +62,45 @@ export default function WhyCards({
       )}
 
       {patterns.map((f, i) => {
-        const props = f.propositions ?? [];
-        const firstField = props[0]?.field ?? null;
-        const firstValue = props[0]?.highlight ? props[0].value : (props[0]?.value ?? null);
+        const lift = f.lift ?? 1;
+        const negative = lift < 1;
+        // Render rule: each "row" inside a pattern card corresponds to
+        // one input field. Source of truth:
+        //   - highlights[] when Aito returned them (text fields with
+        //     analyzer matches): show the full context with <mark>
+        //     tokens already inserted by Aito.
+        //   - propositions[] otherwise (categorical fields): show
+        //     "field = value".
+        // We dedupe propositions by field so multi-token text matches
+        // (e.g. description $has "office" + description $has "supplies")
+        // collapse into the single highlight Aito returned for the
+        // description field.
+        const highlightFields = new Set((f.highlights ?? []).map((h) => h.field));
+        const propsByField = new Map<string, string>();
+        for (const p of f.propositions ?? []) {
+          if (highlightFields.has(p.field)) continue;
+          if (!propsByField.has(p.field)) propsByField.set(p.field, p.value);
+        }
+        const rows: { field: string; render: () => React.ReactNode }[] = [
+          ...(f.highlights ?? []).map((h) => ({
+            field: h.field,
+            render: () => <span dangerouslySetInnerHTML={{ __html: h.html }} />,
+          })),
+          ...Array.from(propsByField.entries()).map(([field, value]) => ({
+            field,
+            render: () => <strong>{value}</strong>,
+          })),
+        ];
+        const firstField = rows[0]?.field ?? null;
+
         return (
           <div
             key={i}
-            onMouseEnter={() => hover({ field: firstField, value: firstValue })}
+            onMouseEnter={() => hover({ field: firstField, value: null })}
             onMouseLeave={() => hover({ field: null, value: null })}
             style={{
-              background: "var(--gold-light)",
-              borderLeft: "3px solid var(--gold-dark)",
+              background: negative ? "rgba(220, 53, 69, 0.06)" : "var(--gold-light)",
+              borderLeft: `3px solid ${negative ? "var(--red)" : "var(--gold-dark)"}`,
               borderRadius: 4,
               padding: "8px 10px",
               display: "flex", justifyContent: "space-between", gap: 12,
@@ -80,31 +108,34 @@ export default function WhyCards({
             }}
           >
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 10, color: "var(--gold-dark)", textTransform: "uppercase", letterSpacing: ".6px", fontWeight: 600 }}>
-                Pattern match
+              <div style={{
+                fontSize: 10,
+                color: negative ? "var(--red)" : "var(--gold-dark)",
+                textTransform: "uppercase", letterSpacing: ".6px", fontWeight: 600,
+              }}>
+                {negative ? "Counter-evidence" : "Pattern match"}
               </div>
-              <div style={{ fontSize: 11, color: "var(--text2)", lineHeight: 1.55 }}>
-                When{" "}
-                {props.map((p, pi) => {
-                  const sep = pi === 0 ? "" : pi === props.length - 1 ? " and " : ", ";
-                  const fieldLabel = p.field.replace(/^invoice_id\./, "");
-                  const valueNode = p.highlight ? (
-                    <span dangerouslySetInnerHTML={{ __html: p.highlight }} />
-                  ) : (
-                    <strong>{p.value}</strong>
-                  );
-                  return (
-                    <span key={pi}>
-                      {sep}
-                      <code style={{ fontFamily: "'IBM Plex Mono', monospace", color: "var(--text3)" }}>{fieldLabel}</code>
-                      {p.highlight ? " contains " : " = "}
-                      {valueNode}
-                    </span>
-                  );
-                })}
+              <div style={{ fontSize: 11, color: "var(--text2)", lineHeight: 1.55, marginTop: 2 }}>
+                {rows.length === 0 ? null : (
+                  <>
+                    When{" "}
+                    {rows.map((r, ri) => {
+                      const sep = ri === 0 ? "" : ri === rows.length - 1 ? " and " : ", ";
+                      const fieldLabel = r.field.replace(/^invoice_id\./, "");
+                      return (
+                        <span key={ri}>
+                          {sep}
+                          <code style={{ fontFamily: "'IBM Plex Mono', monospace", color: "var(--text3)" }}>{fieldLabel}</code>
+                          {" is "}
+                          {r.render()}
+                        </span>
+                      );
+                    })}
+                  </>
+                )}
               </div>
             </div>
-            <LiftHint value={f.lift ?? 1} prefix="× " />
+            <LiftHint value={lift} prefix="× " />
           </div>
         );
       })}
