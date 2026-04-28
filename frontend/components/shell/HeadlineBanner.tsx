@@ -20,9 +20,13 @@ export default function HeadlineBanner() {
   }, []);
 
   if (dismissed) return null;
+  // Don't render anything until /api/customers has resolved -- the
+  // banner used to flash a hardcoded "256 customers" before the
+  // real count (255) arrived.
+  if (customers.length === 0) return null;
 
   const total = customers.reduce((sum, c) => sum + (c.invoice_count ?? 0), 0);
-  const totalLabel = total > 0 ? `${customers.length} customers · ${total.toLocaleString()} invoices` : "256 customers";
+  const totalLabel = `${customers.length} customers · ${total.toLocaleString()} invoices`;
 
   const dismiss = () => {
     localStorage.setItem(KEY, "1");

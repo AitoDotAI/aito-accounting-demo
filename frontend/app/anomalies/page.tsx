@@ -63,13 +63,13 @@ export default function AnomaliesPage() {
   const { customerId } = useCustomer();
   const [data, setData] = useState<AnomalyResponse | null>(null);
   const [live, setLive] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    setData(null); setLive(false); setError(false);
+    setData(null); setLive(false); setError(null);
     apiFetch<AnomalyResponse>(`/api/anomalies/scan?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
-      .catch(() => setError(true));
+      .catch((e) => setError(e));
   }, [customerId]);
 
   const m = data?.metrics;

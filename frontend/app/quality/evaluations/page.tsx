@@ -72,15 +72,15 @@ export default function EvaluationsPage() {
   const { customerId } = useCustomer();
   const [data, setData] = useState<EvaluationsResponse | null>(null);
   const [live, setLive] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     setData(null);
     setLive(false);
-    setError(false);
+    setError(null);
     apiFetch<EvaluationsResponse>(`/api/quality/evaluations?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
-      .catch(() => setError(true));
+      .catch((e) => setError(e));
   }, [customerId]);
 
   return (
@@ -105,7 +105,7 @@ export default function EvaluationsPage() {
             answer (higher = more confident calibration).
           </div>
 
-          {error && <ErrorState />}
+          {error && <ErrorState error={error} />}
 
           {data && (
             <div className="card">

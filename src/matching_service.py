@@ -173,11 +173,21 @@ def _build_explanation(txn: dict, invoice: dict, aito_p: float, aito_why: dict |
                     "signal": "partial",
                 })
             elif wf.get("type") == "pattern":
-                lift = wf.get("lift", 1)
+                lift = float(wf.get("lift", 1) or 1)
+                # Cardinality-1 matches in _predict invoice_id produce
+                # absurd four-digit lifts (only one invoice has this
+                # exact amount/description, so any signal looks "infinitely"
+                # more likely). Clamp the displayed value -- the actual
+                # contribution is "this is the unique match", not the
+                # raw multiplier.
+                if lift > 50:
+                    detail_lift = "exact match"
+                else:
+                    detail_lift = f"lift {lift:.1f}x"
                 for prop in wf.get("propositions", []):
                     factors.append({
                         "factor": prop["field"],
-                        "detail": f'"{prop["value"]}" (lift {lift}x)',
+                        "detail": f'"{prop["value"]}" ({detail_lift})',
                         "signal": "strong" if lift > 2 else "partial",
                     })
 

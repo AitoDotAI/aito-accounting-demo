@@ -18,7 +18,7 @@ function resolveStat(stat: AitoPanelStat, ctx: { invoices: number; employees: nu
 }
 
 export default function AitoPanel({ config, lastQuery, lastResponseMs }: AitoPanelProps) {
-  const { currentCustomer, customers } = useCustomer();
+  const { currentCustomer, customers, customerId } = useCustomer();
   const { tourOn } = useTour();
   const totalInvoices = customers.reduce((sum, c) => sum + (c.invoice_count || 0), 0);
   const ctx = {
@@ -26,6 +26,14 @@ export default function AitoPanel({ config, lastQuery, lastResponseMs }: AitoPan
     employees: currentCustomer?.employee_count ?? 0,
   };
   const stats = config.stats.map((s) => resolveStat(s, ctx));
+
+  // Pages embed example queries with "CUST-0000" hardcoded so the
+  // displayed JSON looks copyable. When a different customer is
+  // selected, swap the literal so the example query reflects what's
+  // actually being queried for the customer on screen.
+  const exampleQuery = customerId && customerId !== "CUST-0000"
+    ? config.query.replaceAll("\"CUST-0000\"", `"${customerId}"`)
+    : config.query;
 
   return (
     <aside className="aito-panel">
@@ -82,7 +90,7 @@ export default function AitoPanel({ config, lastQuery, lastResponseMs }: AitoPan
         <div className="code-block">
           {lastQuery
             ? JSON.stringify(lastQuery, null, 2)
-            : config.query}
+            : exampleQuery}
         </div>
       </div>
 

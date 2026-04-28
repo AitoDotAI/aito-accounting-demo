@@ -191,11 +191,20 @@ def _describe_anomaly(
             "approver",
         )
 
-    # Generic catch-all
+    # Generic catch-all -- give the operator the actual numbers so they
+    # can decide whether the threshold caught a real issue or noise.
+    pred_label = GL_LABELS.get(gl_predicted, gl_predicted)
     return (
-        f"Anomalous invoice — {vendor}",
-        f"Combined prediction confidence below threshold for this invoice.",
-        "Review manually — does not match any single anomaly pattern.",
+        f"Borderline confidence — {vendor}",
+        (
+            f"Aito's top GL prediction for this {vendor} invoice is "
+            f"{gl_predicted} ({pred_label}) at {int(gl_p * 100)}%; approver "
+            f"{approver_predicted} at {int(approver_p * 100)}%. Both "
+            f"clear individual thresholds, but the combined confidence "
+            f"sits in the review band -- the vendor + amount + category "
+            f"combination doesn't perfectly match any prior pattern."
+        ),
+        "Review manually -- the prediction is plausible but doesn't have a single dominant signal. Confirm GL and approver, or override.",
         "unfamiliar",
     )
 

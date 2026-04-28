@@ -92,18 +92,18 @@ export default function RuleMiningPage() {
   const { customerId } = useCustomer();
   const [data, setData] = useState<RulesResponse | null>(null);
   const [live, setLive] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
   const [drilldown, setDrilldown] = useState<{ rule: RuleCandidate; invoices: DrilldownInvoice[] } | null>(null);
   const [drillLoading, setDrillLoading] = useState(false);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [subPatterns, setSubPatterns] = useState<Record<string, SubPattern[] | "loading" | "error">>({});
 
   useEffect(() => {
-    setData(null); setLive(false); setError(false); setDrilldown(null);
+    setData(null); setLive(false); setError(null); setDrilldown(null);
     setExpandedKey(null); setSubPatterns({});
     apiFetch<RulesResponse>(`/api/rules/candidates?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
-      .catch(() => setError(true));
+      .catch((e) => setError(e));
   }, [customerId]);
 
   const ruleKey = (c: RuleCandidate) => `${c.condition_field}=${c.condition_value}->${c.target_value}`;
@@ -276,7 +276,7 @@ export default function RuleMiningPage() {
                 <div className="skeleton" style={{ height: 24, width: 100, borderRadius: 4 }} />
               </div>
             ))}
-            {error && <ErrorState />}
+            {error && <ErrorState error={error} />}
           </div>
         </div>
       </div>

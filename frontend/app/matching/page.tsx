@@ -85,11 +85,11 @@ export default function MatchingPage() {
   const { customerId } = useCustomer();
   const [data, setData] = useState<MatchResponse | null>(null);
   const [live, setLive] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
-    setData(null); setLive(false); setError(false); setExpanded(null);
+    setData(null); setLive(false); setError(null); setExpanded(null);
     apiFetch<MatchResponse>(`/api/matching/pairs?customer_id=${customerId}`)
       .then((d) => {
         setData(d); setLive(true);
@@ -97,7 +97,7 @@ export default function MatchingPage() {
         const firstMatched = d.pairs.find((p) => p.status === "matched" && p.explanation && p.explanation.length > 0);
         if (firstMatched) setExpanded(firstMatched.invoice_id);
       })
-      .catch(() => setError(true));
+      .catch((e) => setError(e));
   }, [customerId]);
 
   const m = data?.metrics;

@@ -55,13 +55,13 @@ export default function OverridesPage() {
   const { customerId } = useCustomer();
   const [data, setData] = useState<QualityData | null>(null);
   const [live, setLive] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    setData(null); setLive(false); setError(false);
+    setData(null); setLive(false); setError(null);
     apiFetch<QualityData>(`/api/quality/overview?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
-      .catch(() => setError(true));
+      .catch((e) => setError(e));
   }, [customerId]);
 
   const o = data?.overrides;

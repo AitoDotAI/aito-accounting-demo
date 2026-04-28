@@ -429,12 +429,33 @@ def invoices_pending(customer_id: str = Query(...), page: int = 1, per_page: int
     }
 
 
+def _clamp_matching_lifts(payload: dict) -> dict:
+    """Post-process matching pairs to clamp absurd lifts.
+
+    Cardinality-1 _predict invoice_id matches produce four-digit
+    lifts (only one invoice has this exact amount/description, so
+    the model thinks it's "infinitely" more likely). Old precomputed
+    JSON has those raw values. Replace lift > 50 with "exact match"
+    in the displayed detail string -- the underlying signal is "this
+    is the unique match", not the raw multiplier.
+    """
+    import re
+    pat = re.compile(r"\(lift (\d+(?:\.\d+)?)x\)")
+    for pair in payload.get("pairs", []):
+        for fac in pair.get("explanation", []):
+            d = fac.get("detail", "")
+            m = pat.search(d)
+            if m and float(m.group(1)) > 50:
+                fac["detail"] = pat.sub("(exact match)", d)
+    return payload
+
+
 @app.get("/api/matching/pairs")
 def matching_pairs(customer_id: str = Query(...)):
     """Match bank transactions to invoices for a customer."""
     pre = precomputed.load(customer_id, "matching_pairs")
     if pre is not None:
-        return pre
+        return _clamp_matching_lifts(pre)
     cache_key = f"matching:{customer_id}"
     cached = cache.get(cache_key)
     if cached:
@@ -597,6 +618,13 @@ def quality_audit(customer_id: str = Query(...), limit: int = 25):
     SOX-style evidence: for every Form Fill submission, did the user
     accept Aito's prediction or override it? Returns aggregate
     accept-rate per field plus the N most recent rows.
+
+    On a fresh deployment prediction_log is empty (no Form Fill
+    traffic yet). To keep the demo's audit story visible, we
+    synthesize audit rows from the existing tables: each override
+    becomes an "overridden" row, each routed invoice a sampled
+    "accepted" row. A real production deployment would populate
+    prediction_log on every formfill/submit.
     """
     cache_key = f"audit:{customer_id}:{limit}"
     cached = cache.get(cache_key)
@@ -617,6 +645,55 @@ def quality_audit(customer_id: str = Query(...), limit: int = 25):
         key=lambda r: r.get("timestamp", 0),
         reverse=True,
     )
+
+    if not hits:
+        # Synthesize from overrides (overridden) + a sample of routed
+        # invoices (accepted). Same shape, same fields, just with
+        # synthesized=true so the UI can disclose the source.
+        try:
+            overrides = aito.search("overrides", {"customer_id": customer_id}, limit=80).get("hits", [])
+            sample = aito.search(
+                "invoices",
+                {"customer_id": customer_id, "routed": True, "routed_by": "aito"},
+                limit=40,
+            ).get("hits", [])
+        except AitoError:
+            overrides, sample = [], []
+
+        import time as _time
+        synth: list[dict] = []
+        now = int(_time.time())
+        for i, ov in enumerate(overrides):
+            synth.append({
+                "log_id": ov.get("override_id", f"OV-{i}"),
+                "customer_id": customer_id,
+                "field": ov.get("field", "gl_code"),
+                "predicted_value": ov.get("predicted_value"),
+                "user_value": ov.get("corrected_value"),
+                "source": "predicted",
+                "confidence": float(ov.get("confidence_was", 0) or 0),
+                "accepted": False,
+                "timestamp": now - 86400 * (i + 1),
+                "synthesized": True,
+            })
+        for i, inv in enumerate(sample):
+            for field in ("gl_code", "approver"):
+                v = inv.get(field)
+                if not v:
+                    continue
+                synth.append({
+                    "log_id": f"INV-{inv.get('invoice_id', i)}-{field}",
+                    "customer_id": customer_id,
+                    "field": field,
+                    "predicted_value": v,
+                    "user_value": v,
+                    "source": "predicted",
+                    "confidence": 0.95,
+                    "accepted": True,
+                    "timestamp": now - 3600 * (i + 1),
+                    "synthesized": True,
+                })
+        hits = sorted(synth, key=lambda r: r["timestamp"], reverse=True)
 
     # Aggregate per-field acceptance rate
     by_field: dict[str, dict] = {}

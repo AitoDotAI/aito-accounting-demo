@@ -48,6 +48,7 @@ interface AuditRow {
   confidence: number;
   accepted: boolean;
   timestamp: number;
+  synthesized?: boolean;
 }
 
 interface AuditData {
@@ -61,13 +62,13 @@ export default function QualityOverviewPage() {
   const [data, setData] = useState<QualityData | null>(null);
   const [audit, setAudit] = useState<AuditData | null>(null);
   const [live, setLive] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    setData(null); setAudit(null); setLive(false); setError(false);
+    setData(null); setAudit(null); setLive(false); setError(null);
     apiFetch<QualityData>(`/api/quality/overview?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
-      .catch(() => setError(true));
+      .catch((e) => setError(e));
     apiFetch<AuditData>(`/api/quality/audit?customer_id=${encodeURIComponent(customerId)}&limit=12`)
       .then((d) => setAudit(d))
       .catch(() => {});
@@ -137,6 +138,11 @@ export default function QualityOverviewPage() {
                 <span className="card-hint">SOX evidence: predicted vs accepted, per submission</span>
               </div>
               <div className="qc-body">
+                {audit.rows[0]?.synthesized && (
+                  <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 10, lineHeight: 1.5, padding: "6px 10px", background: "var(--surface2)", borderLeft: "3px solid var(--gold-mid)", borderRadius: "0 4px 4px 0" }}>
+                    Synthesized from <code>overrides</code> + sampled routed invoices for the demo. A real deployment populates <code>prediction_log</code> on every Form Fill submission.
+                  </div>
+                )}
                 <div style={{ display: "flex", gap: 18, marginBottom: 14, fontSize: 12 }}>
                   <span><strong>{audit.totals.total}</strong> total submissions</span>
                   <span style={{ color: "var(--green)" }}><strong>{audit.totals.accepted}</strong> accepted ({Math.round(audit.totals.accept_rate * 100)}%)</span>

@@ -100,14 +100,35 @@ def search_help(
         seen.add(aid)
         ranked_ids.append(aid)
 
-    # Top up to `limit` with eligible articles not yet ranked.
-    # Priority: own-internal page-context match, then own-internal,
-    # then global page-context match, then global remaining.
+    # Top up to `limit` with eligible articles not yet ranked. When
+    # the user typed a query, restrict topups (and post-filter the
+    # ranked list) to articles whose title/body/tags actually contain
+    # the query tokens. Otherwise q="GL code" and q="zzznoresults"
+    # would return identical lists -- the fallback path was query-blind.
+    def _match_query(article: dict) -> bool:
+        if not query:
+            return True
+        haystack = " ".join([
+            article.get("title", ""),
+            article.get("body", ""),
+            article.get("tags", ""),
+            article.get("category", ""),
+        ]).lower()
+        # Every >=3-character token in the query must appear somewhere
+        # in the article. Aito's analyzer would tokenize differently
+        # (stemming, stopwords) but this is the visible filter the user
+        # typed -- exact substring is honest.
+        tokens = [t for t in query.lower().split() if len(t) >= 3]
+        return all(t in haystack for t in tokens) if tokens else True
+
+    if query:
+        ranked_ids = [aid for aid in ranked_ids if aid in by_id and _match_query(by_id[aid])]
+
     if len(ranked_ids) < limit:
-        own_match = [a["article_id"] for a in eligible_own if a.get("page_context") == page and page]
-        own_other = [a["article_id"] for a in eligible_own]
-        global_match = [a["article_id"] for a in eligible_global if a.get("page_context") == page and page]
-        global_other = [a["article_id"] for a in eligible_global]
+        own_match = [a["article_id"] for a in eligible_own if a.get("page_context") == page and page and _match_query(a)]
+        own_other = [a["article_id"] for a in eligible_own if _match_query(a)]
+        global_match = [a["article_id"] for a in eligible_global if a.get("page_context") == page and page and _match_query(a)]
+        global_other = [a["article_id"] for a in eligible_global if _match_query(a)]
         for aid in own_match + own_other + global_match + global_other:
             if aid in seen:
                 continue

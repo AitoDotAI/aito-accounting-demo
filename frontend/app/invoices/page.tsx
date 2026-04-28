@@ -87,14 +87,14 @@ export default function InvoicesPage() {
   const { customerId } = useCustomer();
   const [data, setData] = useState<InvoicesResponse | null>(null);
   const [live, setLive] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    setData(null); setLive(false); setError(false);
+    setData(null); setLive(false); setError(null);
     let stillCurrent = true;
     apiFetch<InvoicesResponse>(`/api/invoices/pending?customer_id=${customerId}`)
       .then((d) => { if (stillCurrent) { setData(d); setLive(true); } })
-      .catch(() => { if (stillCurrent) setError(true); });
+      .catch((e) => { if (stillCurrent) setError(e); });
     return () => { stillCurrent = false; };
   }, [customerId]);
 
@@ -310,7 +310,7 @@ export default function InvoicesPage() {
                   <tr><td colSpan={11} style={{ textAlign: "center", color: "var(--text3)", padding: 24 }}>No invoices</td></tr>
                 )}
                 {error && (
-                  <tr><td colSpan={11}><ErrorState /></td></tr>
+                  <tr><td colSpan={11}><ErrorState error={error} /></td></tr>
                 )}
                 {invoices.map((inv) => (
                   <InvoiceRow

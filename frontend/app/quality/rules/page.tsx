@@ -77,13 +77,13 @@ export default function RulePerformancePage() {
   const [data, setData] = useState<RulesData | null>(null);
   const [drift, setDrift] = useState<DriftData | null>(null);
   const [live, setLive] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    setData(null); setDrift(null); setLive(false); setError(false);
+    setData(null); setDrift(null); setLive(false); setError(null);
     apiFetch<RulesData>(`/api/quality/rules?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
-      .catch(() => setError(true));
+      .catch((e) => setError(e));
     apiFetch<DriftData>(`/api/quality/rules/drift?customer_id=${customerId}`)
       .then((d) => setDrift(d))
       .catch(() => {});
@@ -117,7 +117,7 @@ export default function RulePerformancePage() {
           live={live}
         />
         <div className="content">
-          {error && <ErrorState />}
+          {error && <ErrorState error={error} />}
           {drift && drift.rules.length === 0 && (
             <div style={{ background: "var(--surface2)", border: "1px solid var(--border2)", borderRadius: 6, padding: "12px 16px", marginBottom: 12, fontSize: 12, color: "var(--text2)", lineHeight: 1.5 }}>
               No rule history yet for this customer.{" "}
