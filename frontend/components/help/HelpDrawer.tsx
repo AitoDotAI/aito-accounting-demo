@@ -51,17 +51,27 @@ export default function HelpDrawer() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastImpressionPage = useRef<string>("");
 
-  // Fetch contextual articles on open or page/customer change
+  // Prefetch when the page or customer changes, so the server-side
+  // cache is warm by the time the user actually clicks the "?"
+  // button. Help search runs three sequential Aito calls (~3-12s
+  // cold), warm cache hit is <5 ms.
+  //
+  // This effect runs both on prefetch (drawer closed) and on open --
+  // when the drawer opens we also log impressions, which the
+  // prefetch pass skips so we don't double-log.
   useEffect(() => {
-    if (!open) return;
-    setLoading(true);
-    const url = `/api/help/search?customer_id=${encodeURIComponent(customerId)}&page=${encodeURIComponent(pathname || "")}&q=${encodeURIComponent(query)}&limit=5`;
+    if (query) return;  // typed-query searches handled by the next effect
+    let cancelled = false;
+    setLoading(open);
+    const url = `/api/help/search?customer_id=${encodeURIComponent(customerId)}&page=${encodeURIComponent(pathname || "")}&q=&limit=5`;
     apiFetch<{ articles: Article[] }>(url)
       .then((d) => {
+        if (cancelled) return;
         setArticles(d.articles ?? []);
-        // Log impressions for every article shown — but only once per
-        // (page, customer, query) to avoid spam.
-        const key = `${pathname}|${customerId}|${query}`;
+        // Only log impressions when the drawer is actually open
+        // and the user is looking at this list.
+        if (!open) return;
+        const key = `${pathname}|${customerId}|`;
         if (key !== lastImpressionPage.current) {
           lastImpressionPage.current = key;
           for (const a of d.articles ?? []) {
@@ -72,15 +82,31 @@ export default function HelpDrawer() {
                 article_id: a.article_id,
                 customer_id: customerId,
                 page: pathname || "",
-                query,
+                query: "",
                 clicked: false,
               }),
             }).catch(() => {});
           }
         }
       })
-      .catch(() => setArticles([]))
-      .finally(() => setLoading(false));
+      .catch(() => { if (!cancelled) setArticles([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [pathname, customerId, open, query]);
+
+  // Typed-query searches: only when the drawer is open AND the user
+  // typed something. Doesn't prefetch when closed (we'd be firing on
+  // every keystroke).
+  useEffect(() => {
+    if (!open || !query) return;
+    let cancelled = false;
+    setLoading(true);
+    const url = `/api/help/search?customer_id=${encodeURIComponent(customerId)}&page=${encodeURIComponent(pathname || "")}&q=${encodeURIComponent(query)}&limit=5`;
+    apiFetch<{ articles: Article[] }>(url)
+      .then((d) => { if (!cancelled) setArticles(d.articles ?? []); })
+      .catch(() => { if (!cancelled) setArticles([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [open, pathname, customerId, query]);
 
   const onQueryChange = (v: string) => {

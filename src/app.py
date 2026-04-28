@@ -953,7 +953,10 @@ def help_search(
         limit=limit,
     )
     result = {"articles": articles}
-    cache.set(cache_key, result, ttl=600)
+    # Help articles are stable; warmth across a working day matters
+    # more than freshness. Bumped 10 min -> 1 hour so the cache
+    # survives between drawer interactions.
+    cache.set(cache_key, result, ttl=3600)
     return result
 
 
@@ -992,7 +995,7 @@ def help_related(
         return cached
     from src.help_service import related_articles
     result = {"articles": related_articles(aito, article_id, customer_id, limit=limit)}
-    cache.set(cache_key, result, ttl=600)
+    cache.set(cache_key, result, ttl=3600)
     return result
 
 
