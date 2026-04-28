@@ -1,6 +1,6 @@
 {
-  "name": "Predictive Ledger — Aito Accounting Demo",
-  "description": "Interactive workbook demonstrating how Aito's predictive database powers accounting automation: GL code prediction, vendor matching, rule mining, and anomaly detection.",
+  "name": "Predictive Ledger — Multi-tenant Aito Accounting Demo",
+  "description": "Interactive workbook for the Predictive Ledger reference: 255 customers, 128K invoices in one shared Aito instance, with predictions scoped per-tenant via customer_id. Companion to the source code at github.com/AitoDotAI/aito-accounting-demo.",
   "sections": [
     {
       "title": "Welcome",
@@ -10,7 +10,7 @@
           "title": "Predictive Ledger",
           "size": "full",
           "config": {
-            "content": "# Predictive Ledger\n\nThis workbook demonstrates how Aito turns accounting software into **predictive** accounting software.\n\n**The 70% → 90% gap:** Rules-based automation tops out at ~70%. The remaining 30% is too sparse or contextual to write rules for. Aito fills this gap — without replacing rules.\n\n**Dataset:** 230 Finnish invoices across 17 vendors, 120 bank transactions, 44 human overrides.\n\n**Aito operators used:**\n- `_predict` — GL code, approver, vendor matching, anomaly detection\n- `_relate` — rule mining, override pattern discovery\n- `_match` — invoice-to-bank-transaction linking\n- `_evaluate` — prediction accuracy measurement"
+            "content": "# Predictive Ledger — multi-tenant accounting on Aito\n\nThis workbook demonstrates how Aito powers a SaaS accounting product: **255 customer companies, 128 000 invoices, one shared Aito instance**, with predictions scoped per-tenant via `customer_id` in the `where` clause.\n\n**Repo:** [github.com/AitoDotAI/aito-accounting-demo](https://github.com/AitoDotAI/aito-accounting-demo) · **Companion:** [aito-demo](https://github.com/AitoDotAI/aito-demo) (the e-commerce reference).\n\n## Dataset\n\n| Layer | Records |\n|-------|---------|\n| `customers` | 255 (geometric: 3 enterprise / 12 large / 48 midmarket / 192 small) |\n| `invoices` | 128 000 (24-month spread, Zipfian vendor distribution) |\n| `bank_transactions` | ~68 000 (linked to invoices via schema link) |\n| `corporate_entities` | 1 362 real Finnish vendors from PRH YTJ |\n| `overrides` | ~7 500 human corrections |\n| `help_articles` + `help_impressions` | 120 + 14 500 (CTR-ranked drawer) |\n\n## Aito operators used\n\n- **`_predict`** — GL code, approver, vendor matching, anomaly scoring\n- **`_relate`** — rule mining, override pattern discovery, chained sub-pattern drill\n- **`_recommend`** — help article CTR ranking, \"users who read this also read\"\n- **`_evaluate`** — held-out accuracy with per-case results\n\n## The headline\n\nSame vendor, different customer → different prediction, because the conditional probability is computed only over rows that match the where filter. **No per-tenant model.**"
           }
         },
         {
@@ -26,11 +26,11 @@
     },
     {
       "title": "Data Overview",
-      "description": "Explore the accounting dataset",
+      "description": "Explore the multi-tenant accounting dataset",
       "widgets": [
         {
           "type": "query",
-          "title": "Sample invoices",
+          "title": "Sample invoices (first 10)",
           "size": "full",
           "config": {
             "query": {"from": "invoices", "limit": 10},
@@ -42,10 +42,10 @@
         },
         {
           "type": "query",
-          "title": "Invoices by vendor",
+          "title": "Customers by tier",
           "size": "medium",
           "config": {
-            "query": {"from": "invoices", "get": "vendor", "orderBy": "$f", "select": ["$score", "$value"]},
+            "query": {"from": "customers", "get": "size_tier", "orderBy": "$f", "select": ["$score", "$value"]},
             "endpoint": "query",
             "displayMode": "fixed",
             "outputFormat": "chart",
@@ -54,10 +54,10 @@
         },
         {
           "type": "query",
-          "title": "Invoices by GL code",
+          "title": "GL codes for one customer (CUST-0000)",
           "size": "medium",
           "config": {
-            "query": {"from": "invoices", "get": "gl_code", "orderBy": "$f", "select": ["$score", "$value"]},
+            "query": {"from": "invoices", "where": {"customer_id": "CUST-0000"}, "get": "gl_code", "orderBy": "$f", "select": ["$score", "$value"]},
             "endpoint": "query",
             "displayMode": "fixed",
             "outputFormat": "chart",
@@ -66,40 +66,115 @@
         },
         {
           "type": "query",
-          "title": "Routing breakdown (rules vs Aito vs human)",
+          "title": "Routing breakdown (rule / aito / human / none) for CUST-0000",
           "size": "full",
           "config": {
-            "query": {"from": "invoices", "get": "routed_by", "orderBy": "$f", "select": ["$score", "$value"]},
+            "query": {"from": "invoices", "where": {"customer_id": "CUST-0000"}, "get": "routed_by", "orderBy": "$f", "select": ["$score", "$value"]},
             "endpoint": "query",
             "displayMode": "fixed",
             "outputFormat": "chart",
             "runPolicy": "onLoad"
+          }
+        }
+      ]
+    },
+    {
+      "title": "Multi-tenancy in one query",
+      "description": "Same vendor, different customers → different predictions. The where clause is the entire isolation mechanism.",
+      "widgets": [
+        {
+          "type": "text",
+          "title": "How it works",
+          "size": "full",
+          "config": {
+            "content": "## Single-table multi-tenancy\n\nEvery query carries `customer_id` in `where`. Aito treats this as a conditional-probability filter — adding `customer_id` reduces the row set the prediction is computed over.\n\nThe queries below predict the GL code for **the same vendor** (Kardex Finland Oy) under different customers' contexts. Watch the predictions — they differ, because each customer's history routes that vendor differently."
+          }
+        },
+        {
+          "type": "query",
+          "title": "Kardex Finland Oy — under CUST-0000 (16 000 invoices, enterprise)",
+          "size": "medium",
+          "config": {
+            "query": {
+              "from": "invoices",
+              "where": {"customer_id": "CUST-0000", "vendor": "Kardex Finland Oy"},
+              "predict": "gl_code",
+              "select": ["$p", "feature"]
+            },
+            "endpoint": "predict",
+            "displayMode": "playground",
+            "outputFormat": "table",
+            "runPolicy": "manual"
+          }
+        },
+        {
+          "type": "query",
+          "title": "Kardex Finland Oy — under CUST-0003 (4 000 invoices, large)",
+          "size": "medium",
+          "config": {
+            "query": {
+              "from": "invoices",
+              "where": {"customer_id": "CUST-0003", "vendor": "Kardex Finland Oy"},
+              "predict": "gl_code",
+              "select": ["$p", "feature"]
+            },
+            "endpoint": "predict",
+            "displayMode": "playground",
+            "outputFormat": "table",
+            "runPolicy": "manual"
+          }
+        },
+        {
+          "type": "query",
+          "title": "Kardex Finland Oy — under CUST-0100 (250 invoices, small/cold-start)",
+          "size": "full",
+          "config": {
+            "query": {
+              "from": "invoices",
+              "where": {"customer_id": "CUST-0100", "vendor": "Kardex Finland Oy"},
+              "predict": "gl_code",
+              "select": ["$p", "feature"]
+            },
+            "endpoint": "predict",
+            "displayMode": "playground",
+            "outputFormat": "table",
+            "runPolicy": "manual"
           }
         }
       ]
     },
     {
       "title": "GL Code Prediction",
-      "description": "Predict which GL account an invoice should be assigned to",
+      "description": "Predict which GL account an invoice should be assigned to — with text-token highlights from the description field",
       "widgets": [
         {
           "type": "text",
           "title": "How it works",
           "size": "full",
           "config": {
-            "content": "## GL Code Prediction\n\nGiven a vendor name and amount, Aito predicts the most likely GL code. The `$why` explanation shows which features drove the prediction.\n\nTry changing the vendor name to see how predictions change."
+            "content": "## GL Code Prediction\n\nAito predicts the GL code from any combination of invoice fields. The `description` is a Text field — Aito's analyzer tokenizes it, so individual words contribute lift independently.\n\nWith `select: [{$why: {highlight: {posPreTag: \"<mark>\", posPostTag: \"</mark>\"}}}]`, the response shows which exact tokens drove the match — that's how the demo's prediction tab paints `<mark>Bakery</mark> <mark>products</mark>` over the description text."
           }
         },
         {
           "type": "query",
-          "title": "Predict GL code for Kesko Oyj",
+          "title": "Predict GL — vendor + amount + category + description",
           "size": "full",
           "config": {
             "query": {
               "from": "invoices",
-              "where": {"vendor": "Kesko Oyj", "amount": 4220},
+              "where": {
+                "customer_id": "CUST-0000",
+                "vendor": "Kardex Finland Oy",
+                "amount": 2158,
+                "category": "supplies",
+                "description": "Office supplies Q1 - bulk order"
+              },
               "predict": "gl_code",
-              "select": ["$p", "feature", "$why"]
+              "select": [
+                "$p",
+                "feature",
+                {"$why": {"highlight": {"posPreTag": "<mark>", "posPostTag": "</mark>"}}}
+              ]
             },
             "endpoint": "predict",
             "displayMode": "playground",
@@ -109,12 +184,16 @@
         },
         {
           "type": "query",
-          "title": "Predict GL code for unknown vendor (low confidence)",
+          "title": "Cold-start: small customer, novel vendor (low confidence = honest)",
           "size": "full",
           "config": {
             "query": {
               "from": "invoices",
-              "where": {"vendor": "Brand New Corp", "amount": 45000},
+              "where": {
+                "customer_id": "CUST-0254",
+                "vendor": "Brand New Corp",
+                "amount": 45000
+              },
               "predict": "gl_code",
               "select": ["$p", "feature", "$why"]
             },
@@ -126,36 +205,43 @@
         },
         {
           "type": "evaluate",
-          "title": "GL code prediction accuracy",
+          "title": "GL code accuracy on CUST-0000 (50-sample test set)",
           "size": "full",
           "config": {
             "queryType": "predict",
             "query": {
               "from": "invoices",
-              "predict": "gl_code",
               "where": {
+                "customer_id": "CUST-0000",
                 "vendor": {"$get": "vendor"},
                 "amount": {"$get": "amount"},
-                "category": {"$get": "category"}
-              }
+                "category": {"$get": "category"},
+                "description": {"$get": "description"}
+              },
+              "predict": "gl_code"
             },
-            "testSelection": {"type": "random", "percentage": 20}
+            "testSelection": {"type": "filter", "where": {"customer_id": "CUST-0000"}, "limit": 50}
           }
         }
       ]
     },
     {
       "title": "Approver Routing",
-      "description": "Predict which approver should handle an invoice",
+      "description": "Predict which approver should handle an invoice. The fixture generator ties approvers to (category, amount) so the signal is learnable.",
       "widgets": [
         {
           "type": "query",
-          "title": "Predict approver for Kesko Oyj",
+          "title": "Predict approver for a Kardex Finland Oy invoice (CUST-0000)",
           "size": "medium",
           "config": {
             "query": {
               "from": "invoices",
-              "where": {"vendor": "Kesko Oyj"},
+              "where": {
+                "customer_id": "CUST-0000",
+                "vendor": "Kardex Finland Oy",
+                "category": "supplies",
+                "amount": 2200
+              },
               "predict": "approver",
               "select": ["$p", "feature", "$why"]
             },
@@ -167,12 +253,17 @@
         },
         {
           "type": "query",
-          "title": "Predict approver for Kone Oyj",
+          "title": "Same vendor, big-ticket amount → escalates to a senior signer",
           "size": "medium",
           "config": {
             "query": {
               "from": "invoices",
-              "where": {"vendor": "Kone Oyj"},
+              "where": {
+                "customer_id": "CUST-0000",
+                "vendor": "Kardex Finland Oy",
+                "category": "supplies",
+                "amount": 50000
+              },
               "predict": "approver",
               "select": ["$p", "feature", "$why"]
             },
@@ -184,45 +275,51 @@
         },
         {
           "type": "evaluate",
-          "title": "Approver prediction accuracy",
+          "title": "Approver accuracy on CUST-0000 (50-sample test set)",
           "size": "full",
           "config": {
             "queryType": "predict",
             "query": {
               "from": "invoices",
-              "predict": "approver",
               "where": {
+                "customer_id": "CUST-0000",
                 "vendor": {"$get": "vendor"},
-                "category": {"$get": "category"}
-              }
+                "category": {"$get": "category"},
+                "amount": {"$get": "amount"}
+              },
+              "predict": "approver"
             },
-            "testSelection": {"type": "random", "percentage": 20}
+            "testSelection": {"type": "filter", "where": {"customer_id": "CUST-0000"}, "limit": 50}
           }
         }
       ]
     },
     {
       "title": "Payment Matching",
-      "description": "Match bank transaction descriptions to invoice vendors",
+      "description": "Predict the linked invoice from a bank transaction's description + amount",
       "widgets": [
         {
           "type": "text",
           "title": "How it works",
           "size": "full",
           "config": {
-            "content": "## Payment Matching\n\nBank descriptions are uppercased and abbreviated: \"KESKO OYJ HELSINKI\". Aito predicts the `vendor_name` from the `description` Text field, using learned token associations.\n\nThe Text analyzer tokenizes the description, so \"kesko\" and \"oyj\" independently contribute lift to \"Kesko Oyj\"."
+            "content": "## Payment Matching\n\nThe `bank_transactions` table has an `invoice_id` column linked to `invoices.invoice_id` (a foreign key in Aito's index). `_predict invoice_id` returns the matching invoice — with the linked invoice's vendor + amount in the same response, no second query.\n\nDescription is a Text field, so the analyzer tokenizes it. \"OP /VENDOR/ KARDEX FINLAND\" matches \"Kardex Finland Oy\" via shared tokens."
           }
         },
         {
           "type": "query",
-          "title": "Predict vendor from bank description",
+          "title": "Predict invoice_id from bank description + amount",
           "size": "full",
           "config": {
             "query": {
               "from": "bank_transactions",
-              "where": {"description": "KESKO OYJ HELSINKI"},
-              "predict": "vendor_name",
-              "select": ["$p", "$value", "$why"]
+              "where": {
+                "customer_id": "CUST-0000",
+                "description": "OP /VENDOR/ KARDEX FINLAND OY /VIITE/ 12345",
+                "amount": 2158
+              },
+              "predict": "invoice_id",
+              "select": ["$p", "invoice_id", "vendor", "amount", "$why"]
             },
             "endpoint": "predict",
             "displayMode": "playground",
@@ -232,14 +329,17 @@
         },
         {
           "type": "query",
-          "title": "Try: TELIA FINLAND OY",
+          "title": "Predict vendor_name (alternative matching field)",
           "size": "medium",
           "config": {
             "query": {
               "from": "bank_transactions",
-              "where": {"description": "TELIA FINLAND OY"},
+              "where": {
+                "customer_id": "CUST-0000",
+                "description": "NDA SEPA TRANSFER PUKARON PIHVIPARONI"
+              },
               "predict": "vendor_name",
-              "select": ["$p", "$value"]
+              "select": ["$p", "feature"]
             },
             "endpoint": "predict",
             "displayMode": "playground",
@@ -249,14 +349,14 @@
         },
         {
           "type": "query",
-          "title": "Try: UNKNOWN TRANSFER (should be low confidence)",
+          "title": "Garbage description → low confidence (honest uncertainty)",
           "size": "medium",
           "config": {
             "query": {
               "from": "bank_transactions",
-              "where": {"description": "UNKNOWN TRANSFER"},
+              "where": {"customer_id": "CUST-0000", "description": "UNKNOWN TRANSFER ABC123"},
               "predict": "vendor_name",
-              "select": ["$p", "$value"]
+              "select": ["$p", "feature"]
             },
             "endpoint": "predict",
             "displayMode": "playground",
@@ -268,24 +368,24 @@
     },
     {
       "title": "Rule Mining",
-      "description": "Discover patterns with _relate for rule candidates",
+      "description": "Discover deterministic patterns with _relate, then chain to find compound sub-rules",
       "widgets": [
         {
           "type": "text",
           "title": "How it works",
           "size": "full",
           "config": {
-            "content": "## Rule Mining\n\n`_relate` finds statistical relationships between features. For each vendor or category, it shows how strongly it predicts a GL code — with exact support ratios.\n\n**Support ratios like 18/18 are exact historical counts, not ML estimates.** An accountant can verify each one."
+            "content": "## Rule Mining\n\n`_relate` finds statistical relationships between fields. For each (customer, condition value), it shows how strongly that condition predicts a target — with **exact support ratios** like 4123/4156, not ML estimates.\n\n## Chained drill (poor-man's pattern proposition)\n\nAito's `_relate` takes a single conjunction in the where clause. To discover compound rules — `vendor=X & gl_code=Y → cost_centre=Z` — chain the calls: fix the discovered conjunction in `where`, run `_relate` against the next field. The third query below is exactly that pattern."
           }
         },
         {
           "type": "query",
-          "title": "What GL code does category=telecom predict?",
+          "title": "Top-level: which GL does category=telecom predict (CUST-0000)?",
           "size": "full",
           "config": {
             "query": {
               "from": "invoices",
-              "where": {"category": "telecom"},
+              "where": {"customer_id": "CUST-0000", "category": "telecom"},
               "relate": "gl_code"
             },
             "endpoint": "relate",
@@ -296,13 +396,13 @@
         },
         {
           "type": "query",
-          "title": "What GL code does vendor=Kesko Oyj predict?",
+          "title": "Drill: under telecom & gl_code=6200, who tends to approve?",
           "size": "full",
           "config": {
             "query": {
               "from": "invoices",
-              "where": {"vendor": "Kesko Oyj"},
-              "relate": "gl_code"
+              "where": {"customer_id": "CUST-0000", "category": "telecom", "gl_code": "6200"},
+              "relate": "approver"
             },
             "endpoint": "relate",
             "displayMode": "playground",
@@ -312,13 +412,13 @@
         },
         {
           "type": "query",
-          "title": "Override patterns: which GL corrections cluster?",
+          "title": "Override patterns: which vendor's overrides cluster on a corrected GL?",
           "size": "full",
           "config": {
             "query": {
               "from": "overrides",
-              "where": {"field": "gl_code"},
-              "relate": "corrected_value"
+              "where": {"customer_id": "CUST-0000", "field": "gl_code", "corrected_value": "5400"},
+              "relate": "invoice_id.vendor"
             },
             "endpoint": "relate",
             "displayMode": "playground",
@@ -330,24 +430,29 @@
     },
     {
       "title": "Anomaly Detection",
-      "description": "Inverse prediction: low confidence = anomaly signal",
+      "description": "Inverse prediction: low-probability ground truth = anomaly signal",
       "widgets": [
         {
           "type": "text",
           "title": "How it works",
           "size": "full",
           "config": {
-            "content": "## Anomaly Detection\n\nSame `_predict` engine, used in reverse. If Aito is confident about the GL code (high $p), the invoice fits known patterns. If confidence is low, something is unusual — that's the anomaly signal.\n\n**No separate anomaly model needed.** Compare the two queries below: known vendor vs unknown vendor."
+            "content": "## Anomaly Detection\n\nSame `_predict` engine, used in scoring mode. For each posted invoice, ask Aito which GL it would predict — if the actual GL has a low `$p`, the invoice doesn't fit the customer's normal pattern.\n\n**No separate anomaly model.** The two queries below show the same operator on a typical row vs an outlier."
           }
         },
         {
           "type": "query",
-          "title": "Normal invoice: Kesko Oyj (high confidence = no anomaly)",
+          "title": "Normal: known vendor + matching category (high $p)",
           "size": "medium",
           "config": {
             "query": {
               "from": "invoices",
-              "where": {"vendor": "Kesko Oyj", "amount": 4220, "category": "supplies"},
+              "where": {
+                "customer_id": "CUST-0000",
+                "vendor": "Kardex Finland Oy",
+                "amount": 2200,
+                "category": "supplies"
+              },
               "predict": "gl_code",
               "select": ["$p", "feature"]
             },
@@ -359,17 +464,72 @@
         },
         {
           "type": "query",
-          "title": "Anomalous: unknown vendor (low confidence = anomaly)",
+          "title": "Anomalous: known vendor with mismatched category (low $p on top)",
           "size": "medium",
           "config": {
             "query": {
               "from": "invoices",
-              "where": {"vendor": "Brand New Corp", "amount": 45000},
+              "where": {
+                "customer_id": "CUST-0000",
+                "vendor": "Kardex Finland Oy",
+                "amount": 45000,
+                "category": "consulting"
+              },
               "predict": "gl_code",
               "select": ["$p", "feature"]
             },
             "endpoint": "predict",
             "displayMode": "fixed",
+            "outputFormat": "table",
+            "runPolicy": "manual"
+          }
+        }
+      ]
+    },
+    {
+      "title": "Help Recommendations",
+      "description": "_recommend over impressions: rank help articles by historical click-through-rate, then chain via prev_article_id for \"users who read this also read\"",
+      "widgets": [
+        {
+          "type": "text",
+          "title": "How it works",
+          "size": "full",
+          "config": {
+            "content": "## CTR-ranked help\n\nThe demo's `?` drawer ranks help articles by goal-oriented `_recommend`: given a `(customer, page, query)` context, return the article most likely to lead to `goal: {clicked: true}`.\n\nThe second query chains via `prev_article_id` — the article the user clicked into the current view. Result: \"users who read this also read\" with no separate session API."
+          }
+        },
+        {
+          "type": "query",
+          "title": "Top help articles for /invoices on CUST-0000",
+          "size": "full",
+          "config": {
+            "query": {
+              "from": "help_impressions",
+              "where": {"customer_id": "CUST-0000", "page": "/invoices"},
+              "recommend": "article_id",
+              "goal": {"clicked": true},
+              "limit": 5
+            },
+            "endpoint": "recommend",
+            "displayMode": "playground",
+            "outputFormat": "table",
+            "runPolicy": "manual"
+          }
+        },
+        {
+          "type": "query",
+          "title": "Users who read ART-INVOICES-101 also read…",
+          "size": "full",
+          "config": {
+            "query": {
+              "from": "help_impressions",
+              "where": {"customer_id": "CUST-0000", "prev_article_id": "ART-INVOICES-101"},
+              "recommend": "article_id",
+              "goal": {"clicked": true},
+              "limit": 4
+            },
+            "endpoint": "recommend",
+            "displayMode": "playground",
             "outputFormat": "table",
             "runPolicy": "manual"
           }
