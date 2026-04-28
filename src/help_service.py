@@ -38,15 +38,20 @@ def search_help(
 ) -> list[dict]:
     """Return click-through-ranked help articles for the current context.
 
-    One `_recommend` call against the user's impression history,
-    filtered post-hoc to only articles available to this customer
-    (global "*" plus own internal). Articles the customer has never
-    been eligible to see can't appear in their impression history,
-    so other-customer internal articles are naturally excluded —
-    but we filter again as a belt-and-braces check.
+    Two Aito calls:
+      1. `_search` help_articles WHERE customer_id IN ("*", current)
+         to fetch the eligible article pool (ids, titles, bodies for
+         rendering, plus filtering set). Cached per customer for 1 h
+         since the article catalogue is stable.
+      2. `_recommend` against help_impressions for CTR ranking.
 
-    On cold start (no impression history), falls back to a direct
-    search of the help_articles table.
+    On cold start (no impression history) the recommend pool is
+    empty, and we top up with the eligible pool directly.
+
+    `_recommend` cannot return linked help_articles fields via
+    `select`, so we still need the search call to render titles
+    and bodies. But we collapse the two old eligibility searches
+    (one global, one per-customer) into a single `$or` query.
     """
     base_where: dict = {"customer_id": customer_id}
     if page:
@@ -54,16 +59,20 @@ def search_help(
     if query:
         base_where["query"] = query
 
-    # Build the eligibility set once: which articles is this customer
-    # allowed to see? Used for filtering both _recommend results and
-    # the cold-start fallback.
+    # Single eligibility query: global articles + this customer's own.
+    # Cached server-side; the catalog doesn't churn during a session.
     try:
-        eligible_global = client.search("help_articles", {"customer_id": "*"}, limit=200).get("hits", [])
-        eligible_own = client.search("help_articles", {"customer_id": customer_id}, limit=50).get("hits", [])
+        eligible = client.search(
+            "help_articles",
+            {"customer_id": {"$or": ["*", customer_id]}},
+            limit=250,
+        ).get("hits", [])
     except AitoError:
         return []
-    by_id = {a["article_id"]: a for a in eligible_global + eligible_own}
+    by_id = {a["article_id"]: a for a in eligible}
     eligible_ids = set(by_id.keys())
+    eligible_global = [a for a in eligible if a.get("customer_id") == "*"]
+    eligible_own = [a for a in eligible if a.get("customer_id") == customer_id]
 
     # Aito _recommend returns ranked article_ids globally — its where
     # clause biases ranking but doesn't restrict the candidate pool.
@@ -127,12 +136,16 @@ def related_articles(
     Filtered to the customer's eligibility set (global "*" + own
     internal articles) and to exclude the source article itself.
     """
+    # Single eligibility query (global + own) via $or.
     try:
-        eligible_global = client.search("help_articles", {"customer_id": "*"}, limit=200).get("hits", [])
-        eligible_own = client.search("help_articles", {"customer_id": customer_id}, limit=50).get("hits", [])
+        eligible = client.search(
+            "help_articles",
+            {"customer_id": {"$or": ["*", customer_id]}},
+            limit=250,
+        ).get("hits", [])
     except AitoError:
         return []
-    by_id = {a["article_id"]: a for a in eligible_global + eligible_own}
+    by_id = {a["article_id"]: a for a in eligible}
 
     try:
         result = client._request("POST", "/_recommend", json={
