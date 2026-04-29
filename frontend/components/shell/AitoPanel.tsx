@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useCustomer } from "@/lib/customer-context";
 import { useTour } from "@/lib/tour-context";
 import type { AitoPanelConfig, AitoPanelStat } from "@/lib/types";
@@ -9,6 +10,18 @@ interface AitoPanelProps {
   lastQuery?: object | null;
   lastResponseMs?: number | null;
 }
+
+const IconChevronRight = () => (
+  <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" width="12" height="12">
+    <path d="M5.5 3l5 5-5 5L4 11.5 7.5 8 4 4.5z"/>
+  </svg>
+);
+
+const IconChevronLeft = () => (
+  <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" width="12" height="12">
+    <path d="M10.5 3l-5 5 5 5L12 11.5 8.5 8 12 4.5z"/>
+  </svg>
+);
 
 // Resolve stats that reference live customer data via the special "$" prefix
 function resolveStat(stat: AitoPanelStat, ctx: { invoices: number; employees: number }): AitoPanelStat {
@@ -45,6 +58,16 @@ function linkIcon(label: string) {
 export default function AitoPanel({ config, lastQuery, lastResponseMs }: AitoPanelProps) {
   const { currentCustomer, customers, customerId } = useCustomer();
   const { tourOn } = useTour();
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    const stored = typeof window !== "undefined" ? localStorage.getItem("aitoPanelCollapsed") : null;
+    if (stored === "true") setCollapsed(true);
+  }, []);
+  const toggle = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    try { localStorage.setItem("aitoPanelCollapsed", String(next)); } catch { /* noop */ }
+  };
   const totalInvoices = customers.reduce((sum, c) => sum + (c.invoice_count || 0), 0);
   const ctx = {
     invoices: currentCustomer?.invoice_count ?? totalInvoices,
@@ -61,7 +84,16 @@ export default function AitoPanel({ config, lastQuery, lastResponseMs }: AitoPan
     : config.query;
 
   return (
-    <aside className="aito-panel">
+    <>
+      <button
+        className={`aito-panel-toggle${collapsed ? "" : " expanded"}`}
+        onClick={toggle}
+        aria-label={collapsed ? "Open Aito panel" : "Close Aito panel"}
+        title={collapsed ? "Open Aito panel" : "Close Aito panel"}
+      >
+        {collapsed ? <IconChevronLeft /> : <IconChevronRight />}
+      </button>
+      <aside className={`aito-panel${collapsed ? " collapsed" : ""}`}>
       <div className="aito-header">
         <div className="aito-logo-row">
           <div className="aito-logo">
@@ -154,6 +186,7 @@ export default function AitoPanel({ config, lastQuery, lastResponseMs }: AitoPan
           Start free trial <span>&rarr;</span>
         </a>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

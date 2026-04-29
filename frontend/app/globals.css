@@ -21,7 +21,11 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 .app{display:flex;height:100vh;overflow:hidden}
 .nav{width:230px;min-width:230px;background:var(--nav);display:flex;flex-direction:column;overflow-y:auto;border-right:1px solid var(--nav-border)}
 .main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;position:relative}
-.aito-panel{width:268px;min-width:268px;background:var(--aito-bg);display:flex;flex-direction:column;overflow-y:auto;border-left:1px solid var(--aito-border);z-index:1}
+.aito-panel{width:268px;min-width:268px;background-color:var(--aito-bg);background-image:url('/aito-panel-bg.png');background-position:bottom center;background-size:cover;background-repeat:no-repeat;display:flex;flex-direction:column;overflow-y:auto;border-left:1px solid rgba(93,80,255,.2);z-index:1;transition:width .2s ease,min-width .2s ease}
+.aito-panel.collapsed{width:0;min-width:0;border-left:none;overflow:hidden}
+.aito-panel-toggle{position:fixed;top:50%;right:0;transform:translateY(-50%);width:22px;height:64px;background:var(--aito-bg);border:1px solid rgba(93,80,255,.3);border-right:none;border-radius:6px 0 0 6px;cursor:pointer;color:#12B5AD;font-size:12px;z-index:1001;display:flex;align-items:center;justify-content:center;padding:0;box-shadow:-2px 0 8px rgba(12,15,65,.3);transition:right .2s ease,background-color .15s}
+.aito-panel-toggle:hover{background:#37336B}
+.aito-panel-toggle.expanded{right:268px}
 
 /* NAV */
 .nav-logo{padding:22px 18px 18px;border-bottom:1px solid var(--nav-border)}
@@ -205,7 +209,7 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 .aito-stat{display:flex;flex-direction:column;align-items:center;padding:5px 0}
 .aito-stat-val{font-size:12px;font-weight:700;color:#12B5AD;line-height:1;font-family:'IBM Plex Mono',monospace}
 .aito-stat-lbl{font-size:9px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.4px;margin-top:3px}
-.aito-section{padding:14px 16px;border-bottom:1px solid rgba(93,80,255,.15)}
+.aito-section{padding:14px 16px;border-bottom:1px solid rgba(93,80,255,.15);background:rgba(12,15,65,.88)}
 .aito-section-title{font-size:11px;font-weight:600;color:#9B69FF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
 .aito-desc{font-size:12.5px;color:#f0f0f0;line-height:1.6}
 .aito-endpoints{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
