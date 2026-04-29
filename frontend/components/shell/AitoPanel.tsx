@@ -96,9 +96,7 @@ export default function AitoPanel({ config, lastQuery, lastResponseMs }: AitoPan
       <aside className={`aito-panel${collapsed ? " collapsed" : ""}`}>
       <div className="aito-header">
         <div className="aito-logo-row">
-          <div className="aito-logo">
-            <span className="ai">ai</span><span className="to">to..</span>
-          </div>
+          <img src="/aito-logo.svg" alt="Aito.ai" className="aito-logo-img" />
           <span className="aito-tagline">The Predictive DB</span>
         </div>
       </div>
