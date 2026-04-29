@@ -4,11 +4,11 @@ Underlying call: POST /_recommend WHERE customer_id, page → goal: { clicked: t
 
   5 articles returned
 
-  [internal] [own-internal  ] Approval policy: invoices over €10,000
-  [internal] [own-internal  ] Cost centre rules at Customer 0000
   [app     ] [global        ] How GL code prediction works
+  [internal] [own-internal  ] Approval policy: invoices over €10,000
+  [app     ] [global        ] Reading the touchless rate
   [legal   ] [global        ] Late payment interest in Finnish B2B
-  [internal] [own-internal  ] Override policy at Customer 0000
+  [internal] [own-internal  ] Cost centre rules at Tornio Retail Oy Ab
 
 ok
 ok
