@@ -21,7 +21,11 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 .app{display:flex;height:100vh;overflow:hidden}
 .nav{width:230px;min-width:230px;background:var(--nav);display:flex;flex-direction:column;overflow-y:auto;border-right:1px solid var(--nav-border)}
 .main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;position:relative}
-.aito-panel{width:268px;min-width:268px;background:var(--aito-bg);display:flex;flex-direction:column;overflow-y:auto;border-left:1px solid var(--aito-border);z-index:1}
+.aito-panel{width:268px;min-width:268px;background-color:var(--aito-bg);background-image:url('/aito-panel-bg.png');background-position:bottom center;background-size:cover;background-repeat:no-repeat;display:flex;flex-direction:column;overflow-y:auto;border-left:1px solid rgba(93,80,255,.2);z-index:1;transition:width .2s ease,min-width .2s ease}
+.aito-panel.collapsed{width:0;min-width:0;border-left:none;overflow:hidden}
+.aito-panel-toggle{position:fixed;top:50%;right:0;transform:translateY(-50%);width:22px;height:64px;background:var(--aito-bg);border:1px solid rgba(93,80,255,.3);border-right:none;border-radius:6px 0 0 6px;cursor:pointer;color:#12B5AD;font-size:12px;z-index:1001;display:flex;align-items:center;justify-content:center;padding:0;box-shadow:-2px 0 8px rgba(12,15,65,.3);transition:right .2s ease,background-color .15s}
+.aito-panel-toggle:hover{background:#37336B}
+.aito-panel-toggle.expanded{right:268px}
 
 /* NAV */
 .nav-logo{padding:22px 18px 18px;border-bottom:1px solid var(--nav-border)}
@@ -194,27 +198,33 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 .bar-fill-blue{background:#5a9ad8}
 .bar-val{font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--text2);min-width:36px;text-align:right}
 
-/* AITO PANEL */
-.aito-header{padding:18px 16px 16px;border-bottom:1px solid var(--aito-border)}
-.aito-logo-row{display:flex;align-items:center;justify-content:space-between}
+/* AITO PANEL — mirrors aito-demo's ContextPanel widget */
+.aito-header{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid rgba(93,80,255,.2);background:rgba(12,15,65,.92);flex-shrink:0}
+.aito-logo-row{display:flex;align-items:center;justify-content:space-between;width:100%}
 .aito-logo{font-size:18px;font-weight:700;letter-spacing:-0.5px}
 .aito-logo .ai{color:#fff}
 .aito-logo .to{color:var(--aito-accent)}
-.aito-stats{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--aito-border);border-bottom:1px solid var(--aito-border)}
-.aito-stat{background:var(--aito-bg);padding:11px 14px;text-align:center}
-.aito-stat-val{font-size:17px;font-weight:600;color:#12B5AD;font-family:'IBM Plex Mono',monospace}
-.aito-stat-lbl{font-size:9px;color:#f0f0f0;opacity:.55;text-transform:uppercase;letter-spacing:.7px;margin-top:2px}
-.aito-section{padding:14px 16px;border-bottom:1px solid var(--aito-border)}
-.aito-section-title{font-size:9.5px;font-weight:600;color:#f0f0f0;opacity:.55;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:10px}
-.aito-desc{font-size:12px;color:#ffffff;line-height:1.65}
-.aito-tag{display:inline-flex;background:rgba(155,105,255,.15);color:#f0f0f0;border:1px solid #9B69FF;padding:3px 9px;border-radius:4px;font-size:11px;font-family:'IBM Plex Mono',monospace;margin-bottom:10px;letter-spacing:.3px}
-.code-block{background:#080b28;border:1px solid #1a1e50;border-radius:6px;padding:11px 13px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#a8b8d8;line-height:1.75;overflow-x:auto;white-space:pre}
-.aito-links{display:flex;flex-direction:column;gap:5px}
-.aito-link{display:flex;align-items:center;gap:8px;font-size:12px;color:#12B5AD;text-decoration:none;padding:5px 0;transition:color .15s;font-weight:500}
-.aito-link:hover{color:#1ed8ce}
-.cta-wrap{padding:16px}
-.cta-btn{width:100%;padding:11px;background:var(--aito-accent);color:#041414;border-radius:7px;font-size:13px;font-weight:600;text-align:center;cursor:pointer;font-family:inherit;border:none;transition:background .15s}
-.cta-btn:hover{background:#1ed8ce}
+.aito-tagline{font-size:11px;font-weight:600;color:rgba(255,255,255,.6);letter-spacing:.3px;white-space:nowrap}
+.aito-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:4px;padding:12px 16px;border-bottom:1px solid rgba(93,80,255,.2);background:linear-gradient(135deg,rgba(55,51,107,.92) 0%,rgba(34,35,38,.92) 100%);flex-shrink:0}
+.aito-stat{display:flex;flex-direction:column;align-items:center;padding:5px 0}
+.aito-stat-val{font-size:12px;font-weight:700;color:#12B5AD;line-height:1;font-family:'IBM Plex Mono',monospace}
+.aito-stat-lbl{font-size:9px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.4px;margin-top:3px}
+.aito-section{padding:14px 16px;border-bottom:1px solid rgba(93,80,255,.15);background:rgba(12,15,65,.88)}
+.aito-section-title{font-size:11px;font-weight:600;color:#9B69FF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.aito-desc{font-size:12.5px;color:#f0f0f0;line-height:1.6}
+.aito-endpoints{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.aito-tag{display:inline-block;padding:2px 8px;font-size:11px;font-weight:600;font-family:'IBM Plex Mono',monospace;color:#9B69FF;background:rgba(155,105,255,.15);border:1px solid rgba(155,105,255,.3);border-radius:3px;letter-spacing:.3px}
+.code-block{background:rgba(255,255,255,.07);border:1px solid rgba(93,80,255,.2);border-radius:4px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#f0f0f0;line-height:1.5;max-height:200px;overflow:auto;white-space:pre;margin:0}
+.aito-links{display:flex;flex-direction:column;gap:1px}
+.aito-link{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#f0f0f0;text-decoration:none;padding:3px 0;transition:color .15s}
+.aito-link:hover{color:#12B5AD}
+.aito-link svg{flex-shrink:0;width:11px;height:11px;color:rgba(255,255,255,.6);transition:color .15s}
+.aito-link:hover svg{color:#12B5AD}
+.cta-wrap{padding:14px 16px;border-top:1px solid rgba(93,80,255,.2);background:rgba(12,15,65,.92);flex-shrink:0}
+.cta-btn{display:flex;align-items:center;justify-content:center;gap:4px;width:100%;padding:9px 14px;background:var(--aito-accent);color:#fff;border-radius:4px;font-size:13px;font-weight:600;text-align:center;text-decoration:none;cursor:pointer;font-family:inherit;border:none;transition:all .2s}
+.cta-btn:hover{background:#0fa39b;transform:translateY(-1px);box-shadow:0 2px 12px rgba(18,181,173,.4)}
+.aito-note{margin-top:10px;padding:7px 9px;background:rgba(255,255,255,.05);border:1px solid rgba(93,80,255,.15);border-radius:4px;font-size:11px;color:rgba(240,240,240,.85);line-height:1.5}
+.aito-note strong{color:#fff}
 
 /* SCROLLBAR */
 ::-webkit-scrollbar{width:5px;height:5px}

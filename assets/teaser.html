@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Predictive Ledger — use case library</title>
+<style>
+  :root {
+    --bg: #1a2545;
+    --quadrant-bg: #ffffff;
+    --quadrant-border: #f0f1f5;
+    --card-bg: #ffffff;
+    --card-border: #eef0f4;
+    --text: #0d1520;
+    --text-muted: #5b6378;
+    --accent: #c87538;     /* warm gold-ish accent matching the demo's gold-mid */
+    --accent-soft: #f5e8c0;
+    --link: #c87538;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    padding: 28px;
+  }
+  .page {
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+  .hero {
+    text-align: center;
+    color: #ffffff;
+    padding: 8px 16px 28px;
+  }
+  .hero h1 {
+    font-size: 32px;
+    font-weight: 700;
+    margin: 0 0 6px;
+    letter-spacing: -0.4px;
+  }
+  .hero .sub {
+    font-size: 14px;
+    color: #c4cad9;
+    max-width: 720px;
+    margin: 0 auto;
+    line-height: 1.55;
+  }
+  .hero .badges {
+    margin-top: 12px;
+    display: inline-flex;
+    gap: 10px;
+    font-family: ui-monospace, "SF Mono", "IBM Plex Mono", Menlo, monospace;
+    font-size: 11px;
+    color: #c4cad9;
+  }
+  .hero .badges code {
+    background: rgba(200, 117, 56, 0.18);
+    color: #f5e8c0;
+    padding: 2px 7px;
+    border-radius: 3px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px;
+    margin-top: 12px;
+  }
+  .quadrant {
+    background: var(--quadrant-bg);
+    border-radius: 10px;
+    padding: 22px 22px 20px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  }
+  .qhead {
+    text-align: center;
+    margin-bottom: 18px;
+  }
+  .qhead .icon {
+    width: 38px;
+    height: 38px;
+    margin: 0 auto 8px;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+  }
+  .qhead h2 {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+    margin: 0 0 4px;
+  }
+  .qhead .qsub {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    max-width: 360px;
+    margin: 0 auto;
+  }
+  .cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 6px;
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .card .shot {
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    background: #f3f4f8;
+    object-fit: cover;
+    object-position: top left;
+    border-bottom: 1px solid var(--card-border);
+    display: block;
+  }
+  .card .body {
+    padding: 10px 11px 11px;
+  }
+  .card h3 {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 3px;
+    line-height: 1.3;
+  }
+  .card p {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.45;
+    margin: 0 0 6px;
+    min-height: 30px;
+  }
+  .card .link {
+    font-size: 9.5px;
+    font-weight: 600;
+    color: var(--link);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    text-decoration: none;
+  }
+  .card .link::after { content: " →"; }
+  .footer {
+    margin-top: 24px;
+    text-align: center;
+    color: #9099b0;
+    font-size: 11px;
+  }
+  .footer a { color: var(--accent); text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <h1>Predictive Ledger</h1>
+      <div class="sub">
+        Multi-tenant accounting on Aito.ai. 255 customer companies,
+        128 K invoices, one shared Aito instance — predictions scoped
+        per-tenant via <code>customer_id</code> in the where clause.
+        No model training, no retraining, no per-tenant pipeline.
+      </div>
+      <div class="badges">
+        <span><code>_predict</code></span>
+        <span><code>_relate</code></span>
+        <span><code>_recommend</code></span>
+        <span><code>_evaluate</code></span>
+      </div>
+    </header>
+
+    <div class="grid">
+      <!-- ── Payables ── -->
+      <section class="quadrant">
+        <div class="qhead">
+          <div class="icon">📥</div>
+          <h2>Payables Automation</h2>
+          <div class="qsub">Route incoming invoices to the right GL, the right approver, the right invoice — automatically.</div>
+        </div>
+        <div class="cards">
+          <article class="card">
+            <img class="shot" src="../screenshots/01-invoices.png" alt="">
+            <div class="body">
+              <h3>Invoice Processing</h3>
+              <p>GL code + approver predictions ranked by historical confidence, with $why factor cards.</p>
+              <a class="link" href="../docs/use-cases/01-invoice-processing.md">View implementation</a>
+            </div>
+          </article>
+          <article class="card">
+            <img class="shot" src="../screenshots/02-formfill.png" alt="">
+            <div class="body">
+              <h3>Smart Form Fill</h3>
+              <p>Type any field, the rest predict. Six fields populate from one vendor click.</p>
+              <a class="link" href="../docs/use-cases/02-smart-form-fill.md">View implementation</a>
+            </div>
+          </article>
+          <article class="card">
+            <img class="shot" src="../screenshots/03-matching.png" alt="">
+            <div class="body">
+              <h3>Payment Matching</h3>
+              <p>Bank descriptions to invoices via <code>_predict invoice_id</code> over the schema link.</p>
+              <a class="link" href="../docs/use-cases/03-payment-matching.md">View implementation</a>
+            </div>
+          </article>
+          <article class="card">
+            <img class="shot" src="../screenshots/05-anomalies.png" alt="">
+            <div class="body">
+              <h3>Anomaly Detection</h3>
+              <p>Inverse prediction: low confidence on a normally-predictable field flags it.</p>
+              <a class="link" href="../docs/use-cases/05-anomaly-detection.md">View implementation</a>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ── Accounting intelligence ── -->
+      <section class="quadrant">
+        <div class="qhead">
+          <div class="icon">🧠</div>
+          <h2>Accounting Intelligence</h2>
+          <div class="qsub">Discover deterministic patterns and learn from human corrections — close the loop without retraining.</div>
+        </div>
+        <div class="cards">
+          <article class="card">
+            <img class="shot" src="../screenshots/04-rulemining.png" alt="">
+            <div class="body">
+              <h3>Rule Mining</h3>
+              <p><code>_relate</code> finds patterns with exact support ratios. Expand rows to drill into compounds.</p>
+              <a class="link" href="../docs/use-cases/04-rule-mining.md">View implementation</a>
+            </div>
+          </article>
+          <article class="card">
+            <img class="shot" src="../screenshots/09-quality-overrides.png" alt="">
+            <div class="body">
+              <h3>Human Overrides → Rules</h3>
+              <p>Two-pass <code>_relate</code> with link traversal mines corrections for input → output rules.</p>
+              <a class="link" href="../docs/use-cases/08-human-overrides.md">View implementation</a>
+            </div>
+          </article>
+          <article class="card">
+            <img class="shot" src="../screenshots/06-quality-overview.png" alt="">
+            <div class="body">
+              <h3>Audit Trail</h3>
+              <p>Every prediction logged: predicted vs accepted, with per-field accept rate. SOX-grade evidence.</p>
+              <a class="link" href="../docs/use-cases/07-quality-dashboard.md">View implementation</a>
+            </div>
+          </article>
+          <article class="card">
+            <img class="shot" src="../screenshots/07-quality-rules.png" alt="">
+            <div class="body">
+              <h3>Rule Performance</h3>
+              <p>Mined rules replayed against history: precision, coverage, drift over 12 weeks.</p>
+              <a class="link" href="../docs/adr/0006-rule-mining.md">View implementation</a>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ── Multi-tenancy ── -->
+      <section class="quadrant">
+        <div class="qhead">
+          <div class="icon">🏢</div>
+          <h2>Multi-tenancy & Quality</h2>
+          <div class="qsub">Same Aito instance, 255 customers, per-tenant predictions. Real <code>_evaluate</code> accuracy with per-case results.</div>
+        </div>
+        <div class="cards">
+          <article class="card">
+            <img class="shot" src="../screenshots/08-quality-predictions.png" alt="">
+            <div class="body">
+              <h3>Prediction Quality</h3>
+              <p><code>_evaluate</code> with per-case green/red diff. 98% GL accuracy on CUST-0000 (+44pp baseline).</p>
+              <a class="link" href="../docs/use-cases/07-quality-dashboard.md">View implementation</a>
+            </div>
+          </article>
+          <article class="card">
+            <img class="shot" src="../screenshots/01-invoices.png" alt="">
+            <div class="body">
+              <h3>Same Vendor, Different Customer</h3>
+              <p>Kardex Finland Oy under CUST-0000 → GL 4400. Under CUST-0003 → GL 6200. Where-clause isolation.</p>
+              <a class="link" href="../docs/use-cases/multi-tenant-accounting.md">View implementation</a>
+            </div>
+          </article>
+          <article class="card">
+            <img class="shot" src="../screenshots/06-quality-overview.png" alt="">
+            <div class="body">
+              <h3>System Overview</h3>
+              <p>Automation breakdown — rules, Aito, human review — per customer with override patterns.</p>
+              <a class="link" href="../docs/adr/0009-quality-dashboard.md">View implementation</a>
+            </div>
+          </article>
+          <article class="card">
+            <img class="shot" src="../screenshots/02-formfill.png" alt="">
+            <div class="body">
+              <h3>Cold-start Honesty</h3>
+              <p>Small customers get low confidence, not fake confidence. The system says "I don't know yet."</p>
+              <a class="link" href="../docs/sizing.md">View implementation</a>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ── Help drawer ── -->
+      <section class="quadrant">
+        <div class="qhead">
+          <div class="icon">💡</div>
+          <h2>Conversational Help</h2>
+          <div class="qsub">In-app help articles ranked by historical click-through-rate. Every shown article is an impression; every click trains the next ranking.</div>
+        </div>
+        <div class="cards">
+          <article class="card">
+            <img class="shot" src="../screenshots/01-invoices.png" alt="">
+            <div class="body">
+              <h3>CTR-ranked help</h3>
+              <p><code>_recommend</code> with <code>goal: {clicked: true}</code>. Articles users tend to click on this page rise to the top.</p>
+              <a class="link" href="../docs/use-cases/06-help-recommendations.md">View implementation</a>
+            </div>
+          </article>
+          <article class="card">
+            <img class="shot" src="../screenshots/04-rulemining.png" alt="">
+            <div class="body">
+              <h3>Users who read this also read…</h3>
+              <p>Session chaining via <code>prev_article_id</code>. Same operator, one extra constraint.</p>
+              <a class="link" href="../docs/adr/0013-help-drawer-recommend.md">View implementation</a>
+            </div>
+          </article>
+          <article class="card">
+            <img class="shot" src="../screenshots/02-formfill.png" alt="">
+            <div class="body">
+              <h3>$why with text highlights</h3>
+              <p>Aito marks the matched description tokens in their original context. <mark>Catering</mark> <mark>order</mark> drove this prediction.</p>
+              <a class="link" href="../docs/use-cases/01-invoice-processing.md">View implementation</a>
+            </div>
+          </article>
+          <article class="card">
+            <img class="shot" src="../screenshots/08-quality-predictions.png" alt="">
+            <div class="body">
+              <h3>Per-customer doc set</h3>
+              <p>Global articles + customer-specific internal docs ("At Tornio Retail Oy Ab, cost centres are mapped…").</p>
+              <a class="link" href="../docs/use-cases/06-help-recommendations.md">View implementation</a>
+            </div>
+          </article>
+        </div>
+      </section>
+    </div>
+
+    <footer class="footer">
+      Open-source reference at
+      <a href="https://github.com/AitoDotAI/aito-accounting-demo">github.com/AitoDotAI/aito-accounting-demo</a>
+      &nbsp;·&nbsp; Companion to <a href="https://github.com/AitoDotAI/aito-demo">aito-demo</a>
+      (e-commerce reference) &nbsp;·&nbsp; Powered by <a href="https://aito.ai">Aito.ai</a> — the predictive database.
+    </footer>
+  </div>
+</body>
+</html>
