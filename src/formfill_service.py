@@ -56,6 +56,14 @@ def predict_template(client: AitoClient, customer_id: str, vendor: str) -> dict 
     A template is the joint mode of (gl_code, approver, cost_centre, vat_pct,
     payment_method, due_days, category). When confidence is high, the user
     can apply all fields with one click instead of confirming each.
+
+    `_search` here is the right primitive — not a Counter reinvention of
+    `_predict`. We need the joint frequency P(gl ∧ approver ∧ cc | vendor)
+    so the UI can claim "X of Y prior invoices use this exact routing".
+    `_predict` returns calibrated marginal probabilities per field and
+    has no single-call joint-mode form; expressing the same thing as
+    chained _predicts would mean 7 round-trips per vendor, multiplied
+    by the top-N when this is called from formfill_templates.
     """
     try:
         result = client.search("invoices", {"customer_id": customer_id, "vendor": vendor}, limit=50)
@@ -66,7 +74,6 @@ def predict_template(client: AitoClient, customer_id: str, vendor: str) -> dict 
     if len(hits) < 3:
         return None
 
-    # Count joint occurrences
     from collections import Counter
 
     # Use the high-signal classification fields as the template key.
