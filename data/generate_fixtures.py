@@ -372,6 +372,51 @@ def generate_description(category: str) -> str:
 
 # ── Customer generation ──────────────────────────────────────────
 
+# Finnish-flavoured company-name building blocks. Combined as
+#   <prefix> <domain> <suffix>
+# they produce names like "Metsä Machinery Oy", "Aurora Retail Oyj",
+# "Pohjola Logistics Group Oy". 47 × 40 × 5 = 9 400 unique permutations,
+# plenty for 255 customers without collisions.
+_NAME_PREFIXES = [
+    "Aalto", "Aurora", "Boreal", "Espoo", "Helsinki", "Hopea",
+    "Hämeen", "Ilmarinen", "Itä", "Kalevala", "Kallio", "Karjala",
+    "Kestilä", "Kivi", "Koivu", "Kotka", "Kulta", "Kuopio",
+    "Lapland", "Linna", "Lumi", "Mänty", "Mäki", "Metsä", "Niemi",
+    "Nordic", "Oulu", "Pohjola", "Polaris", "Ranta", "Rauta", "Saimaa",
+    "Salama", "Salmi", "Sisu", "Suomi", "Suvanto", "Talvi", "Tampere",
+    "Tornio", "Tähti", "Vaasa", "Vantaa", "Viksberg", "Vesi", "Verso",
+    "Ylä",
+]
+_NAME_DOMAINS = [
+    "Automotive", "Capital", "Chemicals", "Construction", "Consulting",
+    "Digital", "Energy", "Engineering", "Financial", "Foods", "Forest",
+    "Group", "Health", "Holdings", "Industries", "Insurance",
+    "Investments", "Logistics", "Machinery", "Marine", "Manufacturing",
+    "Media", "Medical", "Mining", "Networks", "Packaging", "Partners",
+    "Pharma", "Plastics", "Power", "Property", "Retail", "Robotics",
+    "Services", "Software", "Solutions", "Steel", "Systems",
+    "Technology", "Trading", "Ventures",
+]
+_NAME_SUFFIXES = ["Oy", "Oy Ab", "Oyj", "Group Oy", "Holding Oy"]
+
+
+def _build_company_names(n: int, rng: random.Random) -> list[str]:
+    """Return n unique Finnish-style company names."""
+    seen: set[str] = set()
+    out: list[str] = []
+    while len(out) < n:
+        name = (
+            f"{rng.choice(_NAME_PREFIXES)} "
+            f"{rng.choice(_NAME_DOMAINS)} "
+            f"{rng.choice(_NAME_SUFFIXES)}"
+        )
+        if name in seen:
+            continue
+        seen.add(name)
+        out.append(name)
+    return out
+
+
 def generate_customers(scale: str = "full") -> list[dict]:
     """Generate 256 customers with geometric size distribution."""
     tiers = {
@@ -386,13 +431,19 @@ def generate_customers(scale: str = "full") -> list[dict]:
 
     tier_names = ["enterprise", "enterprise", "large", "large", "midmarket", "midmarket", "small", "small"]
 
+    # Same seed across regenerations so company names are stable per
+    # customer_id (CUST-0000 is always the same company).
+    name_rng = random.Random(20260428)
+    total_customers = sum(count for count, _ in tier_list)
+    company_names = _build_company_names(total_customers, name_rng)
+
     for tier_idx, (count, invoice_count) in enumerate(tier_list):
         tier_name = tier_names[tier_idx]
         for i in range(count):
             employee_count = max(1, invoice_count // 100)
             customers.append({
                 "customer_id": f"CUST-{cid:04d}",
-                "name": f"Customer {cid:04d}",  # will be enriched later
+                "name": company_names[cid],
                 "size_tier": tier_name,
                 "invoice_count": invoice_count,
                 "employee_count": employee_count,

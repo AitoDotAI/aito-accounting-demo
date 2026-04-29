@@ -118,7 +118,7 @@ export default function CustomerSelector() {
           background: "var(--surface)",
           color: "var(--text)",
           cursor: "pointer",
-          minWidth: 220,
+          minWidth: 280,
           textAlign: "left",
           display: "flex",
           alignItems: "center",
@@ -126,10 +126,19 @@ export default function CustomerSelector() {
           gap: 6,
         }}
       >
-        <span>
-          {currentCustomer
-            ? `${currentCustomer.customer_id} · ${currentCustomer.size_tier} (${currentCustomer.invoice_count.toLocaleString()})`
-            : customerId}
+        <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.2, minWidth: 0 }}>
+          {currentCustomer ? (
+            <>
+              <span style={{ fontWeight: 500, fontSize: 12, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 240 }}>
+                {currentCustomer.name}
+              </span>
+              <span style={{ fontSize: 10, color: "var(--text3)", fontFamily: "'IBM Plex Mono', monospace" }}>
+                {currentCustomer.customer_id} · {currentCustomer.size_tier} · {currentCustomer.invoice_count.toLocaleString()} inv
+              </span>
+            </>
+          ) : (
+            customerId
+          )}
         </span>
         <span style={{ color: "var(--text3)", fontSize: 10 }}>{open ? "▴" : "▾"}</span>
       </button>
@@ -205,9 +214,13 @@ export default function CustomerSelector() {
                           background: warmIds.has(c.customer_id) ? "#6ab87a" : "#d49b4a",
                         }}
                       />
-                      <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-                        <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: "var(--gold-dark)" }}>{c.customer_id}</span>
-                        <span style={{ fontSize: 10, color: "var(--text3)" }}>{c.employee_count} employees</span>
+                      <div style={{ display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" }}>
+                        <span style={{ fontWeight: 500, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {c.name}
+                        </span>
+                        <span style={{ fontSize: 10, color: "var(--text3)", fontFamily: "'IBM Plex Mono', monospace" }}>
+                          {c.customer_id} · {c.employee_count} employees
+                        </span>
                       </div>
                     </div>
                     <span style={{ fontSize: 11, color: "var(--text2)", whiteSpace: "nowrap" }}>
