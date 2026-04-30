@@ -59,6 +59,10 @@ export default function AitoPanel({ config, lastQuery, lastResponseMs }: AitoPan
   const { currentCustomer, customers, customerId } = useCustomer();
   const { tourOn } = useTour();
   const [collapsed, setCollapsed] = useState(false);
+  // `mobileOpen` controls the bottom-sheet on small screens. It is
+  // independent of `collapsed` (desktop) so the two breakpoints don't
+  // fight each other on resize.
+  const [mobileOpen, setMobileOpen] = useState(false);
   useEffect(() => {
     const stored = typeof window !== "undefined" ? localStorage.getItem("aitoPanelCollapsed") : null;
     if (stored === "true") setCollapsed(true);
@@ -68,6 +72,7 @@ export default function AitoPanel({ config, lastQuery, lastResponseMs }: AitoPan
     setCollapsed(next);
     try { localStorage.setItem("aitoPanelCollapsed", String(next)); } catch { /* noop */ }
   };
+  const closeMobile = () => setMobileOpen(false);
   const totalInvoices = customers.reduce((sum, c) => sum + (c.invoice_count || 0), 0);
   const ctx = {
     invoices: currentCustomer?.invoice_count ?? totalInvoices,
@@ -93,7 +98,25 @@ export default function AitoPanel({ config, lastQuery, lastResponseMs }: AitoPan
       >
         {collapsed ? <IconChevronLeft /> : <IconChevronRight />}
       </button>
-      <aside className={`aito-panel${collapsed ? " collapsed" : ""}`}>
+      <button
+        className="aito-fab"
+        onClick={() => setMobileOpen(true)}
+        aria-label="Show Aito info"
+        title="Show Aito info"
+      >
+        <img src="/aito-logo.svg" alt="" className="aito-fab-logo" />
+      </button>
+      {mobileOpen && (
+        <div className="aito-overlay" onClick={closeMobile} />
+      )}
+      <aside className={`aito-panel${collapsed ? " collapsed" : ""}${mobileOpen ? " open" : ""}`}>
+      <button
+        className="aito-mobile-close"
+        onClick={closeMobile}
+        aria-label="Close info panel"
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.5 3.5l9 9m-9 0l9-9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+      </button>
       <div className="aito-header">
         <div className="aito-logo-row">
           <img src="/aito-logo.svg" alt="Aito.ai" className="aito-logo-img" />

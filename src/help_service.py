@@ -155,6 +155,38 @@ def related_articles(
     return out
 
 
+def customer_help_stats(client: AitoClient, customer_id: str) -> dict:
+    """Per-customer impression / click / CTR rollup.
+
+    Two `_search` calls with `limit: 0` return only the `total`
+    field — cheaper than fetching rows. CTR (clicks ÷ impressions)
+    is the single deflection number worth surfacing: above the
+    typed-search baseline (which is closer to 1–3% for in-app help
+    on category pages) it argues that context-aware ranking pulls
+    the right article up far enough that users open it instead of
+    typing into the support form.
+    """
+    def _count(where: dict) -> int:
+        try:
+            r = client._request("POST", "/_search", json={
+                "from": "help_impressions",
+                "where": where,
+                "limit": 0,
+            })
+            return int(r.get("total", 0))
+        except AitoError:
+            return 0
+
+    impressions = _count({"customer_id": customer_id})
+    clicks = _count({"customer_id": customer_id, "clicked": True})
+    ctr = (clicks / impressions) if impressions else 0.0
+    return {
+        "impressions": impressions,
+        "clicks": clicks,
+        "ctr": round(ctr, 4),
+    }
+
+
 def log_impression(
     client: AitoClient,
     article_id: str,

@@ -6,6 +6,7 @@ import { useCustomer } from "@/lib/customer-context";
 import ErrorState from "@/components/shell/ErrorState";
 import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
+import GovernanceStepper from "@/components/governance/GovernanceStepper";
 import LiftHint from "@/components/prediction/LiftHint";
 import { apiFetch } from "@/lib/api";
 import type { AitoPanelConfig } from "@/lib/types";
@@ -155,11 +156,12 @@ export default function RuleMiningPage() {
       <Nav />
       <div className="main">
         <TopBar
-          breadcrumb="Accounting"
+          breadcrumb="Governance · 1. Discover"
           title="Rule Mining"
           subtitle={m ? `${m.total} patterns discovered via Aito _relate` : error ? "Backend not reachable" : "Loading..."}
           live={live}
         />
+        <GovernanceStepper active="discover" />
         <div className="content">
           <div className="metrics">
             <div className="metric highlight"><div className="metric-label">Candidate rules</div><div className="metric-value">{m?.total ?? "--"}</div></div>

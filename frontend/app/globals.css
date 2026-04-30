@@ -224,6 +224,67 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 .aito-note{margin-top:10px;padding:7px 9px;background:rgba(255,255,255,.05);border:1px solid rgba(93,80,255,.15);border-radius:4px;font-size:11px;color:rgba(240,240,240,.85);line-height:1.5}
 .aito-note strong{color:#fff}
 
+/* MOBILE TOPBAR + FAB (hidden on desktop, shown via media query) */
+.nav-mobile-bar{display:none}
+.nav-overlay{display:none}
+.aito-fab{display:none}
+.aito-overlay{display:none}
+.aito-mobile-close{display:none}
+
+/* RESPONSIVE — mirrors aito-demo: nav becomes left drawer, panel becomes bottom sheet */
+@media (max-width: 768px){
+  body{overflow:auto}
+  .app{display:flex;flex-direction:column;height:auto;min-height:100vh;overflow:visible}
+  .main{height:auto;overflow:visible;flex:1}
+  .content{padding:14px;overflow:visible}
+
+  /* Mobile top bar — hamburger + brand */
+  .nav-mobile-bar{display:flex;align-items:center;gap:10px;height:48px;padding:0 12px;background:var(--nav);border-bottom:1px solid var(--nav-border);position:sticky;top:0;z-index:1050}
+  .nav-mobile-hamburger{width:36px;height:36px;display:flex;align-items:center;justify-content:center;background:none;border:none;color:var(--gold-mid);cursor:pointer;border-radius:6px;padding:0}
+  .nav-mobile-hamburger:hover{background:var(--nav-hover)}
+  .nav-mobile-title{font-size:14px;font-weight:600;color:#f5eecc}
+
+  /* Off-canvas left drawer */
+  .nav{position:fixed;top:0;left:0;width:280px;max-width:85vw;height:100vh;min-width:0;z-index:1100;transform:translateX(-100%);transition:transform .25s ease;box-shadow:2px 0 16px rgba(0,0,0,.15)}
+  .nav.open{transform:translateX(0)}
+  .nav-overlay{display:block;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1099}
+
+  /* Right panel becomes a bottom sheet */
+  .aito-panel{position:fixed;left:0;right:0;bottom:0;top:auto;width:auto;min-width:0;height:auto;max-height:85vh;border-left:none;border-top:1px solid rgba(93,80,255,.2);border-radius:16px 16px 0 0;transform:translateY(100%);transition:transform .25s ease;z-index:1100;box-shadow:0 -4px 24px rgba(12,15,65,.4)}
+  .aito-panel.open{transform:translateY(0)}
+  .aito-panel.collapsed{transform:translateY(100%)}
+  .aito-panel-toggle{display:none}
+
+  /* Floating "Aito info" button */
+  .aito-fab{display:flex;align-items:center;justify-content:center;position:fixed;right:16px;bottom:16px;width:48px;height:48px;border-radius:50%;background:var(--aito-bg);color:#12B5AD;border:1px solid rgba(93,80,255,.3);cursor:pointer;z-index:1050;box-shadow:0 4px 12px rgba(12,15,65,.3)}
+  .aito-fab-logo{width:26px;height:26px;object-fit:contain}
+  .aito-overlay{display:block;position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:1099}
+  .aito-mobile-close{display:flex;align-items:center;justify-content:center;position:absolute;top:10px;right:10px;width:30px;height:30px;border:none;background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);border-radius:50%;cursor:pointer;z-index:2}
+  .aito-mobile-close:hover{background:rgba(255,255,255,.15);color:#fff}
+
+  /* Topbar slimmed */
+  .topbar{padding:0 14px;height:48px;gap:8px;flex-wrap:wrap}
+  .topbar-breadcrumb{display:none}
+  .topbar-sep{display:none}
+  .topbar-title{font-size:14px}
+  .topbar-sub{font-size:11px}
+
+  /* Content reflow */
+  .metrics{grid-template-columns:repeat(2,1fr);gap:8px}
+  .metric{padding:12px}
+  .metric-value{font-size:20px}
+  .form-grid{grid-template-columns:1fr;gap:14px}
+  .quality-grid{grid-template-columns:1fr}
+  .field-row{grid-template-columns:1fr}
+
+  /* Wide tables: horizontal scroll inside the card */
+  .card{overflow-x:auto}
+  .table{min-width:560px}
+
+  /* Page-level full-screen overlays should not be hidden behind nav */
+  .why-popup{max-width:calc(100vw - 24px)}
+}
+
 /* SCROLLBAR */
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:transparent}
