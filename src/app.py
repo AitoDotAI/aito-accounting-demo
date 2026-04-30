@@ -1081,29 +1081,23 @@ def help_related(
     return result
 
 
-@app.get("/api/multitenancy/shared_vendors")
-def multitenancy_shared_vendors(limit: int = 8):
-    """Vendors used by multiple tenants — the candidate set for the
-    'same vendor, different tenants' demo screen.
+# Computed once at first request from the static fixture, then memoised
+# for the process lifetime — invoices.json is ~30MB and reading it
+# inside a request handler blocks the event loop for hundreds of ms.
+_shared_vendors_full: list[dict] | None = None
 
-    Computed from the loaded invoices fixture (not Aito) because we
-    want a deterministic curated list for the demo, ranked by
-    cross-tenant *contrast* rather than raw frequency: a vendor
-    where every tenant routes to the same GL is boring; one where
-    tenants split across multiple GLs is the proof.
+
+def _compute_shared_vendors() -> list[dict]:
+    """Scan the invoices fixture once and rank vendors by cross-tenant
+    GL contrast. Result is the unbounded list; callers slice to `limit`.
     """
-    cache_key = f"mt_shared_vendors:{limit}"
-    cached = cache.get(cache_key)
-    if cached is not None:
-        return cached
-
     import json
     from collections import defaultdict, Counter
     from pathlib import Path
 
     inv_path = Path(__file__).parent.parent / "data" / "invoices.json"
     if not inv_path.exists():
-        return {"vendors": []}
+        return []
 
     vendor_tenant_gl: dict[str, dict[str, Counter]] = defaultdict(lambda: defaultdict(Counter))
     for row in json.loads(inv_path.read_text()):
@@ -1111,7 +1105,7 @@ def multitenancy_shared_vendors(limit: int = 8):
         if v and c and gl:
             vendor_tenant_gl[v][c][gl] += 1
 
-    out = []
+    out: list[dict] = []
     for vendor, tenants in vendor_tenant_gl.items():
         if len(tenants) < 3:
             continue
@@ -1136,9 +1130,22 @@ def multitenancy_shared_vendors(limit: int = 8):
 
     # Rank by (distinct_gls, tenant_count) — most contrastful first.
     out.sort(key=lambda x: (-x["distinct_gls"], -x["tenant_count"]))
-    result = {"vendors": out[:limit]}
-    cache.set(cache_key, result, ttl=3600)
-    return result
+    return out
+
+
+@app.get("/api/multitenancy/shared_vendors")
+def multitenancy_shared_vendors(limit: int = 8):
+    """Vendors used by multiple tenants — the candidate set for the
+    'same vendor, different tenants' demo screen.
+
+    Computed from the loaded invoices fixture (not Aito) because we
+    want a deterministic curated list for the demo, ranked by
+    cross-tenant *contrast* rather than raw frequency.
+    """
+    global _shared_vendors_full
+    if _shared_vendors_full is None:
+        _shared_vendors_full = _compute_shared_vendors()
+    return {"vendors": _shared_vendors_full[:limit]}
 
 
 @app.get("/api/help/stats")

@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
+import { useRouter } from "next/navigation";
 
 export interface GuidedTourStop {
   /** 1-based for display. */
@@ -55,6 +56,10 @@ export const TOUR_STOPS: GuidedTourStop[] = [
 ];
 
 const STORAGE_KEY = "predictive-ledger-guided-tour";
+// Drop tour-resume state after this long. A visitor who abandons
+// the tour and returns days later should land on the home page,
+// not be ambushed by step 3 of a flow they barely remember starting.
+const STORAGE_TTL_MS = 6 * 60 * 60 * 1000;  // 6 hours
 
 interface GuidedTourContextType {
   active: boolean;
@@ -77,29 +82,34 @@ const GuidedTourContext = createContext<GuidedTourContextType>({
 });
 
 export function GuidedTourProvider({ children }: { children: ReactNode }) {
+  const router = useRouter();
   const [active, setActive] = useState(false);
   const [step, setStep] = useState(0);
 
-  // Persist active state across navigations (the static export does
-  // hard reloads on first visit, so context alone is not enough).
+  // Resume an in-progress tour, but only if the saved state is fresh.
+  // Stale state (visitor closed the tab days ago) is discarded.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        if (parsed?.active && typeof parsed.step === "number") {
-          setActive(true);
-          setStep(Math.max(0, Math.min(TOUR_STOPS.length - 1, parsed.step)));
-        }
-      } catch { /* corrupted state — ignore and start fresh */ }
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored);
+      const fresh = typeof parsed?.savedAt === "number" && Date.now() - parsed.savedAt < STORAGE_TTL_MS;
+      if (parsed?.active && typeof parsed.step === "number" && fresh) {
+        setActive(true);
+        setStep(Math.max(0, Math.min(TOUR_STOPS.length - 1, parsed.step)));
+      } else {
+        window.localStorage.removeItem(STORAGE_KEY);
+      }
+    } catch {
+      window.localStorage.removeItem(STORAGE_KEY);
     }
   }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (active) {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ active, step }));
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ active, step, savedAt: Date.now() }));
     } else {
       window.localStorage.removeItem(STORAGE_KEY);
     }
@@ -108,9 +118,12 @@ export function GuidedTourProvider({ children }: { children: ReactNode }) {
   const navigate = useCallback((href: string) => {
     if (typeof window === "undefined") return;
     if (window.location.pathname.replace(/\/$/, "") !== href.replace(/\/$/, "")) {
-      window.location.assign(href);
+      // Soft client-side navigation — no full page reload, no flash.
+      // The provider lives at the layout level so context state
+      // (active, step) survives the route change.
+      router.push(href);
     }
-  }, []);
+  }, [router]);
 
   const start = useCallback(() => {
     setActive(true);

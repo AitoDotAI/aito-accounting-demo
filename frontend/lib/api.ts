@@ -24,7 +24,12 @@ const latencyListeners = new Set<LatencyListener>();
 
 export function onAitoLatency(fn: LatencyListener): () => void {
   latencyListeners.add(fn);
-  return () => latencyListeners.delete(fn);
+  return () => {
+    // Set.delete() returns boolean; a void cleanup callback is what
+    // React effects expect, so wrap explicitly rather than rely on
+    // type coercion.
+    latencyListeners.delete(fn);
+  };
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
