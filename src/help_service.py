@@ -115,24 +115,25 @@ def related_articles(
 
     Shape note (this matters): two slow-path traps to avoid.
 
-    1. `where: {prev_article_id: …}` — a nullable linked Reference
-       column on this dataset puts Aito on a slow code path
-       (~2.3s/call), vs ~300ms for the shape below.
+    1. `where: {prev_article_id: X}` — the shortcut form on a
+       linked Reference column makes Aito materialize *all* fields
+       of the linked entity as recommendation priors. ~2.3s/call
+       on this dataset. The fix is to traverse the link
+       explicitly to the key column: `prev_article_id.article_id`.
+       Same filter, same hits, ~7× faster (~300ms). Tip from
+       @arau; full bisect in docs/notes/aito-perf-findings.md.
     2. Non-empty `basedOn` triggers prior-feature inference even
-       when the candidate pool is already narrow. Setting
-       `basedOn: []` skips that step. On this dataset the
-       eligibility-restricted pool (~25 articles per customer) is
-       small enough that goal-driven ranking dominates and the
-       result is stable regardless of basedOn context.
-
-    The article and customer args are still used — for filtering
-    eligibility (article_id.customer_id) and for client-side
-    self-recommendation removal.
+       when the candidate pool is already narrow. We pass
+       `basedOn: []` so the recommend skips that step.
     """
     query = {
         "from": "help_impressions",
         "basedOn": [],
         "where": {
+            # Explicit-key traversal: don't trip the linked-field
+            # property-expansion slow path.
+            "prev_article_id.article_id": article_id,
+            "customer_id": customer_id,
             "article_id.customer_id": _eligibility_clause(customer_id),
         },
         "recommend": "article_id",

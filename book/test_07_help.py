@@ -160,13 +160,14 @@ def test_help_related_articles_query(t: bt.TestCaseRun):
     Two slow-path traps were avoided here, both worth pinning down
     in a snapshot:
 
-    - `where: {prev_article_id: …}` (a nullable linked Reference)
-      is intrinsically slow against impressions — ~2.3s/call. We
-      drop the filter and let the candidate pool come from the
-      `article_id.customer_id` eligibility instead.
-    - Non-empty `basedOn` triggers prior-feature inference. With
-      the small candidate pool here it doesn't change the result,
-      so we pass `basedOn: []` to skip it. ~300ms warm.
+    - `where: {prev_article_id: X}` (the shortcut form on a linked
+      Reference column) makes Aito expand *all* fields of the
+      linked entity as recommendation priors — ~2.3s/call. The
+      fix is to traverse the link explicitly to its key column:
+      `prev_article_id.article_id`. Same filter, same hits, ~7×
+      faster.
+    - Non-empty `basedOn` triggers prior-feature inference. We
+      pass `basedOn: []` to skip it.
     """
     import json
     c = get_client()
@@ -178,6 +179,8 @@ def test_help_related_articles_query(t: bt.TestCaseRun):
         "from": "help_impressions",
         "basedOn": [],
         "where": {
+            "prev_article_id.article_id": "LEGAL-00",
+            "customer_id": "CUST-0000",
             "article_id.customer_id": {"$or": ["*", "CUST-0000"]},
         },
         "recommend": "article_id",

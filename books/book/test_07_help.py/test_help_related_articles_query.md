@@ -9,6 +9,8 @@
   "from": "help_impressions",
   "basedOn": [],
   "where": {
+    "prev_article_id.article_id": "LEGAL-00",
+    "customer_id": "CUST-0000",
     "article_id.customer_id": {
       "$or": [
         "*",

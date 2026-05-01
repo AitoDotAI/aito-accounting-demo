@@ -7,7 +7,7 @@ regress around the workarounds.
 
 ---
 
-## 1. `where` on a nullable linked Reference is ~7× slower than equivalent shapes
+## 1. `where: {linkedColumn: X}` shortcut expands all linked-entity fields as priors
 
 ### Symptom
 
@@ -31,9 +31,22 @@ Same dataset (14,630 impressions), same recommend, same goal, only the
 `_search` baseline with the same `where` shapes is fast across the board
 (~230 ms each), so the slowdown is on the `_recommend` side.
 
-A2 vs A3 isolates the cause: same column type (linked String → `help_articles.article_id`),
-same recommend body, same dataset, same actual hits. The only difference
-is the column's `nullable` flag.
+A2 vs A3 narrowed it to the linked-Reference handling. The actual cause
+(thanks @arau) is that `where: {prev_article_id: "LEGAL-00"}` is the
+shortcut form: Aito materializes *every field* of the linked
+`help_articles` row (title, body, category, tags, page_context,
+customer_id) and uses them as recommendation priors. Traversing the
+link explicitly to the *key* column avoids that expansion entirely:
+
+| Variant | latency |
+|---|---|
+| `where: {prev_article_id: "LEGAL-00"}`           | **2272 ms** |
+| `where: {prev_article_id.article_id: "LEGAL-00"}` |  **325 ms** |
+
+Same hits, same data, ~7× faster. The `nullable: true` flag isn't the
+underlying cause — `article_id` (non-null) wasn't slow because the
+identity-traversal `article_id = X` matches non-null link keys without
+expansion. `prev_article_id` (nullable) hit the property-expansion path.
 
 ### Schema (target column highlighted)
 
@@ -74,9 +87,8 @@ POST /api/v1/_recommend
 
 ### Workaround
 
-Don't filter on `prev_article_id`. Move the "currently viewing this article"
-context out of `where` and use the eligibility traversal as the candidate
-restriction. Same hits, ~7× faster:
+Use the explicit-key traversal form so Aito does a plain key-match
+instead of expanding linked-entity properties:
 
 ```http
 POST /api/v1/_recommend
@@ -84,6 +96,8 @@ POST /api/v1/_recommend
   "from": "help_impressions",
   "basedOn": [],
   "where": {
+    "prev_article_id.article_id": "LEGAL-00",
+    "customer_id": "CUST-0000",
     "article_id.customer_id": { "$or": ["*", "CUST-0000"] }
   },
   "recommend": "article_id",
@@ -92,17 +106,20 @@ POST /api/v1/_recommend
 }
 ```
 
-(Empty `basedOn` skips prior-feature inference, which doesn't add
-information when the eligibility-restricted candidate pool is small. Tip
-from @arau.)
+(Empty `basedOn` skips prior-feature inference; not strictly required
+once the property expansion is gone, but it's clean and slightly faster.)
 
 ### What we'd hope from core
 
-The same `_recommend` shape with `where: {customer_id, article_id}` is
-~300 ms. Only `prev_article_id` (same type, same link target, just
-`nullable: true`) trips a ~7× slower path. Fixing this would let
-applications express "previous item" filters naturally without paying
-for the workaround.
+The shortcut form is the natural way to express the filter. Two
+options would make this trap less sharp:
+
+- Make `where: {linkedCol: X}` evaluate as identity-on-key by default
+  (current behavior of `where: {nonNullableLinkedCol: X}`), and have
+  callers opt *in* to the property-expansion behavior when they want
+  it.
+- Or surface the expansion in error/explain output so applications
+  notice it before profiling.
 
 ---
 
