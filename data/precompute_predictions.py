@@ -217,6 +217,47 @@ def precompute_one_customer(
     return sizes
 
 
+def precompute_landing(client: AitoClient, vendor_limit: int = 8, tenants_per_vendor: int = 4) -> int:
+    """Precompute the home page payload.
+
+    Without this, the home screen does shared_vendors + 4 parallel
+    formfill/template calls per vendor on first paint — visibly slow
+    on cold deploys. Producing landing.json reduces that to one
+    static-file read.
+    """
+    from src.multitenancy_service import compute_shared_vendors
+    from src.formfill_service import predict_template
+
+    vendors = compute_shared_vendors()[:vendor_limit]
+    templates: dict[str, dict] = {}
+
+    def fetch(vendor: str, customer_id: str) -> tuple[str, dict | None]:
+        try:
+            tpl = predict_template(client, customer_id, vendor)
+        except AitoError as e:
+            print(f"  landing template skipped {customer_id}/{vendor}: {e}")
+            tpl = None
+        return f"{vendor}|{customer_id}", tpl
+
+    jobs: list[tuple[str, str]] = []
+    for v in vendors:
+        for t in v["tenants"][:tenants_per_vendor]:
+            jobs.append((v["vendor"], t["customer_id"]))
+
+    print(f"  landing: {len(vendors)} vendors × up to {tenants_per_vendor} tenants = {len(jobs)} templates")
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        for key, tpl in pool.map(lambda j: fetch(*j), jobs):
+            if tpl is not None:
+                templates[key] = tpl
+
+    payload = {"vendors": vendors, "templates": templates}
+    PRECOMPUTED_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = PRECOMPUTED_DIR / "landing.json"
+    with open(out_path, "w") as f:
+        json.dump(payload, f, ensure_ascii=False)
+    return out_path.stat().st_size
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--customers", help="Comma-separated customer ids to process")
@@ -274,6 +315,16 @@ def main() -> None:
         print(f"Skip existing: {before - len(customers)} done, {len(customers)} remaining")
 
     print(f"Precomputing for {len(customers)} customer(s) with workers={args.workers}...")
+
+    # Landing page payload — runs once for the whole instance, not
+    # per-customer. Keep it cheap by skipping when --customers
+    # narrows the run.
+    if not args.customers and not args.skip_existing:
+        try:
+            landing_bytes = precompute_landing(client)
+            print(f"  landing.json: {landing_bytes / 1024:.1f} KB")
+        except Exception as e:
+            print(f"  landing precompute error: {e}", file=sys.stderr)
 
     total_bytes = 0
     t0 = time.time()

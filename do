@@ -37,7 +37,7 @@ Commands:
     azure-deploy      Push image + deploy to Azure (see docs/deploy-azure.md)
 
   Other:
-    screenshots       Capture screenshots of all views
+    screenshots       Capture screenshots of all views (--mobile / -m for iPhone)
     fmt               Format code
     check             Run all checks (test + fmt)
 
@@ -201,9 +201,23 @@ cmd_fmt() {
 }
 
 cmd_screenshots() {
-  echo "Capturing screenshots of all views..."
+  # Pass --mobile or -m to capture at iPhone 13 viewport (390 x 844).
+  # Default is desktop (1440 x 900). Either mode also captures the
+  # help drawer overlay since it's a separate UI surface that
+  # mobile-layout regressions can hit even when the underlying
+  # routes look fine.
+  local mode="desktop"
+  for arg in "$@"; do
+    case "$arg" in
+      --mobile|-m) mode="mobile" ;;
+    esac
+  done
+
+  echo "Capturing screenshots ($mode)..."
   echo "  Waiting for API and cache warmup..."
-  mkdir -p "$SCRIPT_DIR/screenshots"
+  local out_dir="$SCRIPT_DIR/screenshots"
+  if [ "$mode" = "mobile" ]; then out_dir="$SCRIPT_DIR/screenshots/mobile"; fi
+  mkdir -p "$out_dir"
 
   # Wait for server + full cache warmup by polling the slowest endpoints
   for ep in /api/invoices/pending /api/matching/pairs /api/rules/candidates /api/anomalies/scan /api/quality/overview; do
@@ -230,12 +244,18 @@ cmd_screenshots() {
     exit 1
   fi
 
-  node -e "
+  MODE="$mode" OUT_DIR="$out_dir" CHROME="$chrome" node -e "
     const { chromium } = require('$SCRIPT_DIR/frontend/node_modules/playwright-core');
+    const mode = process.env.MODE;
+    const outDir = process.env.OUT_DIR;
     (async () => {
-      const browser = await chromium.launch({ executablePath: '$chrome', headless: true });
-      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      const browser = await chromium.launch({ executablePath: process.env.CHROME, headless: true });
+      const ctxOpts = mode === 'mobile'
+        ? { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, userAgent: 'iPhone' }
+        : { viewport: { width: 1440, height: 900 } };
+      const ctx = await browser.newContext(ctxOpts);
       const routes = [
+        ['00-home','/'],
         ['01-invoices','/invoices/'],
         ['02-formfill','/formfill/'],
         ['03-matching','/matching/'],
@@ -247,15 +267,27 @@ cmd_screenshots() {
         ['09-quality-overrides','/quality/overrides/'],
       ];
       for (const [name, path] of routes) {
-        await page.goto('http://localhost:8200' + path);
-        await page.waitForTimeout(2500);
-        await page.screenshot({ path: '$SCRIPT_DIR/screenshots/' + name + '.png' });
+        const pg = await ctx.newPage();
+        await pg.goto('http://localhost:8200' + path).catch(()=>{});
+        await pg.waitForTimeout(2500);
+        await pg.screenshot({ path: outDir + '/' + name + '.png' });
         console.log('  captured ' + name);
+        await pg.close();
       }
+      // Help drawer overlay — separate surface that has its own
+      // mobile vs desktop layout. Captured against /invoices.
+      const hp = await ctx.newPage();
+      await hp.goto('http://localhost:8200/invoices/').catch(()=>{});
+      await hp.waitForTimeout(2000);
+      await hp.click('.help-fab').catch(()=>{});
+      await hp.waitForTimeout(800);
+      await hp.screenshot({ path: outDir + '/10-help-drawer.png' });
+      console.log('  captured 10-help-drawer');
+      await hp.close();
       await browser.close();
     })();
   "
-  echo "Done. Screenshots in screenshots/"
+  echo "Done. Screenshots in $out_dir/"
 }
 
 cmd_book() {
@@ -291,7 +323,7 @@ case "${1:-help}" in
   reset-data)      cmd_reset_data ;;
   generate-data)   cmd_generate_data "${@:2}" ;;
   precompute)      cmd_precompute "${@:2}" ;;
-  screenshots)     cmd_screenshots ;;
+  screenshots)     cmd_screenshots "${@:2}" ;;
   test)            cmd_test ;;
   fetch-companies) cmd_fetch_companies ;;
   optimize)        cmd_optimize ;;
