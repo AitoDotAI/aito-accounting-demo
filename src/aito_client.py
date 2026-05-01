@@ -8,11 +8,20 @@ made and what response shapes come back.
 Aito API docs: https://aito.ai/docs/api/
 """
 
+from contextvars import ContextVar
 from typing import Any
 
 import httpx
 
 from src.config import Config
+
+
+# Per-request Aito-call accumulator. Set by the FastAPI middleware
+# at the start of each HTTP request; read at the end so the response
+# can carry X-Aito-Ms / X-Aito-Calls headers. Frontend uses these
+# to render a persistent latency badge in the topbar — the demo's
+# answer to "is the predictive layer actually fast?"
+aito_call_log: ContextVar[list[float] | None] = ContextVar("aito_call_log", default=None)
 
 
 class AitoError(Exception):
@@ -80,6 +89,7 @@ class AitoClient:
 
         last_exc: AitoError | None = None
         for attempt in range(2):  # original + 1 retry
+            t0 = _time.monotonic()
             try:
                 response = httpx.request(
                     method,
@@ -114,6 +124,11 @@ class AitoClient:
 
             # Success — reset breaker
             self._breaker_failures = 0
+            # Record latency for the topbar badge (if a request-scoped
+            # log was set up by the middleware).
+            log = aito_call_log.get()
+            if log is not None:
+                log.append((_time.monotonic() - t0) * 1000.0)
             break
 
         return response.json()

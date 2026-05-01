@@ -2,6 +2,8 @@
 
 import CustomerSelector from "./CustomerSelector";
 import ColdStartBanner from "./ColdStartBanner";
+import LatencyBadge from "./LatencyBadge";
+import StartTourButton from "./StartTourButton";
 import { useTour } from "@/lib/tour-context";
 
 interface TopBarProps {
@@ -28,6 +30,7 @@ export default function TopBar({ breadcrumb, title, subtitle, actions, live }: T
         </>
       )}
       <div className="topbar-right">
+        <StartTourButton />
         <CustomerSelector />
         <button
           onClick={() => setTourOn(!tourOn)}
@@ -46,6 +49,7 @@ export default function TopBar({ breadcrumb, title, subtitle, actions, live }: T
         >
           {tourOn ? "Data flow ON" : "Data flow"}
         </button>
+        <LatencyBadge />
         {live && <span className="live-dot">Live</span>}
         {actions}
       </div>

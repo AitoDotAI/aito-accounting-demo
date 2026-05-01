@@ -267,21 +267,22 @@ def mine_rules_for_customer(client: AitoClient, customer_id: str, top_n: int = 8
         if f_match < 5 or support_ratio < 0.95:
             continue
 
-        # Find the most-common approver for this vendor's invoices
+        # Aito predicts the most-likely approver given (customer, vendor,
+        # gl_code) — same conditional structure, but with proper smoothing
+        # and a $p we could surface if needed. Replaces a _search +
+        # Counter aggregation that was reinventing _predict on the client.
         try:
-            inv_for_vendor = client.search(
+            ap_result = client.predict(
                 "invoices",
                 {"customer_id": customer_id, "vendor": vendor, "gl_code": target},
-                limit=20,
+                "approver",
             )
         except AitoError:
             continue
-        approvers = Counter(
-            h.get("approver") for h in inv_for_vendor.get("hits", []) if h.get("approver")
-        )
-        if not approvers:
+        ap_hits = ap_result.get("hits", [])
+        if not ap_hits or not ap_hits[0].get("feature"):
             continue
-        approver = approvers.most_common(1)[0][0]
+        approver = ap_hits[0]["feature"]
 
         rules.append({
             "name": f"{vendor} → GL {target}",

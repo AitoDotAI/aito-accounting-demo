@@ -3,20 +3,40 @@
 Three article categories: app (product docs), legal (compliance
 pointers), internal (per-customer guidance).
 
-Ranking strategy: Aito's `_recommend` operator — the same one
-aito-demo uses for product recommendations. The semantics fit
-help articles exactly:
+Ranking strategy: a single Aito `_recommend` call. Same operator,
+same goal-driven CTR ranking that aito-demo uses for product
+recommendations:
 
     POST /_recommend
-      from:      help_impressions             # impression history
-      where:     { customer_id, page, [query] }  # current context
-      recommend: article_id                   # what to recommend
-      goal:      { clicked: true }            # optimise for clicks
+      from:      help_impressions
+      where:
+        customer_id:               <current>
+        page:                      <current page>     # context
+        article_id.customer_id:    {"$or": ["*", current]}   # eligibility
+        $or:                                                  # query honesty
+          - { article_id.title: {"$match": query} }
+          - { article_id.body:  {"$match": query} }
+      recommend: article_id        # link to help_articles
+      goal:      {clicked: true}   # optimise for clicks
+      select:    [$p, article_id, title, body, category, tags,
+                  page_context, customer_id]
 
-Aito returns article_ids ranked by the predicted probability of
-the goal (a click) being achieved given the context — i.e. CTR-
-ranked recommendations. New clicks become new impression rows;
-the next call automatically reflects them, no retraining.
+Two things make the single-call shape work:
+
+1. `recommend: article_id` is a link field. The `select` traverses
+   the link automatically — title/body/category come from the
+   linked help_articles row, no second `_search` needed.
+
+2. `where` keys can be dotted to reference linked-table fields.
+   `article_id.customer_id` filters the candidate pool to the
+   eligibility set (no client-side filter). `article_id.title:
+   {"$match": q}` uses Aito's text analyzer (stemming, stopwords)
+   to apply the user's query honestly.
+
+Goal-driven ranking does the rest: `goal: {clicked: true}` ranks
+the eligible candidates by predicted P(click) given the context.
+New impressions become new training data; the next call
+automatically reflects them, no retraining.
 
 Logging: every shown article writes an impression row; every click
 writes a second row with clicked=true. The signal is implicit in
@@ -29,6 +49,21 @@ import uuid
 from src.aito_client import AitoClient, AitoError
 
 
+def _eligibility_clause(customer_id: str) -> dict:
+    """Articles this customer can see: global ('*') + own internal."""
+    return {"$or": ["*", customer_id]}
+
+
+def _query_clause(query: str) -> dict:
+    """Aito-analyzer match across title and body so the result must
+    actually contain the user's words. The analyzer does stemming and
+    stopword removal — much better than a literal substring filter."""
+    return {"$or": [
+        {"article_id.title": {"$match": query}},
+        {"article_id.body": {"$match": query}},
+    ]}
+
+
 def search_help(
     client: AitoClient,
     customer_id: str,
@@ -38,106 +73,36 @@ def search_help(
 ) -> list[dict]:
     """Return click-through-ranked help articles for the current context.
 
-    Two Aito calls:
-      1. `_search` help_articles WHERE customer_id IN ("*", current)
-         to fetch the eligible article pool (ids, titles, bodies for
-         rendering, plus filtering set). Cached per customer for 1 h
-         since the article catalogue is stable.
-      2. `_recommend` against help_impressions for CTR ranking.
-
-    On cold start (no impression history) the recommend pool is
-    empty, and we top up with the eligible pool directly.
-
-    `_recommend` cannot return linked help_articles fields via
-    `select`, so we still need the search call to render titles
-    and bodies. But we collapse the two old eligibility searches
-    (one global, one per-customer) into a single `$or` query.
+    Single `_recommend` call: linked-field `select` returns the
+    rendered article rows directly; linked-field `where` filters
+    eligibility and applies the text query server-side. No catalog
+    cache, no client-side post-filtering.
     """
-    base_where: dict = {"customer_id": customer_id}
+    where: dict = {
+        "customer_id": customer_id,
+        "article_id.customer_id": _eligibility_clause(customer_id),
+    }
     if page:
-        base_where["page"] = page
+        where["page"] = page
     if query:
-        base_where["query"] = query
+        where.update(_query_clause(query))
 
-    # Single eligibility query: global articles + this customer's own.
-    # Cached server-side; the catalog doesn't churn during a session.
-    try:
-        eligible = client.search(
-            "help_articles",
-            {"customer_id": {"$or": ["*", customer_id]}},
-            limit=250,
-        ).get("hits", [])
-    except AitoError:
-        return []
-    by_id = {a["article_id"]: a for a in eligible}
-    eligible_ids = set(by_id.keys())
-    eligible_global = [a for a in eligible if a.get("customer_id") == "*"]
-    eligible_own = [a for a in eligible if a.get("customer_id") == customer_id]
-
-    # Aito _recommend returns ranked article_ids globally — its where
-    # clause biases ranking but doesn't restrict the candidate pool.
-    # Most high-$p hits are other-customer internal articles which we
-    # filter out via the eligibility set. We over-fetch generously
-    # then top up from the eligibility pool itself so the user always
-    # gets `limit` articles even if _recommend's signal is sparse.
     try:
         result = client._request("POST", "/_recommend", json={
             "from": "help_impressions",
-            "where": base_where,
+            "where": where,
             "recommend": "article_id",
             "goal": {"clicked": True},
-            "limit": 100,
+            "select": [
+                "$p", "article_id", "title", "body", "category",
+                "tags", "page_context", "customer_id",
+            ],
+            "limit": limit,
         })
     except AitoError:
-        result = {"hits": []}
+        return []
 
-    ranked_ids: list[str] = []
-    seen: set[str] = set()
-    for hit in result.get("hits", []):
-        aid = hit.get("article_id")
-        if not aid or aid in seen or aid not in eligible_ids:
-            continue
-        seen.add(aid)
-        ranked_ids.append(aid)
-
-    # Top up to `limit` with eligible articles not yet ranked. When
-    # the user typed a query, restrict topups (and post-filter the
-    # ranked list) to articles whose title/body/tags actually contain
-    # the query tokens. Otherwise q="GL code" and q="zzznoresults"
-    # would return identical lists -- the fallback path was query-blind.
-    def _match_query(article: dict) -> bool:
-        if not query:
-            return True
-        haystack = " ".join([
-            article.get("title", ""),
-            article.get("body", ""),
-            article.get("tags", ""),
-            article.get("category", ""),
-        ]).lower()
-        # Every >=3-character token in the query must appear somewhere
-        # in the article. Aito's analyzer would tokenize differently
-        # (stemming, stopwords) but this is the visible filter the user
-        # typed -- exact substring is honest.
-        tokens = [t for t in query.lower().split() if len(t) >= 3]
-        return all(t in haystack for t in tokens) if tokens else True
-
-    if query:
-        ranked_ids = [aid for aid in ranked_ids if aid in by_id and _match_query(by_id[aid])]
-
-    if len(ranked_ids) < limit:
-        own_match = [a["article_id"] for a in eligible_own if a.get("page_context") == page and page and _match_query(a)]
-        own_other = [a["article_id"] for a in eligible_own if _match_query(a)]
-        global_match = [a["article_id"] for a in eligible_global if a.get("page_context") == page and page and _match_query(a)]
-        global_other = [a["article_id"] for a in eligible_global if _match_query(a)]
-        for aid in own_match + own_other + global_match + global_other:
-            if aid in seen:
-                continue
-            seen.add(aid)
-            ranked_ids.append(aid)
-            if len(ranked_ids) >= limit:
-                break
-
-    return [by_id[aid] for aid in ranked_ids[:limit] if aid in by_id]
+    return result.get("hits", [])[:limit]
 
 
 def related_articles(
@@ -148,50 +113,78 @@ def related_articles(
 ) -> list[dict]:
     """Articles users tend to click next after viewing `article_id`.
 
-    The signal: every impression carries `prev_article_id`. Aito's
-    `_recommend WHERE prev_article_id = X, customer_id = Y, goal:
-    {clicked: true}` ranks article_ids by predicted P(click) given
-    that the user just clicked X. This is the standard "users who
-    read this also read" pattern, modelled directly through Aito.
-
-    Filtered to the customer's eligibility set (global "*" + own
-    internal articles) and to exclude the source article itself.
+    `_recommend` over `help_impressions` where the user's previous
+    article was `article_id`. `prev_article_id` is itself a link to
+    help_articles, but we filter on the link key directly — Aito's
+    candidate filter is on `article_id.customer_id`, the link from
+    impression to the *recommended* article.
     """
-    # Single eligibility query (global + own) via $or.
-    try:
-        eligible = client.search(
-            "help_articles",
-            {"customer_id": {"$or": ["*", customer_id]}},
-            limit=250,
-        ).get("hits", [])
-    except AitoError:
-        return []
-    by_id = {a["article_id"]: a for a in eligible}
+    where = {
+        "prev_article_id": article_id,
+        "customer_id": customer_id,
+        "article_id.customer_id": _eligibility_clause(customer_id),
+    }
 
+    # Over-fetch by 1 so we can drop the source article if it self-recommends.
+    # Aito's `recommend` field doesn't accept {"$not": ...} (link fields take
+    # values, not comparison clauses), so the exclusion stays client-side.
     try:
         result = client._request("POST", "/_recommend", json={
             "from": "help_impressions",
-            "where": {"prev_article_id": article_id, "customer_id": customer_id},
+            "where": where,
             "recommend": "article_id",
             "goal": {"clicked": True},
-            "limit": limit * 5,  # over-fetch to allow filtering
+            "select": [
+                "$p", "article_id", "title", "body", "category",
+                "tags", "page_context", "customer_id",
+            ],
+            "limit": limit + 1,
         })
     except AitoError:
-        result = {"hits": []}
+        return []
 
     out = []
     for hit in result.get("hits", []):
-        aid = hit.get("article_id")
-        if not aid or aid == article_id:
+        if hit.get("article_id") == article_id:
             continue
-        if aid not in by_id:
-            continue
-        art = dict(by_id[aid])
-        art["score"] = round(float(hit.get("$p", 0)), 3)
-        out.append(art)
+        row = dict(hit)
+        row["score"] = round(float(hit.get("$p", 0)), 3)
+        out.append(row)
         if len(out) >= limit:
             break
     return out
+
+
+def customer_help_stats(client: AitoClient, customer_id: str) -> dict:
+    """Per-customer impression / click / CTR rollup.
+
+    Two `_search` calls with `limit: 0` return only the `total`
+    field — cheaper than fetching rows. CTR (clicks ÷ impressions)
+    is the single deflection number worth surfacing: above the
+    typed-search baseline (which is closer to 1–3% for in-app help
+    on category pages) it argues that context-aware ranking pulls
+    the right article up far enough that users open it instead of
+    typing into the support form.
+    """
+    def _count(where: dict) -> int:
+        try:
+            r = client._request("POST", "/_search", json={
+                "from": "help_impressions",
+                "where": where,
+                "limit": 0,
+            })
+            return int(r.get("total", 0))
+        except AitoError:
+            return 0
+
+    impressions = _count({"customer_id": customer_id})
+    clicks = _count({"customer_id": customer_id, "clicked": True})
+    ctr = (clicks / impressions) if impressions else 0.0
+    return {
+        "impressions": impressions,
+        "clicks": clicks,
+        "ctr": round(ctr, 4),
+    }
 
 
 def log_impression(

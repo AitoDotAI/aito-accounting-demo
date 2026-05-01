@@ -15,6 +15,12 @@ interface Article {
   page_context?: string;
 }
 
+interface HelpStats {
+  impressions: number;
+  clicks: number;
+  ctr: number;
+}
+
 const CATEGORY_LABEL: Record<string, string> = {
   app: "Product docs",
   legal: "Legal & compliance",
@@ -44,6 +50,7 @@ export default function HelpDrawer() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [related, setRelated] = useState<Record<string, Article[]>>({});
   const [relatedLoading, setRelatedLoading] = useState<string | null>(null);
+  const [stats, setStats] = useState<HelpStats | null>(null);
   // Track the last clicked article so impressions on next-loaded
   // articles can carry prev_article_id (matches the synthesised
   // session model in help_impressions).
@@ -93,6 +100,19 @@ export default function HelpDrawer() {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [pathname, customerId, open, query]);
+
+  // Per-tenant deflection numbers: total impressions, clicks, CTR.
+  // Fetched lazily on first open so closed-drawer page loads stay
+  // cheap; refreshed when the customer changes.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setStats(null);
+    apiFetch<HelpStats>(`/api/help/stats?customer_id=${encodeURIComponent(customerId)}`)
+      .then((d) => { if (!cancelled) setStats(d); })
+      .catch(() => { if (!cancelled) setStats(null); });
+    return () => { cancelled = true; };
+  }, [open, customerId]);
 
   // Typed-query searches: only when the drawer is open AND the user
   // typed something. Doesn't prefetch when closed (we'd be firing on
@@ -156,7 +176,7 @@ export default function HelpDrawer() {
     <>
       <button
         onClick={() => setOpen(!open)}
-        title="Demo help — articles ranked by Aito"
+        title="In-product help — context-aware article ranking deflects support tickets"
         style={{
           // Inside the midpane: offset from the viewport right by the
           // AitoPanel width (268px) plus a 24px gutter. The button sits
@@ -204,13 +224,35 @@ export default function HelpDrawer() {
           <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border2)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
               <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px" }}>
-                Demo help
+                In-product help · ticket deflection
               </div>
               <div style={{ fontSize: 13, color: "var(--text2)", marginTop: 2 }}>
                 Context: <code style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: "var(--gold-dark)" }}>{pathname || "/"}</code>
               </div>
             </div>
             <button onClick={() => setOpen(false)} style={{ background: "transparent", border: "none", color: "var(--text3)", fontSize: 22, cursor: "pointer" }}>×</button>
+          </div>
+
+          {/* Deflection stats strip — concrete CPO-readable numbers */}
+          <div style={{ padding: "10px 18px", borderBottom: "1px solid var(--border2)", background: "var(--surface2)", display: "flex", alignItems: "center", gap: 16 }}>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <span style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", fontFamily: "'IBM Plex Mono', monospace", lineHeight: 1 }}>
+                {stats ? stats.impressions.toLocaleString() : "—"}
+              </span>
+              <span style={{ fontSize: 9.5, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".5px", marginTop: 3 }}>Impressions</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <span style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", fontFamily: "'IBM Plex Mono', monospace", lineHeight: 1 }}>
+                {stats ? stats.clicks.toLocaleString() : "—"}
+              </span>
+              <span style={{ fontSize: 9.5, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".5px", marginTop: 3 }}>Clicks</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <span style={{ fontSize: 15, fontWeight: 600, color: "var(--green)", fontFamily: "'IBM Plex Mono', monospace", lineHeight: 1 }}>
+                {stats ? `${(stats.ctr * 100).toFixed(1)}%` : "—"}
+              </span>
+              <span style={{ fontSize: 9.5, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".5px", marginTop: 3 }}>CTR (deflection proxy)</span>
+            </div>
           </div>
 
           <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--border2)" }}>
@@ -346,9 +388,12 @@ export default function HelpDrawer() {
           </div>
 
           <div style={{ padding: "10px 18px", borderTop: "1px solid var(--border2)", fontSize: 10, color: "var(--text3)", lineHeight: 1.5 }}>
-            Articles ranked by historical click-through-rate via Aito{" "}
-            <code style={{ fontFamily: "'IBM Plex Mono', monospace" }}>_predict article_id</code>.{" "}
-            Each shown article is an impression; each click trains the next ranking.
+            Context-aware help routes users to the right article instead of
+            the support queue. Same{" "}
+            <code style={{ fontFamily: "'IBM Plex Mono', monospace" }}>_recommend</code>
+            {" "}substrate that fills GL codes — one impression table, no
+            separate help-search service. Each shown article is an
+            impression; each click trains the next ranking.
           </div>
         </div>
       )}

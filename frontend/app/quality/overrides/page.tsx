@@ -6,6 +6,7 @@ import { useCustomer } from "@/lib/customer-context";
 import ErrorState from "@/components/shell/ErrorState";
 import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
+import GovernanceStepper from "@/components/governance/GovernanceStepper";
 import LiftHint from "@/components/prediction/LiftHint";
 import { apiFetch } from "@/lib/api";
 import type { AitoPanelConfig } from "@/lib/types";
@@ -72,7 +73,8 @@ export default function OverridesPage() {
     <>
       <Nav />
       <div className="main">
-        <TopBar breadcrumb="Quality" title="Human Overrides" subtitle="Every correction is a learning signal" live={live} />
+        <TopBar breadcrumb="Governance · 2. Review" title="Human Overrides" subtitle="Every correction is a learning signal" live={live} />
+        <GovernanceStepper active="review" />
         <div className="content">
           {topPattern && (
             <div style={{ background: "var(--gold-light)", border: "1px solid #d8bc70", borderRadius: 8, padding: "14px 18px", marginBottom: 16 }}>

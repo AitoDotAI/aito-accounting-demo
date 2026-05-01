@@ -120,7 +120,33 @@ app.add_middleware(
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Aito-Ms", "X-Aito-Calls"],
 )
+
+
+@app.middleware("http")
+async def aito_latency_middleware(request: Request, call_next):
+    """Tag each /api response with the time spent in Aito calls.
+
+    A contextvar accumulator collects per-Aito-call ms inside
+    `AitoClient._request`; this middleware reads it after the
+    handler runs and exposes the total + count via two response
+    headers. Frontend uses these to render a topbar latency
+    badge — the demo's persistent answer to "is the predictive
+    layer actually fast?". Endpoints that don't hit Aito set no
+    headers (and the frontend skips them).
+    """
+    from src.aito_client import aito_call_log
+    log: list[float] = []
+    token = aito_call_log.set(log)
+    try:
+        response = await call_next(request)
+    finally:
+        aito_call_log.reset(token)
+    if log:
+        response.headers["X-Aito-Ms"] = f"{sum(log):.1f}"
+        response.headers["X-Aito-Calls"] = str(len(log))
+    return response
 
 
 @app.middleware("http")
@@ -1052,6 +1078,92 @@ def help_related(
     from src.help_service import related_articles
     result = {"articles": related_articles(aito, article_id, customer_id, limit=limit)}
     cache.set(cache_key, result, ttl=3600)
+    return result
+
+
+# Computed once at first request from the static fixture, then memoised
+# for the process lifetime — invoices.json is ~30MB and reading it
+# inside a request handler blocks the event loop for hundreds of ms.
+_shared_vendors_full: list[dict] | None = None
+
+
+def _compute_shared_vendors() -> list[dict]:
+    """Scan the invoices fixture once and rank vendors by cross-tenant
+    GL contrast. Result is the unbounded list; callers slice to `limit`.
+    """
+    import json
+    from collections import defaultdict, Counter
+    from pathlib import Path
+
+    inv_path = Path(__file__).parent.parent / "data" / "invoices.json"
+    if not inv_path.exists():
+        return []
+
+    vendor_tenant_gl: dict[str, dict[str, Counter]] = defaultdict(lambda: defaultdict(Counter))
+    for row in json.loads(inv_path.read_text()):
+        v, c, gl = row.get("vendor"), row.get("customer_id"), row.get("gl_code")
+        if v and c and gl:
+            vendor_tenant_gl[v][c][gl] += 1
+
+    out: list[dict] = []
+    for vendor, tenants in vendor_tenant_gl.items():
+        if len(tenants) < 3:
+            continue
+        # Per-tenant dominant GL; "contrast" = number of distinct
+        # dominant GLs across tenants (3 different GLs > 1 GL repeated 8x).
+        per_tenant = {c: gl.most_common(1)[0] for c, gl in tenants.items()}
+        distinct_gls = len({gl for _, (gl, _) in per_tenant.items()})
+        # Only keep tenants with at least 5 invoices for this vendor —
+        # below that, the dominant GL is noise.
+        well_supported = {c: (gl, n) for c, (gl, n) in per_tenant.items() if n >= 5}
+        if len(well_supported) < 3 or distinct_gls < 2:
+            continue
+        out.append({
+            "vendor": vendor,
+            "tenant_count": len(well_supported),
+            "distinct_gls": distinct_gls,
+            "tenants": [
+                {"customer_id": c, "gl_code": gl, "n": n}
+                for c, (gl, n) in sorted(well_supported.items(), key=lambda x: -x[1][1])
+            ],
+        })
+
+    # Rank by (distinct_gls, tenant_count) — most contrastful first.
+    out.sort(key=lambda x: (-x["distinct_gls"], -x["tenant_count"]))
+    return out
+
+
+@app.get("/api/multitenancy/shared_vendors")
+def multitenancy_shared_vendors(limit: int = 8):
+    """Vendors used by multiple tenants — the candidate set for the
+    'same vendor, different tenants' demo screen.
+
+    Computed from the loaded invoices fixture (not Aito) because we
+    want a deterministic curated list for the demo, ranked by
+    cross-tenant *contrast* rather than raw frequency.
+    """
+    global _shared_vendors_full
+    if _shared_vendors_full is None:
+        _shared_vendors_full = _compute_shared_vendors()
+    return {"vendors": _shared_vendors_full[:limit]}
+
+
+@app.get("/api/help/stats")
+def help_stats(customer_id: str = Query(...)):
+    """Tenant-scoped impression / click / CTR rollup.
+
+    Surfaced in the help drawer so the support-cost lens is visible
+    in the demo: the same predictive substrate that fills GL codes
+    also ranks help articles, and the CTR number is the deflection
+    proxy a CPO actually tracks.
+    """
+    cache_key = f"help_stats:{customer_id}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    from src.help_service import customer_help_stats
+    result = customer_help_stats(aito, customer_id)
+    cache.set(cache_key, result, ttl=300)
     return result
 
 

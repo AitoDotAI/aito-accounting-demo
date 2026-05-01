@@ -12,11 +12,46 @@ export class ApiError extends Error {
   }
 }
 
+export interface AitoLatencySample {
+  ms: number;
+  calls: number;
+  path: string;
+  at: number;
+}
+
+type LatencyListener = (sample: AitoLatencySample) => void;
+const latencyListeners = new Set<LatencyListener>();
+
+export function onAitoLatency(fn: LatencyListener): () => void {
+  latencyListeners.add(fn);
+  return () => {
+    // Set.delete() returns boolean; a void cleanup callback is what
+    // React effects expect, so wrap explicitly rather than rely on
+    // type coercion.
+    latencyListeners.delete(fn);
+  };
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, init);
+  // Surface Aito round-trip ms whenever the backend signals it via
+  // X-Aito-Ms (set per-request when any AitoClient call ran). Listeners
+  // power the topbar latency badge; endpoints that didn't hit Aito
+  // simply emit nothing.
+  const ms = res.headers.get("X-Aito-Ms");
+  const calls = res.headers.get("X-Aito-Calls");
+  if (ms != null) {
+    const sample: AitoLatencySample = {
+      ms: parseFloat(ms),
+      calls: parseInt(calls || "1", 10) || 1,
+      path,
+      at: Date.now(),
+    };
+    for (const fn of latencyListeners) {
+      try { fn(sample); } catch { /* listener error must not break API call */ }
+    }
+  }
   if (!res.ok) {
-    // Try to extract the structured error message the API returns
-    // for validation failures (e.g. unknown customer_id).
     let detail: string | null = null;
     try {
       const body = await res.clone().json();

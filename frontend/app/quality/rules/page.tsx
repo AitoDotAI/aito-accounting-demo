@@ -5,6 +5,7 @@ import Nav from "@/components/shell/Nav";
 import { useCustomer } from "@/lib/customer-context";
 import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
+import GovernanceStepper from "@/components/governance/GovernanceStepper";
 import ConfidenceBar from "@/components/prediction/ConfidenceBar";
 import ErrorState from "@/components/shell/ErrorState";
 import { apiFetch } from "@/lib/api";
@@ -105,7 +106,7 @@ export default function RulePerformancePage() {
       <Nav />
       <div className="main">
         <TopBar
-          breadcrumb="Quality"
+          breadcrumb="Governance · 3. Measure"
           title="Rule Performance"
           subtitle={
             data
@@ -116,6 +117,7 @@ export default function RulePerformancePage() {
           }
           live={live}
         />
+        <GovernanceStepper active="measure" />
         <div className="content">
           {error && <ErrorState error={error} />}
           {drift && drift.rules.length === 0 && (
