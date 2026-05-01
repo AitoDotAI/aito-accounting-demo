@@ -113,33 +113,43 @@ def related_articles(
 ) -> list[dict]:
     """Articles users tend to click next after viewing `article_id`.
 
-    `_recommend` over `help_impressions` where the user's previous
-    article was `article_id`. `prev_article_id` is itself a link to
-    help_articles, but we filter on the link key directly — Aito's
-    candidate filter is on `article_id.customer_id`, the link from
-    impression to the *recommended* article.
-    """
-    where = {
-        "prev_article_id": article_id,
-        "customer_id": customer_id,
-        "article_id.customer_id": _eligibility_clause(customer_id),
-    }
+    Shape note (this matters): two slow-path traps to avoid.
 
-    # Over-fetch by 1 so we can drop the source article if it self-recommends.
-    # Aito's `recommend` field doesn't accept {"$not": ...} (link fields take
-    # values, not comparison clauses), so the exclusion stays client-side.
+    1. `where: {prev_article_id: X}` — the shortcut form on a
+       linked Reference column makes Aito materialize *all* fields
+       of the linked entity as recommendation priors. ~2.3s/call
+       on this dataset. The fix is to traverse the link
+       explicitly to the key column: `prev_article_id.article_id`.
+       Same filter, same hits, ~7× faster (~300ms). Tip from
+       @arau; full bisect in docs/notes/aito-perf-findings.md.
+    2. Non-empty `basedOn` triggers prior-feature inference even
+       when the candidate pool is already narrow. We pass
+       `basedOn: []` so the recommend skips that step.
+    """
+    query = {
+        "from": "help_impressions",
+        "basedOn": [],
+        "where": {
+            # Explicit-key traversal: don't trip the linked-field
+            # property-expansion slow path.
+            "prev_article_id.article_id": article_id,
+            "customer_id": customer_id,
+            "article_id.customer_id": _eligibility_clause(customer_id),
+        },
+        "recommend": "article_id",
+        "goal": {"clicked": True},
+        "select": [
+            "$p", "article_id", "title", "body", "category",
+            "tags", "page_context", "customer_id",
+        ],
+        # Over-fetch by 1 so we can drop the source article if it
+        # self-recommends. Aito's `recommend` field doesn't accept
+        # {"$not": ...} (link fields take values, not comparison
+        # clauses), so the exclusion stays client-side.
+        "limit": limit + 1,
+    }
     try:
-        result = client._request("POST", "/_recommend", json={
-            "from": "help_impressions",
-            "where": where,
-            "recommend": "article_id",
-            "goal": {"clicked": True},
-            "select": [
-                "$p", "article_id", "title", "body", "category",
-                "tags", "page_context", "customer_id",
-            ],
-            "limit": limit + 1,
-        })
+        result = client._request("POST", "/_recommend", json=query)
     except AitoError:
         return []
 

@@ -36,6 +36,32 @@ cache.init(aito)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
+def _warm_aito_tables():
+    """Take the cold-load cost off the first user's path.
+
+    Aito lazily loads tables on first query; help_impressions in
+    particular goes 12s → 14ms after the first hit. We fire one
+    cheap _search per live-queried table on startup so a real
+    visitor doesn't watch a 12s spinner. See
+    docs/notes/aito-perf-findings.md.
+    """
+    import threading
+
+    def go():
+        if not aito.check_connectivity():
+            return
+        for table in ("help_impressions", "help_articles", "customers"):
+            try:
+                aito.search(table, {}, limit=1)
+            except Exception as e:
+                print(f"warm-table {table}: {e}")
+
+    threading.Thread(target=go, daemon=True).start()
+
+
+_warm_aito_tables()
+
+
 def _warm_top_customers():
     """Warm cache for top customers on startup.
 
@@ -1058,6 +1084,24 @@ def help_impression(body: dict):
     return {"ok": True}
 
 
+_HELP_RELATED_JSON_PATH = _PROJECT_ROOT / "data" / "precomputed" / "help_related.json"
+_help_related_precomputed: dict | None = None
+_help_related_loaded = False
+
+
+def _load_help_related_precompute() -> dict:
+    """Lazy-load the help_related precompute so the file scan happens
+    on first lookup, not module import."""
+    global _help_related_precomputed, _help_related_loaded
+    if _help_related_loaded:
+        return _help_related_precomputed or {}
+    _help_related_loaded = True
+    if _HELP_RELATED_JSON_PATH.exists():
+        with open(_HELP_RELATED_JSON_PATH) as f:
+            _help_related_precomputed = json.load(f)
+    return _help_related_precomputed or {}
+
+
 @app.get("/api/help/related")
 def help_related(
     article_id: str = Query(...),
@@ -1068,9 +1112,19 @@ def help_related(
 
     Powered by `_recommend WHERE prev_article_id=…, goal: clicked=true`
     against help_impressions. Filtered to the customer's eligibility
-    set (global + own internal). Cached server-side -- the related
-    set for an article is stable across users.
+    set (global + own internal).
+
+    Cold-path latency on Aito (~5-12s) was bad enough that the first
+    click on any expanded help article looked broken in prod. We now
+    serve `data/precomputed/help_related.json` when shipped, fall back
+    to the in-memory cache, and only as a last resort issue the live
+    `_recommend` (1h TTL).
     """
+    pre = _load_help_related_precompute()
+    cust_pre = pre.get(customer_id, {})
+    if article_id in cust_pre:
+        return {"articles": cust_pre[article_id][:limit]}
+
     cache_key = f"help_related:{customer_id}:{article_id}:{limit}"
     cached = cache.get(cache_key)
     if cached is not None:

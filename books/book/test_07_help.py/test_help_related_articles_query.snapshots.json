@@ -1,0 +1,33 @@
+{
+  "httpx": {
+    "bd84a9520b6810c02e4bce948c1cdcd4a04e0430": {
+      "request": {
+        "hash": "bd84a9520b6810c02e4bce948c1cdcd4a04e0430",
+        "method": "POST",
+        "url": "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_recommend"
+      },
+      "response": {
+        "content": "eyJvZmZzZXQiOjAsInRvdGFsIjoyNSwiaGl0cyI6W3siJHAiOjAuMzUxOTczNjk0ODI1NTAwNDUsImFydGljbGVfaWQiOiJDVVNULTAwMDAtSU5ULTAxIiwidGl0bGUiOiJDb3N0IGNlbnRyZSBydWxlcyBhdCBUb3JuaW8gUmV0YWlsIE95IEFiIiwiYm9keSI6IkF0IFRvcm5pbyBSZXRhaWwgT3kgQWIsIGNvc3QgY2VudHJlcyBhcmUgbWFwcGVkIHN0cmljdGx5IGJ5IGRlcGFydG1lbnQ6IE9wZXJhdGlvbnMg4oaSIENDLTIwMCwgU2FsZXMg4oaSIENDLTMwMCwgSVQg4oaSIENDLTQwMC4gQWl0byBsZWFybnMgdGhpcyBmcm9tIGhpc3RvcnkgYnV0IGlmIHRoZSBjb3N0IGNlbnRyZSBwcmVkaWN0aW9uIGxvb2tzIHdyb25nLCBvdmVycmlkZSBpdCDigJQgdGhlIG5leHQgbWluaW5nIGN5Y2xlIHdpbGwgaW5jb3Jwb3JhdGUgdGhlIGNvcnJlY3Rpb24uIiwiY2F0ZWdvcnkiOiJpbnRlcm5hbCIsInRhZ3MiOiJjb3N0IGNlbnRyZSBkZXBhcnRtZW50IG1hcHBpbmcgb3ZlcnJpZGUiLCJwYWdlX2NvbnRleHQiOiIvZm9ybWZpbGwiLCJjdXN0b21lcl9pZCI6IkNVU1QtMDAwMCJ9LHsiJHAiOjAuMzUwMzc1OTQ5NTU0NzQzMjcsImFydGljbGVfaWQiOiJDVVNULTAwMDAtSU5ULTAzIiwidGl0bGUiOiJRdWFydGVyLWVuZCBjbG9zZSBhdCBUb3JuaW8gUmV0YWlsIE95IEFiIiwiYm9keSI6IlRvcm5pbyBSZXRhaWwgT3kgQWIgY2xvc2VzIHRoZSBib29rcyBvbiB0aGUgNXRoIGJ1c2luZXNzIGRheSBvZiB0aGUgZm9sbG93aW5nIG1vbnRoLiBSdW4gUXVhbGl0eSA+IFJ1bGVzID4gU25hcHNob3QgYmVmb3JlIGNsb3NlIHRvIGxvY2sgdGhlIHJ1bGUgc2V0IGluIGVmZmVjdCBkdXJpbmcgdGhlIHF1YXJ0ZXIuIFRoZSBzbmFwc2hvdCBiZWNvbWVzIHBhcnQgb2YgdGhlIGF1ZGl0IHN1cHBvcnQgcGFjay4iLCJjYXRlZ29yeSI6ImludGVybmFsIiwidGFncyI6ImNsb3NlIG1vbnRoIHF1YXJ0ZXIgZW5kIHNuYXBzaG90IGF1ZGl0IiwicGFnZV9jb250ZXh0IjoiL3F1YWxpdHkvcnVsZXMiLCJjdXN0b21lcl9pZCI6IkNVU1QtMDAwMCJ9LHsiJHAiOjAuMzMxNzAxMzU0Mjg4NzQ0NTMsImFydGljbGVfaWQiOiJDVVNULTAwMDAtSU5ULTAwIiwidGl0bGUiOiJBcHByb3ZhbCBwb2xpY3k6IGludm9pY2VzIG92ZXIg4oKsMTAsMDAwIiwiYm9keSI6IlRvcm5pbyBSZXRhaWwgT3kgQWIgcmVxdWlyZXMgZHVhbCBhcHByb3ZhbCBmb3IgYW55IGludm9pY2UgYWJvdmUg4oKsMTAsMDAwLiBUaGUgYXBwcm92ZXIncyBzaWduYXR1cmUgaXMgcmVjb3JkZWQgaW4gdGhlIG92ZXJyaWRlcyB0YWJsZSBldmVuIHdoZW4gdGhlIHByZWRpY3Rpb24gaXMgY29ycmVjdCwgdG8gcHJlc2VydmUgdGhlIFNPWCB0cmFpbC4gRm9yIGFtb3VudHMgYWJvdmUg4oKsNTAsMDAwLCB0aGUgQ0ZPIG11c3QgYWxzbyBzaWduLiIsImNhdGVnb3J5IjoiaW50ZXJuYWwiLCJ0YWdzIjoiYXBwcm92YWwgcG9saWN5IHRocmVzaG9sZCBkdWFsIGNmbyBvdmVyIiwicGFnZV9jb250ZXh0IjoiL2ludm9pY2VzIiwiY3VzdG9tZXJfaWQiOiJDVVNULTAwMDAifSx7IiRwIjowLjMxOTQxOTI0OTQ2MjYyMTIsImFydGljbGVfaWQiOiJDVVNULTAwMDAtSU5ULTA0IiwidGl0bGUiOiJPdmVycmlkZSBwb2xpY3kgYXQgVG9ybmlvIFJldGFpbCBPeSBBYiIsImJvZHkiOiJUb3JuaW8gUmV0YWlsIE95IEFiJ3MgcG9saWN5IHJlcXVpcmVzIHRoZSBjb3JyZWN0b3IgdG8gZW50ZXIgYSByZWFzb24gZm9yIGFueSBHTCBvciBhcHByb3ZlciBvdmVycmlkZSDigJQgdGhlc2Ugc3VyZmFjZSBpbiB0aGUgUXVhbGl0eSA+IE92ZXJyaWRlIFBhdHRlcm5zIHZpZXcuIFBhdHRlcm5zIHJlcGVhdGluZyA+IDUgdGltZXMgd2l0aCBsaWZ0ID4gMjDDlyBiZWNvbWUgcnVsZSBjYW5kaWRhdGVzIGFuZCBhcmUgcmV2aWV3ZWQgYnkgdGhlIENvbnRyb2xsZXIgbW9udGhseS4iLCJjYXRlZ29yeSI6ImludGVybmFsIiwidGFncyI6Im92ZXJyaWRlIHBvbGljeSByZWFzb24gY29ycmVjdG9yIHBhdHRlcm4gcmV2aWV3IiwicGFnZV9jb250ZXh0IjoiL3F1YWxpdHkvb3ZlcnJpZGVzIiwiY3VzdG9tZXJfaWQiOiJDVVNULTAwMDAifSx7IiRwIjowLjMxMTg2Mjg0NDk3MDIyNzE1LCJhcnRpY2xlX2lkIjoiQVBQLTAyIiwidGl0bGUiOiJXaHkgYSBydWxlIHNheXMgJ0RyaWZ0aW5nJyIsImJvZHkiOiJBIHJ1bGUncyBzdGF0dXMgaXMgRHJpZnRpbmcgd2hlbiBpdHMgcHJlY2lzaW9uIG92ZXIgdGhlIGxhc3QgMTIgd2Vla3MgZmVsbCBieSBtb3JlIHRoYW4gNSBwZXJjZW50YWdlIHBvaW50cy4gT3BlbiB0aGUgMTItd2VlayBzcGFya2xpbmUgdG8gc2VlIGV4YWN0bHkgd2hlbiB0aGUgZHJvcCBoYXBwZW5lZC4gQ29tbW9uIGNhdXNlczogdmVuZG9yIGNoYW5nZWQgYnVzaW5lc3MgbW9kZWwsIG5ldyBhcHByb3ZlciBvbmJvYXJkZWQsIG92ZXJyaWRlIHBhdHRlcm4gZW1lcmdpbmcuIiwiY2F0ZWdvcnkiOiJhcHAiLCJ0YWdzIjoiZHJpZnQgZHJpZnRpbmcgcHJlY2lzaW9uIHJ1bGUgc3RhdHVzIiwicGFnZV9jb250ZXh0IjoiL3F1YWxpdHkvcnVsZXMiLCJjdXN0b21lcl9pZCI6IioifV19",
+        "headers": {
+          "access-control-allow-credentials": "true",
+          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
+          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
+          "access-control-allow-origin": "*",
+          "connection": "keep-alive",
+          "content-type": "application/json",
+          "date": "Fri, 01 May 2026 15:06:28 GMT",
+          "permissions-policy": "geolocation=(), microphone=(), camera=()",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "transfer-encoding": "chunked",
+          "x-aitoai-response-time": "48.25",
+          "x-azure-ref": "20260501T150628Z-r1578f8bfd8z2ls6hC1HELwhh40000001bz0000000003cxq",
+          "x-cache": "CONFIG_NOCACHE",
+          "x-content-type-options": "nosniff",
+          "x-frame-options": "DENY",
+          "x-xss-protection": "1; mode=block"
+        },
+        "statusCode": 200
+      }
+    }
+  }
+}

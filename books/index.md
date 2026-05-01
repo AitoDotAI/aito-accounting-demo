@@ -20,6 +20,7 @@
      * [test_06_template_and_log.py::test_prediction_log_schema_exists](book/test_06_template_and_log.py::test_prediction_log_schema_exists.md)
      * [test_07_help.py::test_help_evaluate_click_prediction](book/test_07_help.py::test_help_evaluate_click_prediction.md)
      * [test_07_help.py::test_help_evaluate_on_unseen_customer](book/test_07_help.py::test_help_evaluate_on_unseen_customer.md)
+     * [test_07_help.py::test_help_related_articles_query](book/test_07_help.py::test_help_related_articles_query.md)
      * [test_07_help.py::test_help_schema_exists](book/test_07_help.py::test_help_schema_exists.md)
      * [test_07_help.py::test_help_search_top_articles_for_invoices_page](book/test_07_help.py::test_help_search_top_articles_for_invoices_page.md)
      * [test_08_performance.py::test_evaluate_latency](book/test_08_performance.py::test_evaluate_latency.md)
