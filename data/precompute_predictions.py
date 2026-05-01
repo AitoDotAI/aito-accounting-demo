@@ -270,6 +270,12 @@ def precompute_help_related(
     out_path = PRECOMPUTED_DIR / "help_related.json"
     with open(out_path, "w") as f:
         json.dump(out, f, ensure_ascii=False)
+    try:
+        from src import precompute_store
+        precompute_store.init(client)
+        precompute_store.put("help_related", out)
+    except Exception as e:
+        print(f"  help_related: aito-store push skipped: {e}")
     return out_path.stat().st_size
 
 
@@ -311,6 +317,14 @@ def precompute_landing(client: AitoClient, vendor_limit: int = 8, tenants_per_ve
     out_path = PRECOMPUTED_DIR / "landing.json"
     with open(out_path, "w") as f:
         json.dump(payload, f, ensure_ascii=False)
+    # Also push to the Aito-backed precompute store so deployed
+    # containers pick up the new payload without a docker rebuild.
+    try:
+        from src import precompute_store
+        precompute_store.init(client)
+        precompute_store.put("landing", payload)
+    except Exception as e:
+        print(f"  landing: aito-store push skipped: {e}")
     return out_path.stat().st_size
 
 

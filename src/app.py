@@ -33,6 +33,13 @@ aito = AitoClient(config)
 # Initialize two-layer cache: in-memory L1 + Aito-persistent L2
 cache.init(aito)
 
+# Aito-backed precompute store. Writes from `./do precompute` land
+# in an Aito table; the running container reads from there on first
+# hit, falling back to the shipped bootstrap JSON when Aito is
+# briefly unreachable. See src/precompute_store.py.
+from src import precompute_store  # noqa: E402
+precompute_store.init(aito)
+
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -1099,22 +1106,14 @@ def help_impression(body: dict):
     return {"ok": True}
 
 
-_HELP_RELATED_JSON_PATH = _PROJECT_ROOT / "data" / "precomputed" / "help_related.json"
-_help_related_precomputed: dict | None = None
-_help_related_loaded = False
-
-
 def _load_help_related_precompute() -> dict:
-    """Lazy-load the help_related precompute so the file scan happens
-    on first lookup, not module import."""
-    global _help_related_precomputed, _help_related_loaded
-    if _help_related_loaded:
-        return _help_related_precomputed or {}
-    _help_related_loaded = True
-    if _HELP_RELATED_JSON_PATH.exists():
-        with open(_HELP_RELATED_JSON_PATH) as f:
-            _help_related_precomputed = json.load(f)
-    return _help_related_precomputed or {}
+    """Read help_related precompute via Aito → bootstrap JSON → empty.
+
+    Sourced from `precompute_store` so a fresh `./do precompute`
+    against the live Aito picks up new related-articles without
+    rebuilding the container.
+    """
+    return precompute_store.get("help_related") or {}
 
 
 @app.get("/api/help/related")
@@ -1173,38 +1172,14 @@ def multitenancy_shared_vendors(limit: int = 8):
     from src.multitenancy_service import compute_shared_vendors
     global _shared_vendors_full
     if _shared_vendors_full is None:
-        # Prefer the precomputed payload — it's small (~14 KB) and
-        # always present in production.
-        landing = _load_landing_precompute()
+        # Prefer the precompute store — populated by `./do precompute`,
+        # served from Aito with a shipped-JSON bootstrap fallback.
+        landing = precompute_store.get("landing")
         if landing and landing.get("vendors"):
             _shared_vendors_full = landing["vendors"]
         else:
             _shared_vendors_full = compute_shared_vendors()
     return {"vendors": _shared_vendors_full[:limit]}
-
-
-def _load_landing_precompute() -> dict | None:
-    """Lazy-load data/precomputed/landing.json if shipped.
-
-    Shared by /api/multitenancy/shared_vendors and the landing
-    endpoint so the file is only read once.
-    """
-    global _landing_cached
-    if _landing_cached is not None:
-        return _landing_cached
-    if _LANDING_JSON_PATH.exists():
-        with open(_LANDING_JSON_PATH) as f:
-            _landing_cached = json.load(f)
-        return _landing_cached
-    return None
-
-
-# Precomputed landing payload (vendors + per-tenant templates) cached
-# at process start. The home page uses /api/multitenancy/landing for
-# its single round-trip; falls back to live fan-out when the JSON
-# isn't shipped (e.g. fresh local dev).
-_LANDING_JSON_PATH = _PROJECT_ROOT / "data" / "precomputed" / "landing.json"
-_landing_cached: dict | None = None
 
 
 # Local import for the live fallback; keeps the cold path off module
@@ -1226,13 +1201,13 @@ def multitenancy_landing(vendor_limit: int = 8, tenants_per_vendor: int = 4):
     precompute step), we fall back to computing live so the page
     still works — just slowly.
     """
-    global _landing_cached
-    pre = _load_landing_precompute()
+    pre = precompute_store.get("landing")
     if pre is not None:
         return _slice_landing(pre, vendor_limit, tenants_per_vendor)
 
     # Live fallback: compute shared vendors + fan out templates.
-    # Same shape as the precomputed JSON.
+    # Same shape as the precomputed JSON. Result is *not* written to
+    # the precompute store — that's the build pipeline's job.
     from src.multitenancy_service import compute_shared_vendors
     from src.formfill_service import predict_template
 
@@ -1253,8 +1228,8 @@ def multitenancy_landing(vendor_limit: int = 8, tenants_per_vendor: int = 4):
                     templates[key] = tpl
             except Exception:
                 pass
-    _landing_cached = {"vendors": vendors, "templates": templates}
-    return _slice_landing(_landing_cached, vendor_limit, tenants_per_vendor)
+    payload = {"vendors": vendors, "templates": templates}
+    return _slice_landing(payload, vendor_limit, tenants_per_vendor)
 
 
 def _slice_landing(payload: dict, vendor_limit: int, tenants_per_vendor: int) -> dict:
