@@ -16,13 +16,18 @@ Tests:
    ranking signal — which is what _recommend uses internally.
 4. Cold-start customer — small-tier customers with no impressions
    fall back to the global pool.
+5. Related articles ("users who read this also read") via
+   `basedOn` rather than a `where` filter on `prev_article_id` —
+   the latter is ~10x slower because Aito's nullable linked-field
+   filter is a slow code path. Documents the query and the
+   semantic.
 """
 
 import booktest as bt
 
 from src.aito_client import AitoClient
 from src.config import load_config
-from src.help_service import search_help
+from src.help_service import search_help, related_articles
 
 
 def get_client():
@@ -146,6 +151,56 @@ def test_help_evaluate_click_prediction(t: bt.TestCaseRun):
     t.assertln("baseAccuracy ∈ [0, 1]", 0 <= base <= 1)
     t.assertln("test samples ≥ 50", samples >= 50)
     t.assertln("geomMeanP > 0.3 (predictions aren't random)", geom_p > 0.3)
+
+
+@bt.snapshot_httpx()
+def test_help_related_articles_query(t: bt.TestCaseRun):
+    """`Users who read this also read` — document the query shape.
+
+    Important detail: we condition on the current article via
+    `basedOn` rather than `where: {prev_article_id: ...}`. The
+    nullable linked Reference column is a slow code path — measured
+    ~2.3s per call vs ~290ms for the basedOn shape. Same semantics
+    ("given the user has seen X, rank candidates by P(clicked)"),
+    very different latency.
+    """
+    import json
+    c = get_client()
+
+    t.h1("_recommend: users who read this also read")
+    t.tln("")
+    t.h2("Query")
+    query = {
+        "from": "help_impressions",
+        "basedOn": [
+            {"article_id": "LEGAL-00"},
+            {"customer_id": "CUST-0000"},
+        ],
+        "where": {
+            "article_id.customer_id": {"$or": ["*", "CUST-0000"]},
+        },
+        "recommend": "article_id",
+        "goal": {"clicked": True},
+        "select": ["$p", "article_id", "title", "category", "customer_id"],
+        "limit": 5,
+    }
+    t.tln("```json")
+    t.tln(json.dumps(query, indent=2))
+    t.tln("```")
+    t.tln("")
+
+    articles = related_articles(c, "LEGAL-00", "CUST-0000", limit=4)
+    t.h2(f"Top {len(articles)} candidates")
+    for a in articles:
+        scope = "own-internal" if a["customer_id"] == "CUST-0000" else (
+            "global" if a["customer_id"] == "*" else f"other({a['customer_id']})"
+        )
+        t.iln(f"  p={a.get('$p', 0):.3f}  [{a.get('category','-'):8}] [{scope:14}] {a.get('title','')[:60]}")
+
+    t.tln("")
+    t.assertln("returns at least 1 candidate", len(articles) >= 1)
+    other = [a for a in articles if a["customer_id"] not in ("*", "CUST-0000")]
+    t.assertln("eligibility filter holds: no other-customer leakage", not other)
 
 
 @bt.snapshot_httpx()

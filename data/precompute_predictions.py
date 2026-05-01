@@ -217,6 +217,62 @@ def precompute_one_customer(
     return sizes
 
 
+def precompute_help_related(
+    client: AitoClient,
+    customer_ids: list[str] | None = None,
+) -> int:
+    """Precompute the 'users who read this also read' lookups.
+
+    Cold-path `_recommend` against help_impressions takes 5–12 s
+    against a fresh Aito instance — bad enough that the first click
+    on any expanded help article looks broken. Result is small
+    (~1 KB per (customer, article) pair) and stable for hours, so
+    we ship it as a static JSON and let the live endpoint fall back
+    when it's missing.
+
+    By default we cover the demo's most-visited customers:
+    CUST-0000 + the four next-largest. Other tenants take the cold
+    hit on first use, then the in-process cache covers reuse.
+    """
+    from src.help_service import related_articles, _eligibility_clause  # noqa: F401
+
+    articles = load_fixture("help_articles")
+    by_customer: dict[str, list[str]] = {"*": []}
+    for a in articles:
+        by_customer.setdefault(a.get("customer_id"), []).append(a["article_id"])
+
+    if customer_ids is None:
+        customers = sorted(load_fixture("customers"), key=lambda c: -c.get("invoice_count", 0))
+        customer_ids = [c["customer_id"] for c in customers[:5]]
+
+    out: dict[str, dict[str, list[dict]]] = {}
+    jobs: list[tuple[str, str]] = []
+    for cid in customer_ids:
+        # Visible to this customer = global ('*') + own internal
+        visible = (by_customer.get("*", []) + by_customer.get(cid, []))
+        for art in visible:
+            jobs.append((cid, art))
+
+    print(f"  help_related: {len(customer_ids)} customers × visible articles = {len(jobs)} entries")
+
+    def fetch(job: tuple[str, str]) -> tuple[str, str, list[dict]]:
+        cid, art = job
+        try:
+            return cid, art, related_articles(client, art, cid, limit=4)
+        except Exception:
+            return cid, art, []
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        for cid, art, rel in pool.map(fetch, jobs):
+            out.setdefault(cid, {})[art] = rel
+
+    PRECOMPUTED_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = PRECOMPUTED_DIR / "help_related.json"
+    with open(out_path, "w") as f:
+        json.dump(out, f, ensure_ascii=False)
+    return out_path.stat().st_size
+
+
 def precompute_landing(client: AitoClient, vendor_limit: int = 8, tenants_per_vendor: int = 4) -> int:
     """Precompute the home page payload.
 
@@ -316,15 +372,20 @@ def main() -> None:
 
     print(f"Precomputing for {len(customers)} customer(s) with workers={args.workers}...")
 
-    # Landing page payload — runs once for the whole instance, not
-    # per-customer. Keep it cheap by skipping when --customers
-    # narrows the run.
+    # Landing page payload + help_related — both run once per
+    # instance, not per-customer. Skipped when --customers narrows
+    # the run since the user is iterating on a single tenant.
     if not args.customers and not args.skip_existing:
         try:
             landing_bytes = precompute_landing(client)
             print(f"  landing.json: {landing_bytes / 1024:.1f} KB")
         except Exception as e:
             print(f"  landing precompute error: {e}", file=sys.stderr)
+        try:
+            help_bytes = precompute_help_related(client)
+            print(f"  help_related.json: {help_bytes / 1024:.1f} KB")
+        except Exception as e:
+            print(f"  help_related precompute error: {e}", file=sys.stderr)
 
     total_bytes = 0
     t0 = time.time()

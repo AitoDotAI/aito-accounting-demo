@@ -1058,6 +1058,24 @@ def help_impression(body: dict):
     return {"ok": True}
 
 
+_HELP_RELATED_JSON_PATH = _PROJECT_ROOT / "data" / "precomputed" / "help_related.json"
+_help_related_precomputed: dict | None = None
+_help_related_loaded = False
+
+
+def _load_help_related_precompute() -> dict:
+    """Lazy-load the help_related precompute so the file scan happens
+    on first lookup, not module import."""
+    global _help_related_precomputed, _help_related_loaded
+    if _help_related_loaded:
+        return _help_related_precomputed or {}
+    _help_related_loaded = True
+    if _HELP_RELATED_JSON_PATH.exists():
+        with open(_HELP_RELATED_JSON_PATH) as f:
+            _help_related_precomputed = json.load(f)
+    return _help_related_precomputed or {}
+
+
 @app.get("/api/help/related")
 def help_related(
     article_id: str = Query(...),
@@ -1068,9 +1086,19 @@ def help_related(
 
     Powered by `_recommend WHERE prev_article_id=…, goal: clicked=true`
     against help_impressions. Filtered to the customer's eligibility
-    set (global + own internal). Cached server-side -- the related
-    set for an article is stable across users.
+    set (global + own internal).
+
+    Cold-path latency on Aito (~5-12s) was bad enough that the first
+    click on any expanded help article looked broken in prod. We now
+    serve `data/precomputed/help_related.json` when shipped, fall back
+    to the in-memory cache, and only as a last resort issue the live
+    `_recommend` (1h TTL).
     """
+    pre = _load_help_related_precompute()
+    cust_pre = pre.get(customer_id, {})
+    if article_id in cust_pre:
+        return {"articles": cust_pre[article_id][:limit]}
+
     cache_key = f"help_related:{customer_id}:{article_id}:{limit}"
     cached = cache.get(cache_key)
     if cached is not None:
