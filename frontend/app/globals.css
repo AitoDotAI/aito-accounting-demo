@@ -44,6 +44,10 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 
 /* TOPBAR */
 .topbar{background:var(--surface);border-bottom:1px solid var(--border2);padding:0 24px;height:54px;display:flex;align-items:center;gap:14px;flex-shrink:0;position:relative;z-index:50}
+/* Customer selector dropdown trigger — kept wide on desktop so the
+   tenant id + size + invoice count fit on one line. Mobile media
+   query collapses min-width so the selector can shrink with the row. */
+.customer-selector-btn{min-width:280px}
 .topbar-breadcrumb{font-size:11px;color:var(--text3);font-weight:500}
 .topbar-title{font-size:15px;font-weight:600;color:var(--text)}
 .topbar-sep{width:1px;height:20px;background:var(--border2)}
@@ -230,6 +234,11 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 .aito-note{margin-top:10px;padding:7px 9px;background:rgba(255,255,255,.05);border:1px solid rgba(93,80,255,.15);border-radius:4px;font-size:11px;color:rgba(240,240,240,.85);line-height:1.5}
 .aito-note strong{color:#fff}
 
+/* HEADLINE BANNER — desktop shows the full pitch; mobile collapses
+   to a one-line variant via the media query. */
+.headline-banner-long{display:inline}
+.headline-banner-short{display:none}
+
 /* MOBILE TOPBAR + FAB (hidden on desktop, shown via media query) */
 .nav-mobile-bar{display:none}
 .nav-overlay{display:none}
@@ -268,12 +277,45 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
   .aito-mobile-close{display:flex;align-items:center;justify-content:center;position:absolute;top:10px;right:10px;width:30px;height:30px;border:none;background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);border-radius:50%;cursor:pointer;z-index:2}
   .aito-mobile-close:hover{background:rgba(255,255,255,.15);color:#fff}
 
-  /* Topbar slimmed */
-  .topbar{padding:0 14px;height:48px;gap:8px;flex-wrap:wrap}
+  /* Topbar slimmed — wide selector + multiple controls would push
+     the layout viewport beyond the device width on mobile, which
+     iOS Safari then "fixes" by zooming the whole page out. Hide
+     non-essential controls and let what's left shrink. */
+  .topbar{padding:0 14px;height:auto;min-height:48px;gap:6px;flex-wrap:wrap}
   .topbar-breadcrumb{display:none}
   .topbar-sep{display:none}
   .topbar-title{font-size:14px}
-  .topbar-sub{font-size:11px}
+  .topbar-sub{display:none}
+  .topbar-right{margin-left:auto;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .customer-selector-btn{min-width:0;max-width:200px}
+  .customer-selector-btn span{font-size:11px}
+  /* "Live" status pill and the latency pill are analytical noise on
+     a phone — keep the topbar to one row of essentials. They reappear
+     on desktop. The "Data flow" toggle stays since the guided tour
+     references it. */
+  .topbar .live-dot{display:none}
+  /* LatencyBadge has inline display:inline-flex; override it. */
+  .latency-badge{display:none !important}
+
+  /* Headline banner: swap to the short one-line variant. */
+  .headline-banner{font-size:11.5px;padding:6px 36px 6px 12px;text-align:left;position:relative}
+  .headline-banner-long{display:none}
+  .headline-banner-short{display:inline}
+
+  /* Help FAB: on desktop it dodges the 268px AitoPanel; on mobile
+     the panel is a hidden bottom sheet, so anchor to the right edge. */
+  .help-fab{right:16px !important;bottom:80px !important}
+
+  /* Aito panel code samples wrap instead of forcing horizontal scroll
+     when the bottom sheet is opened on a 390px screen. */
+  .code-block{white-space:pre-wrap;word-break:break-word}
+
+  /* Prediction Quality: collapse the 2-column configurator + 4/3-up
+     KPI rows into single columns so 260px+ left rails don't widen
+     the layout viewport on a 390px device. */
+  .qp-config-grid{grid-template-columns:1fr !important}
+  .qp-kpi-row-4{grid-template-columns:repeat(2,1fr) !important}
+  .qp-kpi-row-3{grid-template-columns:repeat(2,1fr) !important}
 
   /* Content reflow */
   .metrics{grid-template-columns:repeat(2,1fr);gap:8px}

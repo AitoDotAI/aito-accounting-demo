@@ -35,6 +35,7 @@ export default function HeadlineBanner() {
 
   return (
     <div
+      className="headline-banner"
       style={{
         display: "flex",
         alignItems: "center",
@@ -48,13 +49,20 @@ export default function HeadlineBanner() {
         borderBottom: "1px solid var(--gold-dark)",
       }}
     >
-      <span>
+      {/* Two copies of the framing line: the long one carries the full
+          pitch on desktop where there's room, the short one keeps the
+          banner to a single line on phone screens. CSS toggles via
+          .headline-banner-{long,short}. */}
+      <span className="headline-banner-long">
         <strong>Predictive Ledger</strong> · reference implementation
         for developers building on Aito.ai (not a packaged product) ·
         multi-tenant AP demo: {totalLabel} in <em>one</em> shared instance ·
         same{" "}
         <code style={{ background: "rgba(13,21,32,.1)", padding: "1px 5px", borderRadius: 3, fontFamily: "'IBM Plex Mono', monospace", fontSize: 11 }}>_predict</code>{" "}
         operator, scoped per customer · no separate model file
+      </span>
+      <span className="headline-banner-short">
+        <strong>Predictive Ledger</strong> · {totalLabel} · one shared Aito instance
       </span>
       <button
         onClick={dismiss}

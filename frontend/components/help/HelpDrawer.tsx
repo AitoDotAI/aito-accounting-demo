@@ -176,14 +176,15 @@ export default function HelpDrawer() {
     <>
       <button
         onClick={() => setOpen(!open)}
+        className="help-fab"
         title="In-product help — context-aware article ranking deflects support tickets"
         style={{
-          // Inside the midpane: offset from the viewport right by the
-          // AitoPanel width (268px) plus a 24px gutter. The button sits
-          // bottom-right of the main content area, not over the side panel.
+          // Desktop: offset from the viewport right by the AitoPanel
+          // width (268px) plus a 24px gutter. Mobile media query
+          // overrides this to right:24px since there's no side panel
+          // to dodge there.
           position: "fixed",
           bottom: 24,
-          right: "calc(268px + 24px)",
           width: 44,
           height: 44,
           borderRadius: "50%",
