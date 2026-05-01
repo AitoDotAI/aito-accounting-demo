@@ -192,7 +192,7 @@ export default function PredictionQualityPage() {
             })}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 320px) 1fr", gap: 16 }}>
+          <div className="qp-config-grid" style={{ display: "grid", gridTemplateColumns: "minmax(260px, 320px) 1fr", gap: 16 }}>
             {/* LEFT: Configurator */}
             <div className="card" style={{ alignSelf: "start" }}>
               <div className="card-header">
@@ -304,13 +304,13 @@ export default function PredictionQualityPage() {
                   <span className="card-title">Model performance</span>
                   <span className="card-hint">From <code>_evaluate</code> aggregate</span>
                 </div>
-                <div style={{ padding: 16, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+                <div className="qp-kpi-row qp-kpi-row-4" style={{ padding: 16, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
                   <KPI label="Accuracy" value={k ? `${k.accuracy_pct}%` : "—"} sub={k ? `vs ${k.base_accuracy_pct}% base` : ""} highlight />
                   <KPI label="Mean rank" value={k ? k.mean_rank.toFixed(2) : "—"} sub="lower = better" />
                   <KPI label="Geom mean p" value={k ? k.geom_mean_p.toFixed(3) : "—"} sub="calibrated conf." />
                   <KPI label="Gain" value={k ? `${k.accuracy_gain_pct >= 0 ? "+" : ""}${k.accuracy_gain_pct}pp` : "—"} sub="vs baseline" />
                 </div>
-                <div style={{ padding: "0 16px 16px", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+                <div className="qp-kpi-row qp-kpi-row-3" style={{ padding: "0 16px 16px", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
                   <KPI label="Test samples" value={k ? String(k.test_samples) : "—"} />
                   <KPI label="Train samples" value={k ? String(k.train_samples) : "—"} />
                   <KPI label="Correct" value={k ? `${k.correct_predictions} / ${k.test_samples}` : "—"} />

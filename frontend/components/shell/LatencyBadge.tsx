@@ -53,6 +53,7 @@ export default function LatencyBadge() {
   return (
     <span
       ref={ref}
+      className="latency-badge"
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{

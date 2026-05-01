@@ -109,6 +109,7 @@ export default function CustomerSelector() {
       <button
         ref={buttonRef}
         onClick={() => setOpen(!open)}
+        className="customer-selector-btn"
         style={{
           padding: "5px 10px",
           borderRadius: 6,
@@ -118,7 +119,6 @@ export default function CustomerSelector() {
           background: "var(--surface)",
           color: "var(--text)",
           cursor: "pointer",
-          minWidth: 280,
           textAlign: "left",
           display: "flex",
           alignItems: "center",
