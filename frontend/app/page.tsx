@@ -97,17 +97,28 @@ function tenantSize(c: CustomerLite | undefined) {
   return `${tier} · ${c.invoice_count.toLocaleString()} invoices`;
 }
 
+interface LandingPayload {
+  vendors: SharedVendor[];
+  templates: Record<string, Template>;
+}
+
 export default function Home() {
   const [vendors, setVendors] = useState<SharedVendor[]>([]);
   const [customers, setCustomers] = useState<CustomerLite[]>([]);
   const [vendorIdx, setVendorIdx] = useState(0);
-  const [predictions, setPredictions] = useState<Record<string, Template | null>>({});
-  const [loading, setLoading] = useState(false);
+  const [templates, setTemplates] = useState<Record<string, Template>>({});
 
+  // One round trip: serves precomputed JSON in production, falls back
+  // to a server-side fan-out in dev. The home page never makes
+  // per-tenant API calls itself anymore — that fan-out used to make
+  // first paint visibly slow on cold deployments.
   useEffect(() => {
-    apiFetch<{ vendors: SharedVendor[] }>("/api/multitenancy/shared_vendors?limit=8")
-      .then((d) => setVendors(d.vendors ?? []))
-      .catch(() => setVendors([]));
+    apiFetch<LandingPayload>(`/api/multitenancy/landing?vendor_limit=8&tenants_per_vendor=${MAX_TENANTS_VISIBLE}`)
+      .then((d) => {
+        setVendors(d.vendors ?? []);
+        setTemplates(d.templates ?? {});
+      })
+      .catch(() => { setVendors([]); setTemplates({}); });
     apiFetch<{ customers: CustomerLite[] }>("/api/customers")
       .then((d) => setCustomers(d.customers ?? []))
       .catch(() => setCustomers([]));
@@ -125,31 +136,18 @@ export default function Home() {
     return m;
   }, [customers]);
 
-  // When the vendor changes, fan out predictions across the visible
-  // tenants in parallel. Cleared first so stale cards don't flicker.
-  useEffect(() => {
-    if (!selectedVendor) return;
-    let cancelled = false;
-    setPredictions({});
-    setLoading(true);
-    const calls = visibleTenants.map((t) =>
-      apiFetch<Template>(
-        `/api/formfill/template?customer_id=${encodeURIComponent(t.customer_id)}&vendor=${encodeURIComponent(selectedVendor.vendor)}`,
-      )
-        .then((tpl) => [t.customer_id, tpl] as const)
-        .catch(() => [t.customer_id, null] as const),
-    );
-    Promise.all(calls).then((rows) => {
-      if (cancelled) return;
-      const next: Record<string, Template | null> = {};
-      for (const [id, tpl] of rows) next[id] = tpl;
-      setPredictions(next);
-      setLoading(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedVendor, visibleTenants]);
+  // Predictions for the current vendor — pulled out of the
+  // landing payload by composite key. No round trips per vendor switch.
+  const predictions: Record<string, Template | null> = useMemo(() => {
+    if (!selectedVendor) return {};
+    const out: Record<string, Template | null> = {};
+    for (const t of visibleTenants) {
+      const key = `${selectedVendor.vendor}|${t.customer_id}`;
+      out[t.customer_id] = templates[key] ?? null;
+    }
+    return out;
+  }, [selectedVendor, visibleTenants, templates]);
+  const loading = vendors.length === 0;
 
   const distinctGlsAcrossVisible = useMemo(() => {
     const set = new Set<string>();

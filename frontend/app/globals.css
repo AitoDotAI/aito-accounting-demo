@@ -302,6 +302,11 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
   .headline-banner-long{display:none}
   .headline-banner-short{display:inline}
 
+  /* HelpDrawer: desktop anchors to the AitoPanel's inner edge with
+     calc(100vw - 268px), which collapses to ~122px on a phone.
+     Override to a full-screen pane that covers content + bottom-sheet. */
+  .help-drawer{right:0 !important;left:0 !important;width:auto !important;max-width:none !important;border-left:none !important;z-index:1200 !important}
+
   /* Help FAB: on desktop it dodges the 268px AitoPanel; on mobile
      the panel is a hidden bottom sheet, so anchor to the right edge. */
   .help-fab{right:16px !important;bottom:80px !important}

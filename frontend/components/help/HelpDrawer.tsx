@@ -204,10 +204,13 @@ export default function HelpDrawer() {
 
       {open && (
         <div
+          className="help-drawer"
           style={{
-            // Anchor right edge to the inner edge of the AitoPanel
-            // (not the viewport) so the drawer slides over the
-            // midpane and the AitoPanel stays visible.
+            // Desktop: anchor right edge to the inner edge of the
+            // AitoPanel (not the viewport) so the drawer slides over
+            // the midpane and the AitoPanel stays visible.
+            // Mobile: media query takes over to render full-screen,
+            // since the AitoPanel is a hidden bottom sheet there.
             position: "fixed",
             top: 0,
             right: 268,

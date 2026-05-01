@@ -1087,52 +1087,6 @@ def help_related(
 _shared_vendors_full: list[dict] | None = None
 
 
-def _compute_shared_vendors() -> list[dict]:
-    """Scan the invoices fixture once and rank vendors by cross-tenant
-    GL contrast. Result is the unbounded list; callers slice to `limit`.
-    """
-    import json
-    from collections import defaultdict, Counter
-    from pathlib import Path
-
-    inv_path = Path(__file__).parent.parent / "data" / "invoices.json"
-    if not inv_path.exists():
-        return []
-
-    vendor_tenant_gl: dict[str, dict[str, Counter]] = defaultdict(lambda: defaultdict(Counter))
-    for row in json.loads(inv_path.read_text()):
-        v, c, gl = row.get("vendor"), row.get("customer_id"), row.get("gl_code")
-        if v and c and gl:
-            vendor_tenant_gl[v][c][gl] += 1
-
-    out: list[dict] = []
-    for vendor, tenants in vendor_tenant_gl.items():
-        if len(tenants) < 3:
-            continue
-        # Per-tenant dominant GL; "contrast" = number of distinct
-        # dominant GLs across tenants (3 different GLs > 1 GL repeated 8x).
-        per_tenant = {c: gl.most_common(1)[0] for c, gl in tenants.items()}
-        distinct_gls = len({gl for _, (gl, _) in per_tenant.items()})
-        # Only keep tenants with at least 5 invoices for this vendor —
-        # below that, the dominant GL is noise.
-        well_supported = {c: (gl, n) for c, (gl, n) in per_tenant.items() if n >= 5}
-        if len(well_supported) < 3 or distinct_gls < 2:
-            continue
-        out.append({
-            "vendor": vendor,
-            "tenant_count": len(well_supported),
-            "distinct_gls": distinct_gls,
-            "tenants": [
-                {"customer_id": c, "gl_code": gl, "n": n}
-                for c, (gl, n) in sorted(well_supported.items(), key=lambda x: -x[1][1])
-            ],
-        })
-
-    # Rank by (distinct_gls, tenant_count) — most contrastful first.
-    out.sort(key=lambda x: (-x["distinct_gls"], -x["tenant_count"]))
-    return out
-
-
 @app.get("/api/multitenancy/shared_vendors")
 def multitenancy_shared_vendors(limit: int = 8):
     """Vendors used by multiple tenants — the candidate set for the
@@ -1142,10 +1096,87 @@ def multitenancy_shared_vendors(limit: int = 8):
     want a deterministic curated list for the demo, ranked by
     cross-tenant *contrast* rather than raw frequency.
     """
+    from src.multitenancy_service import compute_shared_vendors
     global _shared_vendors_full
     if _shared_vendors_full is None:
-        _shared_vendors_full = _compute_shared_vendors()
+        _shared_vendors_full = compute_shared_vendors()
     return {"vendors": _shared_vendors_full[:limit]}
+
+
+# Precomputed landing payload (vendors + per-tenant templates) cached
+# at process start. The home page uses /api/multitenancy/landing for
+# its single round-trip; falls back to live fan-out when the JSON
+# isn't shipped (e.g. fresh local dev).
+_LANDING_JSON_PATH = _PROJECT_ROOT / "data" / "precomputed" / "landing.json"
+_landing_cached: dict | None = None
+
+
+# Local import for the live fallback; keeps the cold path off module
+# import time.
+from concurrent.futures import ThreadPoolExecutor as _LandingThreadPoolExecutor  # noqa: E402
+
+
+@app.get("/api/multitenancy/landing")
+def multitenancy_landing(vendor_limit: int = 8, tenants_per_vendor: int = 4):
+    """One-shot home-page payload: vendors + every tenant template.
+
+    The home page used to fan out (1 shared_vendors call + 4 parallel
+    formfill/template calls per vendor) which made first paint visibly
+    slow on cold deployments. Precompute writes the same shape to
+    data/precomputed/landing.json so production reads it as a static
+    file.
+
+    When the JSON is missing (typical for `./do dev` without the
+    precompute step), we fall back to computing live so the page
+    still works — just slowly.
+    """
+    global _landing_cached
+    if _landing_cached is not None:
+        return _slice_landing(_landing_cached, vendor_limit, tenants_per_vendor)
+
+    if _LANDING_JSON_PATH.exists():
+        with open(_LANDING_JSON_PATH) as f:
+            _landing_cached = json.load(f)
+        return _slice_landing(_landing_cached, vendor_limit, tenants_per_vendor)
+
+    # Live fallback: compute shared vendors + fan out templates.
+    # Same shape as the precomputed JSON.
+    from src.multitenancy_service import compute_shared_vendors
+    from src.formfill_service import predict_template
+
+    vendors = compute_shared_vendors()[:vendor_limit]
+    templates: dict[str, dict] = {}
+    with _LandingThreadPoolExecutor(max_workers=8) as pool:
+        futures = []
+        for v in vendors:
+            for t in v["tenants"][:tenants_per_vendor]:
+                key = f"{v['vendor']}|{t['customer_id']}"
+                futures.append((key, pool.submit(
+                    predict_template, aito, t["customer_id"], v["vendor"]
+                )))
+        for key, fut in futures:
+            try:
+                tpl = fut.result()
+                if tpl:
+                    templates[key] = tpl
+            except Exception:
+                pass
+    _landing_cached = {"vendors": vendors, "templates": templates}
+    return _slice_landing(_landing_cached, vendor_limit, tenants_per_vendor)
+
+
+def _slice_landing(payload: dict, vendor_limit: int, tenants_per_vendor: int) -> dict:
+    """Trim to the requested limits — kept tiny for cache friendliness."""
+    vendors = []
+    keep_keys = set()
+    for v in (payload.get("vendors") or [])[:vendor_limit]:
+        kept = dict(v)
+        kept["tenants"] = v["tenants"][:tenants_per_vendor]
+        for t in kept["tenants"]:
+            keep_keys.add(f"{v['vendor']}|{t['customer_id']}")
+        vendors.append(kept)
+    templates = {k: v for k, v in (payload.get("templates") or {}).items() if k in keep_keys}
+    return {"vendors": vendors, "templates": templates}
 
 
 @app.get("/api/help/stats")
