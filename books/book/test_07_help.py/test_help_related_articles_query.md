@@ -7,14 +7,7 @@
 ```json
 {
   "from": "help_impressions",
-  "basedOn": [
-    {
-      "article_id": "LEGAL-00"
-    },
-    {
-      "customer_id": "CUST-0000"
-    }
-  ],
+  "basedOn": [],
   "where": {
     "article_id.customer_id": {
       "$or": [

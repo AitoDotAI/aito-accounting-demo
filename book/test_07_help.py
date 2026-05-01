@@ -157,12 +157,16 @@ def test_help_evaluate_click_prediction(t: bt.TestCaseRun):
 def test_help_related_articles_query(t: bt.TestCaseRun):
     """`Users who read this also read` — document the query shape.
 
-    Important detail: we condition on the current article via
-    `basedOn` rather than `where: {prev_article_id: ...}`. The
-    nullable linked Reference column is a slow code path — measured
-    ~2.3s per call vs ~290ms for the basedOn shape. Same semantics
-    ("given the user has seen X, rank candidates by P(clicked)"),
-    very different latency.
+    Two slow-path traps were avoided here, both worth pinning down
+    in a snapshot:
+
+    - `where: {prev_article_id: …}` (a nullable linked Reference)
+      is intrinsically slow against impressions — ~2.3s/call. We
+      drop the filter and let the candidate pool come from the
+      `article_id.customer_id` eligibility instead.
+    - Non-empty `basedOn` triggers prior-feature inference. With
+      the small candidate pool here it doesn't change the result,
+      so we pass `basedOn: []` to skip it. ~300ms warm.
     """
     import json
     c = get_client()
@@ -172,10 +176,7 @@ def test_help_related_articles_query(t: bt.TestCaseRun):
     t.h2("Query")
     query = {
         "from": "help_impressions",
-        "basedOn": [
-            {"article_id": "LEGAL-00"},
-            {"customer_id": "CUST-0000"},
-        ],
+        "basedOn": [],
         "where": {
             "article_id.customer_id": {"$or": ["*", "CUST-0000"]},
         },

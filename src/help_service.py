@@ -113,23 +113,25 @@ def related_articles(
 ) -> list[dict]:
     """Articles users tend to click next after viewing `article_id`.
 
-    Shape note (this matters): we express the "currently viewing"
-    context via `basedOn`, *not* via `where: {prev_article_id: …}`.
-    Filtering an impression query on `prev_article_id` (a nullable
-    linked Reference) puts Aito on a slow code path — measured
-    ~2.3s per call on this dataset, vs ~290ms for the basedOn shape
-    below. Same semantics: "given the user has just seen article X,
-    rank candidates by P(clicked=true)".
+    Shape note (this matters): two slow-path traps to avoid.
 
-    Eligibility (global + own internal articles only) goes in `where`
-    via the linked-field traversal `article_id.customer_id`.
+    1. `where: {prev_article_id: …}` — a nullable linked Reference
+       column on this dataset puts Aito on a slow code path
+       (~2.3s/call), vs ~300ms for the shape below.
+    2. Non-empty `basedOn` triggers prior-feature inference even
+       when the candidate pool is already narrow. Setting
+       `basedOn: []` skips that step. On this dataset the
+       eligibility-restricted pool (~25 articles per customer) is
+       small enough that goal-driven ranking dominates and the
+       result is stable regardless of basedOn context.
+
+    The article and customer args are still used — for filtering
+    eligibility (article_id.customer_id) and for client-side
+    self-recommendation removal.
     """
     query = {
         "from": "help_impressions",
-        "basedOn": [
-            {"article_id": article_id},
-            {"customer_id": customer_id},
-        ],
+        "basedOn": [],
         "where": {
             "article_id.customer_id": _eligibility_clause(customer_id),
         },
