@@ -209,6 +209,21 @@ async def validate_customer_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+# ── Health / keep-warm ────────────────────────────────────────────
+
+@app.get("/healthz")
+def healthz():
+    """Cheap liveness check for keep-warm pingers.
+
+    Azure App Service idles containers to zero after ~20 min of no
+    traffic; the cold-start (~10 s) is the dominant first-paint
+    latency on the deployed demo. Hitting /healthz on a 4-minute
+    cron from a free uptime service keeps the instance warm without
+    triggering any Aito calls.
+    """
+    return {"ok": True}
+
+
 # ── Customer list ─────────────────────────────────────────────────
 
 @app.get("/api/cache/status")
@@ -1146,15 +1161,42 @@ def multitenancy_shared_vendors(limit: int = 8):
     """Vendors used by multiple tenants — the candidate set for the
     'same vendor, different tenants' demo screen.
 
-    Computed from the loaded invoices fixture (not Aito) because we
-    want a deterministic curated list for the demo, ranked by
-    cross-tenant *contrast* rather than raw frequency.
+    Two sources, in order:
+    1. landing.json (shipped via git) — the deployed container has
+       this even when the raw invoices fixture isn't bundled.
+    2. The raw invoices.json fixture, scanned in-process. Available
+       in dev / when the fixture is shipped.
+
+    Caches the unbounded list for the process lifetime; callers
+    slice to `limit`.
     """
     from src.multitenancy_service import compute_shared_vendors
     global _shared_vendors_full
     if _shared_vendors_full is None:
-        _shared_vendors_full = compute_shared_vendors()
+        # Prefer the precomputed payload — it's small (~14 KB) and
+        # always present in production.
+        landing = _load_landing_precompute()
+        if landing and landing.get("vendors"):
+            _shared_vendors_full = landing["vendors"]
+        else:
+            _shared_vendors_full = compute_shared_vendors()
     return {"vendors": _shared_vendors_full[:limit]}
+
+
+def _load_landing_precompute() -> dict | None:
+    """Lazy-load data/precomputed/landing.json if shipped.
+
+    Shared by /api/multitenancy/shared_vendors and the landing
+    endpoint so the file is only read once.
+    """
+    global _landing_cached
+    if _landing_cached is not None:
+        return _landing_cached
+    if _LANDING_JSON_PATH.exists():
+        with open(_LANDING_JSON_PATH) as f:
+            _landing_cached = json.load(f)
+        return _landing_cached
+    return None
 
 
 # Precomputed landing payload (vendors + per-tenant templates) cached
@@ -1185,13 +1227,9 @@ def multitenancy_landing(vendor_limit: int = 8, tenants_per_vendor: int = 4):
     still works — just slowly.
     """
     global _landing_cached
-    if _landing_cached is not None:
-        return _slice_landing(_landing_cached, vendor_limit, tenants_per_vendor)
-
-    if _LANDING_JSON_PATH.exists():
-        with open(_LANDING_JSON_PATH) as f:
-            _landing_cached = json.load(f)
-        return _slice_landing(_landing_cached, vendor_limit, tenants_per_vendor)
+    pre = _load_landing_precompute()
+    if pre is not None:
+        return _slice_landing(pre, vendor_limit, tenants_per_vendor)
 
     # Live fallback: compute shared vendors + fan out templates.
     # Same shape as the precomputed JSON.
