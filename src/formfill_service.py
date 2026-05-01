@@ -6,7 +6,9 @@ predictions refine. Each field returns top-3 alternatives with $why
 explanations so the UI can show dropdowns and factor breakdowns.
 """
 
-from src.aito_client import AitoClient, AitoError
+from concurrent.futures import ThreadPoolExecutor
+
+from src.aito_client import AitoClient, AitoError, aito_call_log
 from src.invoice_service import GL_LABELS, _extract_alternatives, _extract_why_factors
 
 # Fields that can be predicted, with display labels and formatting.
@@ -146,67 +148,77 @@ def predict_fields(client: AitoClient, where: dict) -> dict:
         if fd["field"] not in provided
     ]
 
-    fields = []
-    confidences = []
+    # Each predicted field is an independent _predict call against the
+    # same (customer, vendor, …) context. Running them in series means
+    # the user waits N × round-trip; the calls are pure and the Aito
+    # client is httpx (sync, releases the GIL on I/O), so a small
+    # ThreadPoolExecutor turns this into max(round-trip) instead of
+    # sum(round-trip). For 5–7 fields at ~200ms each, the saved
+    # latency is roughly 1s on a warm instance.
+    #
+    # Each worker thread inherits the parent's contextvars, so the
+    # per-request `aito_call_log` accumulator captures every call's
+    # latency for the X-Aito-Ms response header.
+    log = aito_call_log.get()
 
-    for field_def in fields_to_predict:
+    def predict_one(field_def: dict) -> dict:
         field_name = field_def["field"]
         threshold = field_def.get("auto_prefill_threshold", 0.85)
+        empty = {
+            "field": field_name,
+            "label": field_def["label"],
+            "value": None,
+            "raw_value": None,
+            "confidence": 0.0,
+            "predicted": False,
+            "auto_prefill_threshold": threshold,
+            "below_threshold": False,
+            "alternatives": [],
+        }
         try:
+            # Worker threads don't see the parent's ContextVar values,
+            # so re-attach the log explicitly before the Aito call.
+            if log is not None:
+                aito_call_log.set(log)
             result = client.predict("invoices", where, field_name)
-            hits = result.get("hits", [])
-            top = hits[0] if hits else None
-
-            if top and top["$p"] > 0.10:
-                raw_value = str(top["feature"])
-                display_value = format_value(raw_value, field_def["format"])
-                confidence = round(top["$p"], 4)
-
-                label_map = _label_map_for_field(field_name)
-                alternatives = _extract_alternatives(hits, label_map)
-
-                # Only auto-prefill when above this field's safety threshold.
-                # Below threshold: alternatives still returned, but predicted=False
-                # so UI shows it as suggestion (dropdown) not a filled value.
-                auto_prefill = confidence >= threshold
-
-                fields.append({
-                    "field": field_name,
-                    "label": field_def["label"],
-                    "value": display_value if auto_prefill else None,
-                    "raw_value": raw_value if auto_prefill else None,
-                    "confidence": round(confidence, 2),
-                    "predicted": auto_prefill,
-                    "auto_prefill_threshold": threshold,
-                    "below_threshold": not auto_prefill,
-                    "alternatives": alternatives,
-                })
-                confidences.append(confidence)
-            else:
-                fields.append({
-                    "field": field_name,
-                    "label": field_def["label"],
-                    "value": None,
-                    "raw_value": None,
-                    "confidence": 0.0,
-                    "predicted": False,
-                    "auto_prefill_threshold": threshold,
-                    "below_threshold": False,
-                    "alternatives": [],
-                })
         except AitoError:
-            fields.append({
-                "field": field_name,
-                "label": field_def["label"],
-                "value": None,
-                "raw_value": None,
-                "confidence": 0.0,
-                "predicted": False,
-                "auto_prefill_threshold": threshold,
-                "below_threshold": False,
-                "alternatives": [],
-            })
+            return empty
 
+        hits = result.get("hits", [])
+        top = hits[0] if hits else None
+        if not top or top["$p"] <= 0.10:
+            return empty
+
+        raw_value = str(top["feature"])
+        display_value = format_value(raw_value, field_def["format"])
+        confidence = round(top["$p"], 4)
+        label_map = _label_map_for_field(field_name)
+        alternatives = _extract_alternatives(hits, label_map)
+        auto_prefill = confidence >= threshold
+        return {
+            "field": field_name,
+            "label": field_def["label"],
+            "value": display_value if auto_prefill else None,
+            "raw_value": raw_value if auto_prefill else None,
+            "confidence": round(confidence, 2),
+            "predicted": auto_prefill,
+            "auto_prefill_threshold": threshold,
+            "below_threshold": not auto_prefill,
+            "alternatives": alternatives,
+        }
+
+    if not fields_to_predict:
+        fields = []
+    else:
+        # Cap workers so we don't open more sockets than needed.
+        # 7 fields max, 7 threads is fine.
+        with ThreadPoolExecutor(max_workers=min(8, len(fields_to_predict))) as pool:
+            fields = list(pool.map(predict_one, fields_to_predict))
+
+    # Original semantics: avg over all fields whose top hit passed the
+    # 0.10 noise floor (predicted or not). predicted_count tracks only
+    # those that crossed the per-field auto-prefill threshold.
+    confidences = [f["confidence"] for f in fields if f["confidence"] > 0]
     predicted_count = sum(1 for f in fields if f["predicted"])
     avg_confidence = round(sum(confidences) / len(confidences), 2) if confidences else 0.0
 

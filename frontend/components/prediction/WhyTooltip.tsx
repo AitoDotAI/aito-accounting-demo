@@ -21,9 +21,19 @@ export default function WhyTooltip({ label, factors, confidence = 0 }: WhyToolti
   const updatePosition = useCallback(() => {
     if (!btnRef.current) return;
     const rect = btnRef.current.getBoundingClientRect();
+    // Popup is 380px wide and positioned with translate(-50%, -100%).
+    // Clamp the anchor so the popup never escapes the viewport, even
+    // when the trigger button sits near the right edge of a narrow column.
+    const popupWidth = 380;
+    const margin = 12;
+    const half = popupWidth / 2;
+    const anchorX = rect.left + rect.width / 2;
+    const minX = half + margin;
+    const maxX = window.innerWidth - half - margin;
+    const clampedX = Math.max(minX, Math.min(maxX, anchorX));
     setPos({
       top: rect.top - 8,
-      left: rect.left + rect.width / 2,
+      left: clampedX,
     });
   }, []);
 

@@ -133,6 +133,10 @@ export default function AitoPanel({ config, lastQuery, lastResponseMs }: AitoPan
         ))}
       </div>
 
+      {/* Middle is the only scrollable region — header/stats and CTA
+          stay pinned, so the "Start free trial" button is reachable
+          on any viewport height without hunting for an inner scroll. */}
+      <div className="aito-panel-scroll">
       {tourOn && config.flow_steps && config.flow_steps.length > 0 && (
         <div className="aito-section">
           <div className="aito-section-title" style={{ color: "var(--gold-mid)" }}>Data flow on this page</div>
@@ -201,7 +205,7 @@ export default function AitoPanel({ config, lastQuery, lastResponseMs }: AitoPan
         </div>
       </div>
 
-      <div style={{ flex: 1 }} />
+      </div>
       <div className="cta-wrap">
         <a className="cta-btn" href="https://console.aito.ai/account/authentication/?signUp=true" target="_blank" rel="noreferrer">
           Start free trial <span>&rarr;</span>

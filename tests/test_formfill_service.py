@@ -95,17 +95,26 @@ class TestPredictFields:
 
     def test_returns_alternatives_with_why(self, httpx_mock):
         """Each field should include alternatives array."""
-        httpx_mock.add_response(json={
-            "offset": 0, "total": 2, "hits": [
-                {"$p": 0.91, "feature": "4400", "$why": {"type": "product", "factors": [
-                    {"type": "relatedPropositionLift", "proposition": {"vendor": {"$has": "Kesko"}}, "value": 6.4},
-                ]}},
-                {"$p": 0.04, "feature": "6100", "$why": {"type": "product", "factors": []}},
-            ],
-        })
-        # Mock remaining 5 fields
-        for _ in range(5):
-            httpx_mock.add_response(json=_mock_predict_response("test", 0.80))
+        # predict_fields fans out across the per-field _predict calls in
+        # parallel, so the response order is non-deterministic. Bind by
+        # the `predict` field in the request body instead of relying on
+        # mock ordering.
+        import json as _json
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            target = _json.loads(request.content).get("predict")
+            if target == "gl_code":
+                return httpx.Response(200, json={
+                    "offset": 0, "total": 2, "hits": [
+                        {"$p": 0.91, "feature": "4400", "$why": {"type": "product", "factors": [
+                            {"type": "relatedPropositionLift", "proposition": {"vendor": {"$has": "Kesko"}}, "value": 6.4},
+                        ]}},
+                        {"$p": 0.04, "feature": "6100", "$why": {"type": "product", "factors": []}},
+                    ],
+                })
+            return httpx.Response(200, json=_mock_predict_response("test", 0.80))
+
+        httpx_mock.add_callback(respond, is_reusable=True)
 
         client = AitoClient(TEST_CONFIG)
         result = predict_fields(client, {"vendor": "Kesko Oyj"})
@@ -127,8 +136,13 @@ class TestPredictFields:
 
     def test_aito_error_produces_unpredicted_fields(self, httpx_mock):
         """If Aito fails, all fields should be unpredicted."""
-        for _ in range(6):
-            httpx_mock.add_exception(httpx.ConnectError("refused"))
+        # Parallel fan-out + per-call retry-on-error means the request
+        # count isn't a clean N. A reusable callback that always errors
+        # mirrors a real outage and stays robust against the worker count.
+        def fail(_request):
+            raise httpx.ConnectError("refused")
+
+        httpx_mock.add_callback(fail, is_reusable=True)
 
         client = AitoClient(TEST_CONFIG)
         result = predict_fields(client, {"vendor": "Kesko Oyj"})
