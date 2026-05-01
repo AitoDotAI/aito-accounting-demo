@@ -36,6 +36,32 @@ cache.init(aito)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
+def _warm_aito_tables():
+    """Take the cold-load cost off the first user's path.
+
+    Aito lazily loads tables on first query; help_impressions in
+    particular goes 12s → 14ms after the first hit. We fire one
+    cheap _search per live-queried table on startup so a real
+    visitor doesn't watch a 12s spinner. See
+    docs/notes/aito-perf-findings.md.
+    """
+    import threading
+
+    def go():
+        if not aito.check_connectivity():
+            return
+        for table in ("help_impressions", "help_articles", "customers"):
+            try:
+                aito.search(table, {}, limit=1)
+            except Exception as e:
+                print(f"warm-table {table}: {e}")
+
+    threading.Thread(target=go, daemon=True).start()
+
+
+_warm_aito_tables()
+
+
 def _warm_top_customers():
     """Warm cache for top customers on startup.
 
