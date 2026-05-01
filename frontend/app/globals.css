@@ -57,6 +57,11 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 
 /* CONTENT */
 .content{flex:1;overflow-y:auto;padding:22px 26px;display:flex;flex-direction:column;gap:18px;position:relative;z-index:2}
+/* Direct children must not shrink — otherwise they compress to fit
+   the visible area, and tall children (.card with a long table)
+   clip rows under their own overflow:hidden instead of triggering
+   .content's overflow-y:auto. */
+.content > *{flex-shrink:0}
 
 /* METRICS */
 .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
