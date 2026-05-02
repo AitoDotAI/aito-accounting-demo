@@ -1,9 +1,25 @@
 # Aito performance findings (May 2026)
 
-Two slow paths surfaced while making the deployed demo (accounting.aito.ai)
-fast enough for sales walkthroughs. Captured here so the core team can
-file/fix what's worth fixing and so future iterations of this repo don't
-regress around the workarounds.
+Slow paths and API gaps surfaced while making the deployed demo
+(accounting.aito.ai) fast enough for sales walkthroughs and credible
+for a CTO read. Captured here so the core team can file/fix what's
+worth fixing and so future iterations of this repo don't regress
+around the workarounds.
+
+**Flag summary (full detail below).** Sorted by impact on the demo:
+
+| # | Issue | Repro impact | Workaround |
+|---|---|---|---|
+| 1 | `where: {linkedColumn: X}` expands all linked-entity fields as priors | 2.3 s vs 325 ms (7×) on `_recommend` | use explicit `linkedColumn.keyField: X` |
+| 2 | First query against any table costs ~12 s of cold load | First user pays full table-load latency | startup warmup + precompute store |
+| 3 | No documented row-delete API | `cache_entries` leaked 186 stale rows; precompute table accumulates dupes | none — reads use `limit:1`, so behaviour is correct but tables grow unbounded |
+| 4 | Boolean column rejects truthy non-bool (`1`, `"true"`) | Caught us during a bisect; clear error | pass `True`/`False` exactly |
+| 5 | `_search` `limit:0` count is ~1 s on cold table | `/api/help/stats` 2.1 s cold, 14 ms warm | included in startup warmup |
+| 6 | Cache `set` has no upsert primitive | 2× round-trip per write (delete + insert) | combine with #3 — delete is 404 anyway, so we're effectively just inserting |
+
+Items 1, 2, 4 are documented in detail in the original sections.
+Items 3, 5, 6 are new flags from the May 2 deploy iteration —
+captured below in §3.
 
 ---
 
@@ -154,6 +170,91 @@ demo's "first impression" feel.
 
 A warm-on-deploy hook, or simply faster lazy-load of small tables.
 14k rows shouldn't take 12 s to become queryable.
+
+---
+
+## 3. No documented row-delete API; cache tables accumulate dupes
+
+### Symptom
+
+`cache_entries` table on the deployed Aito had **321 rows for 135
+distinct keys** — 186 stale duplicates accumulated over the demo's
+lifetime. Same shape ready to happen on `precompute_entries`.
+
+### Cause
+
+`src/cache.py::set()` and `src/precompute_store.py::put()` both
+implement upsert as delete-then-insert:
+
+```python
+client._request("POST", f"/data/{TABLE}/delete", json={
+    "from": TABLE, "where": {"key": key}
+})
+client._request("POST", f"/data/{TABLE}", json={...})
+```
+
+The delete call returns **HTTP 404** —
+`The requested table {TABLE}/delete does not exist`. The error is
+swallowed by the surrounding try/except, every insert succeeds,
+and a stale row is left behind on every write.
+
+Verified the URL pattern doesn't exist with several variants:
+
+```text
+POST   /data/precompute_entries/delete       → 404
+POST   /data/precompute_entries/_delete      → 404
+POST   /_delete                               → 404
+DELETE /data/precompute_entries (with body)  → 405 method not supported
+```
+
+No `$id` / `_id` / `$row` field is queryable in `_search select`,
+so we can't even target individual rows for deletion. There's
+also no internal row identifier we can use to build a delete
+payload.
+
+### Workaround
+
+None on the read side — `precompute_store.get()` and `cache.get()`
+both use `limit:1` and the row content is identical, so behaviour
+is correct. But the tables grow without bound.
+
+`data/dedupe_precompute_entries.py` is checked in but blocked on
+the missing delete API. It currently runs in dry-run mode only.
+
+### What we'd hope from core
+
+- A documented row-delete REST endpoint, ideally `POST /data/{table}/_delete`
+  with a `where` body identical to `_search`.
+- Or a native upsert primitive — `POST /data/{table}` with an
+  optional `upsertOn: ["key"]` shape — so the application doesn't
+  need to manage delete-then-insert at all.
+
+---
+
+## 4. Boolean columns reject truthy non-bool values
+
+### Symptom
+
+While bisecting a separate slow path, tried passing `goal: {clicked: 1}`
+and `goal: {clicked: "true"}` to `_recommend`. Both rejected with
+clear errors:
+
+```
+"field 'clicked' of type Boolean cannot be '1' of type Int"
+"field 'clicked' of type Boolean cannot be '"true"' of type String"
+```
+
+### Why it matters
+
+This is correct, defensible behaviour — Aito's strict typing
+caught us being sloppy. Worth flagging because some Python or JS
+frameworks ship JSON payloads with `true` serialized as `1` /
+`"true"` depending on the toolchain, and the failure mode is
+*successful HTTP 400 with no hits*, not a silent slow path.
+
+### What we'd hope from core
+
+Nothing — strict typing is the right call. Just noting it.
 
 ---
 
