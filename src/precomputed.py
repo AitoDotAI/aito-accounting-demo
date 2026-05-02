@@ -1,28 +1,25 @@
-"""Read pre-computed JSON files written by data/precompute_predictions.py.
+"""Per-customer precompute reads — thin wrapper over precompute_store.
 
-For a hosted public demo we precompute every read-only view at
-build/data-load time and serve the static JSON. The only live Aito
-call from a browser session is the interactive Form Fill prediction.
+Historically this module read straight from
+`data/precomputed/{customer_id}/{name}.json`. After the precompute
+store landed (PR #7), per-customer outputs go through the same
+3-layer path (L1 → Aito `precompute_entries` → bootstrap file)
+that landing/help_related use.
 
-Read endpoints fall back to live Aito if the precomputed file is
-missing — this lets the dev workflow run against fresh data without
-needing to precompute on every fixture change.
+Keeping the wrapper so existing endpoint code (`precomputed.load`,
+`precomputed.has`) doesn't churn — and so anyone grep'ing for
+"precomputed" still finds the right module.
 """
 
-import json
-from pathlib import Path
+from typing import Any
 
-_DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "precomputed"
+from src import precompute_store
 
 
 def load(customer_id: str, name: str) -> dict | None:
-    """Read data/precomputed/{customer_id}/{name}.json, or None if absent."""
-    path = _DATA_DIR / customer_id / f"{name}.json"
-    if not path.is_file():
-        return None
-    with open(path) as f:
-        return json.load(f)
+    """Read precompute output for (customer_id, name)."""
+    return precompute_store.get(precompute_store.per_customer_key(customer_id, name))
 
 
 def has(customer_id: str, name: str) -> bool:
-    return (_DATA_DIR / customer_id / f"{name}.json").is_file()
+    return load(customer_id, name) is not None
