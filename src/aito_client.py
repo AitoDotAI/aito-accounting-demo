@@ -51,13 +51,22 @@ class AitoClient:
         self._breaker_open_until: float = 0.0
         self._breaker_last_error: str = ""
 
+    # Circuit-breaker tuning: production hits intermittent gateway 504s
+    # when Aito tables cold-load (~12s for help_impressions on a fresh
+    # instance). Tripping at 3 failures and locking out for 30s caused
+    # a cascade where every endpoint failed for half a minute. Higher
+    # threshold + shorter open window means a flaky upstream affects
+    # one or two requests, not the whole demo.
+    _BREAKER_THRESHOLD = 5
+    _BREAKER_OPEN_SECONDS = 10.0
+
     def _record_failure(self, error: str) -> None:
-        """Record a failure; trip the breaker after 3 in a row."""
+        """Record a failure; trip the breaker after N in a row."""
         import time as _time
         self._breaker_failures += 1
         self._breaker_last_error = error
-        if self._breaker_failures >= 3:
-            self._breaker_open_until = _time.monotonic() + 30.0
+        if self._breaker_failures >= self._BREAKER_THRESHOLD:
+            self._breaker_open_until = _time.monotonic() + self._BREAKER_OPEN_SECONDS
 
     def _url(self, path: str) -> str:
         return f"{self._base_url}/api/v1{path}"
