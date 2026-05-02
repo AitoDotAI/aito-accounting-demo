@@ -58,6 +58,25 @@ _l1: dict[str, Any] = {}
 _l1_mutex = threading.Lock()
 
 
+def per_customer_key(customer_id: str, name: str) -> str:
+    """Namespace per-customer precomputes so the table stays flat
+    while reads/writes still scope correctly."""
+    return f"cust:{customer_id}:{name}"
+
+
+def _fallback_path(name: str) -> Path:
+    """Map a precompute key to its bootstrap JSON path on disk.
+
+    Per-customer keys (`cust:CUST-0000:invoices_pending`) live in
+    `data/precomputed/CUST-0000/invoices_pending.json`. Cross-tenant
+    keys (`landing`) live in `data/precomputed/landing.json`.
+    """
+    if name.startswith("cust:"):
+        _, cid, sub = name.split(":", 2)
+        return _FALLBACK_DIR / cid / f"{sub}.json"
+    return _FALLBACK_DIR / f"{name}.json"
+
+
 def init(client: AitoClient) -> None:
     """Wire up the Aito client and ensure the table exists.
 
@@ -129,7 +148,7 @@ def get(name: str) -> Any | None:
             pass
 
     # L3: local JSON bootstrap
-    path = _FALLBACK_DIR / f"{name}.json"
+    path = _fallback_path(name)
     if path.is_file():
         try:
             with open(path) as f:

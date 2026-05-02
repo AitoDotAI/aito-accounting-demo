@@ -48,12 +48,24 @@ def load_fixture(name: str) -> list[dict]:
 
 
 def save(customer_id: str, name: str, data: dict) -> int:
-    """Write data/precomputed/{customer_id}/{name}.json. Returns size in bytes."""
+    """Write data/precomputed/{customer_id}/{name}.json AND push to the
+    Aito precompute store. Returns local file size in bytes.
+
+    Two writes intentionally:
+    - Local JSON: bootstrap fallback for dev / brief Aito outages.
+    - Aito store: source of truth for running containers; refreshes
+      on every precompute run without rebuilding the docker image.
+    """
     out_dir = PRECOMPUTED_DIR / customer_id
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{name}.json"
     with open(path, "w") as f:
         json.dump(data, f, ensure_ascii=False)
+    try:
+        from src import precompute_store
+        precompute_store.put(precompute_store.per_customer_key(customer_id, name), data)
+    except Exception as e:
+        print(f"  {customer_id}/{name}: aito-store push skipped: {e}")
     return path.stat().st_size
 
 
@@ -350,6 +362,13 @@ def main() -> None:
 
     config = load_config()
     client = AitoClient(config)
+
+    # Initialize the Aito-backed precompute store once. Every
+    # precompute_one_customer / precompute_landing / precompute_help_related
+    # call below will push outputs into precompute_entries via save() /
+    # precompute_store.put().
+    from src import precompute_store
+    precompute_store.init(client)
 
     if not client.check_connectivity():
         print("Error: Cannot connect to Aito. Run ./do load-data first.", file=sys.stderr)
