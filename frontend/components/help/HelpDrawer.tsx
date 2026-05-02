@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useCustomer } from "@/lib/customer-context";
 import { apiFetch } from "@/lib/api";
+import Spinner from "@/components/ui/Spinner";
 
 interface Article {
   article_id: string;
@@ -350,7 +351,10 @@ export default function HelpDrawer() {
                           Users who read this also read
                         </div>
                         {relatedLoading === a.article_id && (
-                          <div style={{ fontSize: 11, color: "var(--text3)", padding: "4px 0" }}>Loading…</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--text3)", padding: "4px 0" }}>
+                            <Spinner size={11} label="Loading related articles" />
+                            Loading…
+                          </div>
                         )}
                         {relatedLoading !== a.article_id && (related[a.article_id] ?? []).length === 0 && (
                           <div style={{ fontSize: 11, color: "var(--text3)", padding: "4px 0" }}>No related articles yet — clicks from this one are sparse.</div>

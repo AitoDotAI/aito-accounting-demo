@@ -8,6 +8,7 @@ import PredictedField from "@/components/prediction/PredictedField";
 import { useCustomer } from "@/lib/customer-context";
 import { demoToday } from "@/lib/demo-time";
 import { apiFetch } from "@/lib/api";
+import Spinner from "@/components/ui/Spinner";
 import type { AitoPanelConfig } from "@/lib/types";
 
 const PANEL_CONFIG: AitoPanelConfig = {
@@ -259,7 +260,15 @@ export default function FormFillPage() {
         <TopBar
           breadcrumb="Payables"
           title="Smart Form Fill"
-          subtitle={loading ? "Predicting..." : predictedCount > 0 ? `${predictedCount} fields predicted \u00B7 avg ${(avgConf * 100).toFixed(0)}% confidence` : "Type in any field to trigger predictions"}
+          subtitle={
+            loading ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <Spinner label="Predicting" /> Predicting…
+              </span>
+            ) : predictedCount > 0
+              ? `${predictedCount} fields predicted \u00B7 avg ${(avgConf * 100).toFixed(0)}% confidence`
+              : "Type in any field to trigger predictions"
+          }
           live={live}
           actions={
             <>
@@ -436,7 +445,28 @@ export default function FormFillPage() {
             </div>
 
             <div className="form-section">
-              <div className="form-section-title">Routing &amp; classification</div>
+              <div
+                className="form-section-title"
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}
+              >
+                <span>Routing &amp; classification</span>
+                {loading && (
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontSize: 11,
+                      fontWeight: 500,
+                      color: "var(--gold-dark)",
+                      textTransform: "none",
+                      letterSpacing: 0,
+                    }}
+                  >
+                    <Spinner size={11} label="Predicting" /> predicting…
+                  </span>
+                )}
+              </div>
               <div style={{
                 fontSize: 12, color: "var(--text2)", lineHeight: 1.5,
                 marginBottom: 12, padding: "8px 12px",

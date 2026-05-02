@@ -351,3 +351,7 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 /* LIVE INDICATOR */
 .live-dot{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:#2a8a3a;font-weight:600;padding:3px 10px;background:var(--green-bg);border:1px solid #a8d8b0;border-radius:12px}
 .live-dot::before{content:'';width:7px;height:7px;background:#6ab87a;border-radius:50%;box-shadow:0 0 4px #6ab87a}
+
+/* INLINE SPINNER */
+.ui-spinner{display:inline-block;border:2px solid var(--border);border-top-color:var(--gold-mid);border-radius:50%;animation:ui-spin .7s linear infinite;flex-shrink:0;vertical-align:-1px}
+@keyframes ui-spin{to{transform:rotate(360deg)}}
