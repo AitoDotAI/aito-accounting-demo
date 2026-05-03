@@ -8,12 +8,24 @@ made and what response shapes come back.
 Aito API docs: https://aito.ai/docs/api/
 """
 
+import os
+import threading
 from contextvars import ContextVar
 from typing import Any
 
 import httpx
 
 from src.config import Config
+
+
+# Cap concurrent in-flight Aito calls process-wide. Aito has 8
+# server-side workers; keeping us at 4 leaves headroom for other
+# clients hitting the same shared instance and avoids the queue
+# pile-up + memory pressure that produced the 504 storm during
+# 1 M-scale precompute. Configurable via env so we can tune later
+# without a code change.
+_AITO_INFLIGHT_LIMIT = int(os.environ.get("AITO_INFLIGHT_LIMIT", "4"))
+_aito_inflight_semaphore = threading.Semaphore(_AITO_INFLIGHT_LIMIT)
 
 
 # Per-request Aito-call accumulator. Set by the FastAPI middleware
@@ -76,16 +88,29 @@ class AitoClient:
     def _url(self, path: str) -> str:
         return f"{self._base_url}/api/v1{path}"
 
-    def _request(self, method: str, path: str, json: dict | None = None) -> Any:
+    def _request(
+        self,
+        method: str,
+        path: str,
+        json: dict | None = None,
+        timeout: float | None = 120.0,
+    ) -> Any:
         """Make an HTTP request to Aito and return the parsed JSON response.
 
         Includes:
         - One retry on transient failures (5xx or connection error) with
           200ms backoff. Idempotent operations only — POST is also
           retried because Aito's _predict / _relate / _search are pure.
-        - Circuit breaker: after 3 consecutive failures the breaker
-          opens for 30 seconds; subsequent calls fail-fast with a
-          helpful AitoError instead of waiting for timeouts.
+        - Circuit breaker: after N consecutive failures the breaker
+          opens; subsequent calls fail-fast.
+        - Process-wide concurrency cap (`_aito_inflight_semaphore`)
+          so multiple ThreadPoolExecutors can't pile more than
+          `AITO_INFLIGHT_LIMIT` calls into Aito at once.
+
+        `timeout` defaults to 120 s. Pass a larger value (or None for
+        no client-side cap) for inherently long calls — `optimize`
+        on a multi-million-row table can take several minutes
+        immediately after a bulk ingest.
 
         Raises AitoError on non-2xx status, connection failure, or
         when the circuit breaker is open.
@@ -105,13 +130,17 @@ class AitoClient:
         for attempt in range(2):  # original + 1 retry
             t0 = _time.monotonic()
             try:
-                response = httpx.request(
-                    method,
-                    self._url(path),
-                    headers=self._headers,
-                    json=json,
-                    timeout=120.0,
-                )
+                # Cap concurrent in-flight requests to leave headroom
+                # for Aito's 8-worker pool and avoid the queue-induced
+                # memory pressure that produced the 1 M-scale 504 storm.
+                with _aito_inflight_semaphore:
+                    response = httpx.request(
+                        method,
+                        self._url(path),
+                        headers=self._headers,
+                        json=json,
+                        timeout=timeout,
+                    )
             except httpx.HTTPError as exc:
                 last_exc = AitoError(f"Aito request failed: {method} {path}: {exc}")
                 if attempt == 0:
@@ -153,9 +182,18 @@ class AitoClient:
         return self._request("GET", "/schema")
 
     def check_connectivity(self) -> bool:
-        """Return True if the Aito instance is reachable and authenticated."""
+        """Return True if the Aito instance is reachable and authenticated.
+
+        Uses a tiny `_search` instead of `/schema` because `/schema` on a
+        degraded instance can hang for the full client timeout while
+        rebuilding its in-memory representation, while a `_search ... limit:1`
+        on a small table still responds within a few seconds.
+        """
         try:
-            self.get_schema()
+            self._request(
+                "POST", "/_search",
+                json={"from": "customers", "limit": 1},
+            )
             return True
         except AitoError:
             return False
