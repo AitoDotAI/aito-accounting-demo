@@ -48,12 +48,14 @@ Already merged to Aito core main, shipping next deploy:
 Open performance question (worth investigating, not a blocker):
 
 6. **Sustained heavy precompute reads at 1 M scale produce a 504
-   storm even after jobs-based optimize.** Verified empirically May 3:
-   re-ran top-20 precompute on a freshly jobs-optimized state and
-   got 2 ok / 2 partial / 16 stub — same collapse pattern. Optimize
-   is necessary (drops `_search` from 25 s to 280 ms) but not
-   sufficient. There's a residual concurrency or load-handling
-   issue separate from un-optimized indexes. (§1, Q1)
+   storm even after jobs-based optimize and the May 3 redeploy.**
+   Verified empirically twice on May 3: top-20 precompute always
+   collapses after 2 successful customers (CUST-0000, 0001), with
+   CUST-0002 burning ~14 min in retries before stubbing and the
+   remaining 17 failing fast. Optimize is necessary (drops `_search`
+   from 25 s to 280 ms) but not sufficient. There's a residual
+   concurrency or load-handling issue separate from un-optimized
+   indexes that survived the May 3 redeploy. (§1, Q1)
 
 Appendix-quality observations:
 
@@ -546,12 +548,20 @@ of the jobs-optimized state. Result: **2 ok / 2 partial / 16 stub** —
 same collapse pattern as before. The breaker opens after ~2 successful
 customers and the rest fail-fast.
 
+**Update (May 3 late, after core's redeploy with delete fixes +
+"optimizations"):** ran top-20 precompute again on the new build.
+Result: **2 ok / 0 partial / 18 stub** — still the 2-customer cliff.
+CUST-0000 and CUST-0001 succeed in 22 + 12 min, CUST-0002 spends
+14 min in retries and stubs anyway, the rest fail-fast within
+seconds. Whatever optimizations shipped in this deploy didn't move
+the needle on this specific pattern. **Item #6 remains open.**
+
 So jobs-based optimize is the right path *and* fixes the post-ingest
-slowness, but it is **not sufficient on its own** to prevent the 504
-storm under sustained per-customer fan-out at 1 M scale. There's a
-residual concurrency or load-handling issue separate from
-un-optimized indexes. This is the open performance question for core
-to investigate (item 6 in the *Net asks* summary at the top).
+slowness, but neither it nor the May 3 redeploy prevent the 504 storm
+under sustained per-customer fan-out at 1 M scale. There's a residual
+concurrency or load-handling issue separate from un-optimized indexes.
+This is the open performance question for core to investigate (item
+6 in the *Net asks* summary at the top).
 
 ### Q2. Does `POST /data/_delete` (with `{from, where}` body) actually delete?
 
