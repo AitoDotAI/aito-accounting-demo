@@ -393,3 +393,133 @@ POST /_recommend
 # Only this works
 { ..., "goal": { "clicked": true } }
 ```
+
+---
+
+## Answers to core's three follow-up questions (May 3)
+
+### Q1. Does `POST /jobs/data/invoices/optimize` after ingest avoid the 504 storm?
+
+The endpoint works. Confirmed end-to-end:
+
+```http
+POST /api/v1/jobs/data/invoices/optimize
+{}
+→ 201  { "id": "fec32a21-...", "path": "data/invoices/optimize",
+         "startedAt": "2026-05-03T09:23:36.452Z" }
+
+GET /api/v1/jobs/fec32a21-...
+→ 200  { ..., "startedAt": "...09:23:36.452Z",
+              "finishedAt": "...09:23:41.857Z",   ← ~5 s
+              "expiresAt":  "...09:38:41.857Z" }
+```
+
+After firing it on `invoices`, `bank_transactions`, `help_impressions`,
+`overrides` and waiting 60 s, latencies on a previously-stubbed
+customer dropped from 25 s+ to 250–280 ms warm:
+
+```
+invoices CUST-0010 limit=1 attempt 1: 7.16s 200    ← cold load
+invoices CUST-0010 limit=1 attempt 2: 0.28s 200    ← warm
+invoices CUST-0010 limit=1 attempt 3: 0.28s 200
+```
+
+Verdict: **jobs-based optimize is the right path**. Our existing
+`data_loader.optimize_table()` uses the sync `POST /data/{table}/optimize`
+which races the still-running ingestion jobs and times out at our
+120 s client cap, leaving the table un-optimized. Switching to
+`POST /jobs/data/{table}/optimize` + polling to `finishedAt` fixes
+this and is what the core team should recommend in the documented
+ingest path.
+
+We haven't yet retried a full per-customer precompute on top of this
+optimized state to confirm the 504 storm doesn't recur — that's a
+many-hour run. The latency drop after the jobs-optimize matches what
+we saw with the sync optimize (after the ingest race had cleared),
+so the hypothesis stands: optimize-after-ingest is the missing
+piece. Worth core re-running the full 1 M precompute with this
+patch to verify.
+
+### Q2. Does `POST /data/_delete` (with `{from, where}` body) actually delete?
+
+**Short answer: no — neither the sync nor the jobs form actually removes
+the row.** Tested empirically:
+
+```http
+# Sentinel insert
+POST /api/v1/data/precompute_entries
+{ "name": "__core_test_sentinel__", "payload": "{}", "computed_at": 1 }
+→ 200 OK   ✓ row exists; verified via _search
+
+# Variant A — /data/_delete (suggested in the question)
+POST /api/v1/data/_delete
+{ "from": "precompute_entries", "where": { "name": "__core_test_sentinel__" } }
+→ 400 { "message": "No such table: cache_entries" }
+   ↑ message refers to a different table; cryptic. Even when we send a
+     valid table name, the body shape isn't the working one.
+
+# Variant B — /data/{table}/_delete
+POST /api/v1/data/precompute_entries/_delete
+{ "from": "precompute_entries", "where": { "name": "__core_test_sentinel__" } }
+→ 404 "The requested table precompute_entries/_delete does not exist"
+
+# Variant C — original URL we'd been using
+POST /api/v1/data/precompute_entries/delete
+{ "from": "precompute_entries", "where": { "name": "__core_test_sentinel__" } }
+→ 404 "The requested table precompute_entries/delete does not exist"
+
+# Variant D — DELETE method
+DELETE /api/v1/data/precompute_entries
+{ "where": { "name": "__core_test_sentinel__" } }
+→ 405 "HTTP method not supported. Supported: POST"
+
+# Variant E — jobs-based, /jobs/data/{table}/_delete
+POST /api/v1/jobs/data/precompute_entries/_delete
+{ "from": "precompute_entries", "where": { "name": "__core_test_sentinel__" } }
+→ 201 { "id": "...", "path": "data/precompute_entries/_delete",
+        "startedAt": "..." }
+
+GET /api/v1/jobs/{id}
+→ 200 { "startedAt": "...", "finishedAt": "..." }   ← instant; no error reported
+
+# Verify outcome
+POST /api/v1/_search
+{ "from": "precompute_entries",
+  "where": { "name": "__core_test_sentinel__" }, "limit": 1 }
+→ { "total": 1, "hits": [ ... sentinel still here ... ] }   ✗ NOT DELETED
+```
+
+We tried four body shape variants on Variant E — `{where}` only,
+`{from, where}`, just `{name: ...}`, and `{parameters: {from, where}}`.
+All return 201 immediately, finish in milliseconds, **no error**, and
+**don't delete the row**. The jobs surface accepts the request, reports
+success, and silently no-ops.
+
+Implication: there is no working row-delete API on this Aito instance
+that we can find. The cache_entries leak we documented (321 rows, 135
+distinct keys, 186 stale duplicates) can't be fixed application-side
+until core ships a working delete primitive — sync or jobs-based, your
+call.
+
+### Q3. Did we want property-expansion behavior, or just identity?
+
+**Identity, only ever identity.** We were using
+`where: {prev_article_id: "LEGAL-00"}` to mean *"filter
+help_impressions to rows where the user's previous article was
+LEGAL-00."* Pure key-equality. We never wanted Aito to treat the
+linked entity's other fields as recommendation priors — that's the
+side effect that took us 7× longer to find than it should have.
+
+So the answer for the message is: please **default-flip**, not just
+better diagnostics. The shortcut form should mean identity-on-key
+(matching the user's mental model and matching `where: {nonLinkedCol: X}`
+behavior), and we should opt *in* to property-expansion explicitly
+when we want it — say a separate `$expandProperties: true` flag, or
+keep it on `basedOn` only. Diagnostics-only would still require
+us to recognise the issue and write the workaround; default-flip
+makes the natural code path the right one.
+
+Our final query in `src/help_service.py::related_articles` uses the
+explicit-key traversal `prev_article_id.article_id: X` to get the
+identity behavior. That works but it's odd-looking SQL-shape — most
+developers will write the shortcut form first.
