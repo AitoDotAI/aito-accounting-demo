@@ -19,13 +19,34 @@ from src.config import Config
 
 
 # Cap concurrent in-flight Aito calls process-wide. Aito has 8
-# server-side workers; keeping us at 4 leaves headroom for other
-# clients hitting the same shared instance and avoids the queue
-# pile-up + memory pressure that produced the 504 storm during
-# 1 M-scale precompute. Configurable via env so we can tune later
-# without a code change.
+# server-side workers; keeping us at 4 for normal calls leaves
+# headroom for other clients on the shared instance.
+#
+# `_evaluate` is special: it loads test/train splits and per-row
+# predictions server-side and is the memory-heavy path that tipped
+# 1 M-scale Aito into 504 storms even with our 4-call cap. Its own
+# semaphore (size 1) serializes it without blocking the other
+# operations — net cap is 4 + 1 = 5 in-flight, with at most one
+# heavy call.
+#
+# Both limits configurable via env: AITO_INFLIGHT_LIMIT (default 4)
+# and AITO_EVALUATE_INFLIGHT_LIMIT (default 1).
 _AITO_INFLIGHT_LIMIT = int(os.environ.get("AITO_INFLIGHT_LIMIT", "4"))
+_AITO_EVALUATE_LIMIT = int(os.environ.get("AITO_EVALUATE_INFLIGHT_LIMIT", "1"))
 _aito_inflight_semaphore = threading.Semaphore(_AITO_INFLIGHT_LIMIT)
+_aito_evaluate_semaphore = threading.Semaphore(_AITO_EVALUATE_LIMIT)
+
+
+def _semaphore_for(path: str) -> threading.Semaphore:
+    """Pick the right concurrency cap for an Aito path.
+
+    `/_evaluate` is memory-heavy server-side; we keep it on its
+    own (size-1) semaphore so it doesn't compete with normal
+    queries and never has more than one in flight.
+    """
+    if path == "/_evaluate" or path.endswith("/_evaluate"):
+        return _aito_evaluate_semaphore
+    return _aito_inflight_semaphore
 
 
 # Per-request Aito-call accumulator. Set by the FastAPI middleware
@@ -133,7 +154,9 @@ class AitoClient:
                 # Cap concurrent in-flight requests to leave headroom
                 # for Aito's 8-worker pool and avoid the queue-induced
                 # memory pressure that produced the 1 M-scale 504 storm.
-                with _aito_inflight_semaphore:
+                # _evaluate gets its own size-1 semaphore so the heavy
+                # path is serialized without blocking lighter ops.
+                with _semaphore_for(path):
                     response = httpx.request(
                         method,
                         self._url(path),
