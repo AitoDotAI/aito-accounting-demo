@@ -188,3 +188,208 @@ Items 4–8 are nice-to-have once 1–3 are in.
 
 The ergonomics from the demo side are now good. The remaining headroom
 is on the Aito core side.
+
+---
+
+## Concrete query bodies
+
+For each finding above, the actual JSON we send. Copy-pasteable
+against `https://shared.aito.ai/db/aito-accounting-demo/api/v1` after
+`./do reset-data` from this repo's fixtures.
+
+### Finding #1 — what one customer's precompute looks like
+
+A single `precompute_one_customer` call issues these queries. Running
+4–5 of these concurrently (workers≥2) at 1 M scale is what tipped
+shared.aito.ai into the 504-storm.
+
+```http
+# From compute_prediction_quality — by far the heaviest. ~10–60s per customer
+# at 1 M scale. Run for 7 customers ⇒ measured collapse.
+POST /_evaluate
+{
+  "testSource": { "from": "invoices", "where": {"customer_id": "CUST-0000"}, "limit": 50 },
+  "evaluate":   { "from": "invoices",
+                  "where": {
+                    "customer_id": "CUST-0000",
+                    "vendor":   { "$get": "vendor" },
+                    "amount":   { "$get": "amount" },
+                    "category": { "$get": "category" }
+                  },
+                  "predict": "gl_code" }
+}
+
+# From rule mining — issued ~30× per customer (one per (field, value) pair
+# we want to relate to gl_code). Each call ~250–800 ms at 1 M scale.
+POST /_relate
+{
+  "from": "invoices",
+  "where": { "vendor": "Kesko Oyj", "customer_id": "CUST-0000" },
+  "relate": "gl_code"
+}
+
+# From invoice precompute — for each of 50 unrouted invoices, two _predicts
+# fan out in parallel. So 100 _predict calls per customer, each 100–400 ms.
+POST /_predict
+{
+  "from": "invoices",
+  "where": { "customer_id": "CUST-0000",
+             "vendor": "Kesko Oyj",
+             "amount": 4220,
+             "category": "supplies" },
+  "predict": "gl_code",
+  "select": [ "$p", "feature",
+              { "$why": { "highlight": { "posPreTag": "<mark>", "posPostTag": "</mark>" } } } ]
+}
+POST /_predict   # same shape, predict: "approver"
+
+# From matching — _match per bank transaction, 8 transactions.
+POST /_match
+{
+  "from": "bank_transactions",
+  "where": { "description": "KESKO OYJ", "amount": 4220, "customer_id": "CUST-0000" },
+  "match": "invoice_id",
+  "select": ["$p", "vendor", "invoice_id", "amount", "$why"],
+  "limit": 5
+}
+
+# From anomaly scan + rule replay + quality overview: a few more _search /
+# _predict calls per customer at similar shapes.
+```
+
+Total per customer: ~150–200 Aito calls. Per-call latency at 1 M scale
+ranges 100 ms (warm) to 25 s (mid-collapse). Sustained for ~20 min.
+
+### Finding #2 — current bulk upload (works) vs doc-suggested batch (doesn't)
+
+**Works** (35 min for 1 024 000 rows):
+
+```http
+POST /data/invoices/file
+{}
+→ { "id": "abc-123", "url": "https://aitoai-customer-uploads.s3...PUT-presigned",
+    "method": "PUT", "expires": "..." }
+
+PUT https://aitoai-customer-uploads.s3.../   # gzipped NDJSON, 100k rows / chunk
+Content-Type: application/octet-stream
+
+POST /data/invoices/file/abc-123
+{}
+→ { "id": "abc-123", "status": "started" }
+
+GET /data/invoices/file/abc-123     # poll until phase: Finished
+→ { "status": { "phase": "Finished", "completedCount": 100000, ... } }
+```
+
+**Times out at scale** (`httpx.ReadTimeout` past ~600 k rows):
+
+```http
+POST /data/invoices/batch
+[ { "invoice_id": "...", ... }, ... 1000 rows ]
+```
+
+**Silently 404s** (cache.set's delete-then-insert):
+
+```http
+POST /data/cache_entries/delete
+{ "from": "cache_entries", "where": { "key": "help_search:CUST-0000:..." } }
+→ 404 "The requested table cache_entries/delete does not exist"
+
+# Then we insert anyway:
+POST /data/cache_entries
+{ "key": "help_search:CUST-0000:...", "value": "...", "created_at": ..., "ttl": 3600 }
+→ 200 OK   ← row added; previous row never removed
+```
+
+What we'd want (suggested):
+
+```http
+POST /data/{table}/_delete-job
+{ "from": "{table}", "where": { "key": "..." } }
+→ { "id": "del-456", "status": "started" }
+
+POST /data/{table}/_upsert-job
+{ "rows": [ ... ], "upsertOn": ["key"] }
+→ { "id": "upsert-789", "status": "started" }
+```
+
+### Finding #3 — linked-column shortcut vs explicit-key
+
+```http
+# 2272 ms — shortcut form, expands all 7 fields of help_articles as priors
+POST /_recommend
+{
+  "from": "help_impressions",
+  "where": { "prev_article_id": "LEGAL-00",   ←— shortcut
+             "customer_id":      "CUST-0000" },
+  "recommend": "article_id",
+  "goal": { "clicked": true },
+  "limit": 5
+}
+
+# 325 ms — explicit-key traversal, plain index lookup
+POST /_recommend
+{
+  "from": "help_impressions",
+  "where": { "prev_article_id.article_id": "LEGAL-00",   ←— explicit
+             "customer_id": "CUST-0000" },
+  "recommend": "article_id",
+  "goal": { "clicked": true },
+  "limit": 5
+}
+```
+
+### Finding #4 — first-query cold load
+
+The query is fine; it's the *first* call after process start that's slow.
+
+```http
+# 12.8 s on first hit, 14 ms after
+POST /_recommend
+{
+  "from": "help_impressions",
+  "where": { "customer_id": "CUST-0000", "page": "/invoices" },
+  "recommend": "article_id",
+  "goal": { "clicked": true },
+  "limit": 5
+}
+```
+
+### Finding #6 — optimize timing
+
+```http
+# Times out at our 120 s client cap immediately after a 1 M-row bulk
+# ingest finishes. Same call completes in 5.6 s after ~5 min of settle.
+POST /data/invoices/optimize
+{}
+```
+
+### Finding #7 — `/schema` vs `_search` on a degraded instance
+
+```http
+# 30 s+ timeout when instance is under heavy precompute load
+GET /schema
+
+# 25–30 s but eventually returns 200 — same instance, same moment
+POST /_search
+{ "from": "customers", "limit": 1 }
+```
+
+We use the second form for our connectivity probe now. The first
+should at minimum cache its result for N seconds so a degraded
+instance still answers it quickly.
+
+### Finding #8 — Boolean strict typing (info only)
+
+```http
+# These all 400 with clear errors
+POST /_recommend
+{ ..., "goal": { "clicked": 1 } }
+→ "field 'clicked' of type Boolean cannot be '1' of type Int"
+
+{ ..., "goal": { "clicked": "true" } }
+→ "field 'clicked' of type Boolean cannot be '\"true\"' of type String"
+
+# Only this works
+{ ..., "goal": { "clicked": true } }
+```
