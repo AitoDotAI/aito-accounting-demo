@@ -12,6 +12,55 @@ push tacked on at the end.
 
 ---
 
+## Net asks for core (after the May 3 verification round)
+
+Two real bugs:
+
+1. **`POST /jobs/data/{table}/_delete` silent failure.** Returns 201
+   with a job id and `finishedAt` timestamp on `/jobs/{id}`, but
+   `/jobs/{id}/result` returns 500 and the row stays. Either reject
+   at submit with a clear 400 or wire to the working
+   `/jobs/data/_delete` handler. (§5b)
+2. **`GET /jobs/{id}` doesn't surface job errors.** Only
+   `/jobs/{id}/result` reveals failures; the status endpoint shows
+   only `finishedAt` whether the job succeeded or 500'd. This is
+   what hid bug #1 from us. (§5c)
+
+Two doc/discoverability fixes:
+
+3. **Document `POST /api/v1/data/_delete`.** Working endpoint, but
+   undocumented; every reasonable URL guess
+   (`/data/{table}/delete`, `/data/{table}/_delete`,
+   `DELETE /data/{table}`) returns 404/405 with misleading "table
+   not found" errors when the table exists. (§5a)
+4. **Document the gzipped file-upload + jobs flow as the primary
+   ingest path.** `/data/{table}/batch` times out past ~600 k rows;
+   the file-upload flow took 1 024 000 invoices in 35 min. The gzip
+   requirement is non-obvious — uncompressed payloads silently
+   fail with `Unknown exception` per row. (§2)
+
+Already merged to Aito core main, shipping next deploy:
+
+5. **Upsert primitive.** Lets `cache.set()` and
+   `precompute_store.put()` be one call instead of delete-then-insert
+   pair. Eliminates the cache_entries leak class entirely.
+
+Open performance question (worth investigating, not a blocker):
+
+6. **Sustained heavy precompute reads at 1 M scale produce a 504
+   storm.** Hypothesis: optimize-after-ingest was the missing piece;
+   we've verified jobs-based optimize works (Q1) but haven't yet
+   re-run a full 1 M precompute on top of an optimized state to
+   confirm the storm is purely about un-optimized indexes. (§1, Q1)
+
+Appendix-quality observations:
+
+- 12 s cold-load on first query against any table (§4)
+- `/schema` hangs on degraded instance while `_search` answers (§7)
+- Boolean strict typing — informational, no fix needed (§8)
+
+---
+
 ## What we'd most like fixed
 
 ### 1. Sustained heavy precompute traffic at 1 M scale collapses the instance
@@ -44,33 +93,35 @@ What would help:
 - Either way, a documented "what you can run concurrently against an
   N-row table" guidance would let demos/CTOs predict their PoC sizing.
 
-### 2. Writes should use the jobs API; sync `POST /data/{table}` is brittle at scale
+### 2. Bulk ingest path: jobs flow works but isn't documented as the recommended path
 
-This was the user's point in feedback — the sync write path was the source
-of two of the issues we hit:
+`/data/{table}/batch` times out client-side (httpx ReadTimeout, 120 s)
+once the target table passes ~600 k rows. We replaced it with the
+file-upload + jobs flow:
 
-- **`/data/{table}/batch`** times out client-side (httpx ReadTimeout,
-  120 s) once the target table passes ~600 k rows. We replaced this with
-  the file-upload + jobs flow (`POST /data/{table}/file` → S3 PUT
-  gzipped NDJSON → `POST /data/{table}/file/{id}` trigger → poll
-  `GET /data/{table}/file/{id}` until `phase: Finished`). 1 024 000
-  invoices in 35 min vs days on `/batch`.
-- **Cache write upserts** (`cache.set` and `precompute_store.put`)
-  do delete-then-insert via `POST /data/{table}/delete` (404, see #5
-  below). We don't have a documented async-jobs equivalent for
-  individual-row writes, so the cache tables accumulate duplicates
-  unbounded.
+```
+POST /data/{table}/file              → presigned S3 PUT URL + ingest ID
+PUT  s3://...                         (gzipped NDJSON; chunked at 100 k rows)
+POST /data/{table}/file/{id}         → triggers ingestion
+GET  /data/{table}/file/{id}         → poll until phase: Finished
+```
 
-What would help:
-- Make jobs the primary write path. Document `/data/{table}/file` +
-  jobs as the recommended ingestion API; mark `/data/{table}/batch`
-  as legacy / for tables under N rows.
-- Add jobs-based primitives for: row delete (`POST /data/{table}/_delete-job`
-  with a `where` body), upsert (`POST /data/{table}/_upsert-job` with
-  an `upsertOn` key list), and batch update.
-- Surface job status via `GET /jobs` and `GET /jobs/{id}` consistently
-  (the file-upload jobs surface only via `GET /data/{table}/file/{id}`,
-  while `/jobs` returns `[]`).
+1 024 000 invoices in 35 min vs days on `/batch`. Two non-obvious
+gotchas worth pinning in the docs:
+
+- The body **must be gzipped**. Uncompressed NDJSON silently fails
+  with `Unknown exception` per row, no hint that compression is
+  required.
+- The `format` parameter in the init body is ignored; only the gzip
+  wrapping matters.
+
+We'd ask core to make jobs-style ingest the documented primary path
+and demote `/data/{table}/batch` to "legacy / small tables only."
+
+(Original framing of this section called for jobs-based row writes
+in general. After core's clarification, the row-write story is in
+better shape than we thought — `/data/_delete` works synchronously
+and the upsert primitive is en route. See §5 for the residual asks.)
 
 ### 3. `where: {linkedColumn: X}` shortcut expands all linked-entity fields as priors
 
@@ -99,26 +150,82 @@ warmup pass.
 Suggested fix: a warm-on-deploy hook, or just faster lazy-load of small
 tables. 14 k rows shouldn't take 12 s to become queryable.
 
-### 5. `POST /data/{table}/delete` returns 404; row-delete API not at the documented-looking URL
+### 5. Row-delete: working endpoint is undocumented; one jobs form is broken
 
-Already in `aito-perf-findings.md` §3.
+**Correction from the original message — we initially concluded "no
+working delete API." That's wrong; we missed it.** The working URL is
+`POST /api/v1/data/_delete` with `{from, where}` body — the table goes
+in the body, not the path. We discovered this only after core flagged
+it. Verified working end-to-end now:
 
-`cache_entries` table on the deployed instance had **321 rows for 135
-distinct keys** — every `cache.set` since deploy has been leaking a
-duplicate row because the delete leg of delete-then-insert silently
-returns 404 and the insert goes through anyway.
-
-Several variants tested, all 404 / 405:
-
-```
-POST   /data/cache_entries/delete     → 404
-POST   /data/cache_entries/_delete    → 404
-POST   /_delete                        → 404
-DELETE /data/cache_entries (with body) → 405
+```http
+POST /api/v1/data/_delete
+{ "from": "precompute_entries",
+  "where": { "name": "__verify_delete_works__" } }
+→ 200 { "total": 1 }    ✓ row gone
 ```
 
-Combine with #2 above: the right shape is probably an async
-`_delete-job` with a `where` body.
+The actual problems we'd ask core to fix:
+
+**5a — Documentation gap.** Every reasonable URL guess returns 404 or
+405:
+
+```
+POST   /data/{table}/delete           → 404 "table {table}/delete does not exist"
+POST   /data/{table}/_delete          → 404 "table {table}/_delete does not exist"
+POST   /_delete                        → 404 "path /_delete does not exist"
+DELETE /data/{table}                   → 405 "method not supported"
+```
+
+The error messages actively mislead — they say "table not found"
+when the table exists but the URL is wrong. We spent two debug
+cycles concluding the endpoint didn't exist before core flagged the
+correct URL. A docs pointer + better error message ("did you mean
+POST /data/_delete?") would prevent this for the next person.
+
+**5b — Real bug.** `POST /api/v1/jobs/data/{table}/_delete`
+(table-in-URL form) accepts the request, marks the job
+`finishedAt`, and silently no-ops. The row is not deleted.
+Reproduced just now:
+
+```http
+POST /api/v1/jobs/data/precompute_entries/_delete
+{ "from": "precompute_entries", "where": { "name": "__broken_jobs_url__" } }
+→ 201 { "id": "...", "path": "data/precompute_entries/_delete",
+        "startedAt": "..." }
+
+GET /api/v1/jobs/{id}             ← what we polled before
+→ 200 { ..., "finishedAt": "...", ... }      ← LOOKS LIKE SUCCESS
+
+GET /api/v1/jobs/{id}/result      ← what we should have polled
+→ 500 "There was an internal server error."  ← actual outcome
+
+POST /api/v1/_search { ..., "where": { "name": "__broken_jobs_url__" } }
+→ { "total": 1 }                              ← row stays
+```
+
+The non-table-in-URL form `POST /api/v1/jobs/data/_delete` works
+correctly (201 → `/jobs/{id}/result` returns 200 with delete count).
+Either reject the table-in-URL form at submit time with a clear 400,
+or wire it up to the same handler.
+
+**5c — Discoverability.** `GET /jobs/{id}` shows `finishedAt` even
+when the job actually errored; the error is only surfaced at
+`/jobs/{id}/result`. That's what hid 5b from us — we polled
+`/jobs/{id}`, saw `finishedAt`, and concluded success. Surfacing
+"finished but errored" in the status response would have caught
+this immediately.
+
+**5d — Upsert primitive.** Even with `/data/_delete` working,
+delete-then-insert is two round-trips per cache write. A native
+`POST /api/v1/data/{table}` with `{rows: [...], upsertOn: ["key"]}`
+would let `cache.set()` and `precompute_store.put()` be one call.
+Per @arau, this is merged to Aito core's main and ships next deploy.
+
+**Application-side fix shipped.** `cache.py` and `precompute_store.py`
+both switched from `/data/{table}/delete` (404, silent leak) to
+`/data/_delete` (200, actually works). Cache leak is now self-healing
+on next process write per key.
 
 ### 6. `/data/{table}/optimize` defaults exceed our 120 s client cap on freshly-loaded large tables
 
@@ -442,64 +549,58 @@ patch to verify.
 
 ### Q2. Does `POST /data/_delete` (with `{from, where}` body) actually delete?
 
-**Short answer: no — neither the sync nor the jobs form actually removes
-the row.** Tested empirically:
+**Yes — we missed it on the first pass.** Core's verdict caught two
+things: (1) we had a bad initial probe (the 400 we logged in the
+original message wasn't reproducible against `precompute_entries` and
+either had a typo or was transient), and (2) we polled the wrong URL
+to check job outcome. Re-verified end-to-end:
 
 ```http
-# Sentinel insert
-POST /api/v1/data/precompute_entries
-{ "name": "__core_test_sentinel__", "payload": "{}", "computed_at": 1 }
-→ 200 OK   ✓ row exists; verified via _search
-
-# Variant A — /data/_delete (suggested in the question)
+# Working: /data/_delete with `from` in the body
 POST /api/v1/data/_delete
-{ "from": "precompute_entries", "where": { "name": "__core_test_sentinel__" } }
-→ 400 { "message": "No such table: cache_entries" }
-   ↑ message refers to a different table; cryptic. Even when we send a
-     valid table name, the body shape isn't the working one.
-
-# Variant B — /data/{table}/_delete
-POST /api/v1/data/precompute_entries/_delete
-{ "from": "precompute_entries", "where": { "name": "__core_test_sentinel__" } }
-→ 404 "The requested table precompute_entries/_delete does not exist"
-
-# Variant C — original URL we'd been using
-POST /api/v1/data/precompute_entries/delete
-{ "from": "precompute_entries", "where": { "name": "__core_test_sentinel__" } }
-→ 404 "The requested table precompute_entries/delete does not exist"
-
-# Variant D — DELETE method
-DELETE /api/v1/data/precompute_entries
-{ "where": { "name": "__core_test_sentinel__" } }
-→ 405 "HTTP method not supported. Supported: POST"
-
-# Variant E — jobs-based, /jobs/data/{table}/_delete
-POST /api/v1/jobs/data/precompute_entries/_delete
-{ "from": "precompute_entries", "where": { "name": "__core_test_sentinel__" } }
-→ 201 { "id": "...", "path": "data/precompute_entries/_delete",
-        "startedAt": "..." }
-
-GET /api/v1/jobs/{id}
-→ 200 { "startedAt": "...", "finishedAt": "..." }   ← instant; no error reported
-
-# Verify outcome
-POST /api/v1/_search
 { "from": "precompute_entries",
-  "where": { "name": "__core_test_sentinel__" }, "limit": 1 }
-→ { "total": 1, "hits": [ ... sentinel still here ... ] }   ✗ NOT DELETED
+  "where": { "name": "__verify_delete_works__" } }
+→ 200 { "total": 1 }    ✓ row gone
 ```
 
-We tried four body shape variants on Variant E — `{where}` only,
-`{from, where}`, just `{name: ...}`, and `{parameters: {from, where}}`.
-All return 201 immediately, finish in milliseconds, **no error**, and
-**don't delete the row**. The jobs surface accepts the request, reports
-success, and silently no-ops.
+We polled `GET /jobs/{id}` (status only) on the jobs-based variants;
+the right poll URL is `GET /jobs/{id}/result`. With that:
 
-Implication: there is no working row-delete API on this Aito instance
-that we can find. The cache_entries leak we documented (321 rows, 135
-distinct keys, 186 stale duplicates) can't be fixed application-side
-until core ships a working delete primitive — sync or jobs-based, your
-call.
+```http
+POST /api/v1/jobs/data/_delete                     ← no table in URL
+{ "from": "precompute_entries", "where": { "name": "..." } }
+→ 201 { "id": "..." }
+GET  /api/v1/jobs/{id}/result    → 200 { "total": 1 }    ✓ row gone
+
+POST /api/v1/jobs/data/{table}/_delete             ← table in URL
+{ ... }
+→ 201 { "id": "...", "path": "data/{table}/_delete" }
+GET  /api/v1/jobs/{id}           → 200 { "finishedAt": "..." }  (looked like success)
+GET  /api/v1/jobs/{id}/result    → 500 "internal server error"   ✗ row stays
+```
+
+So the application-side verdict is: the cache leak fix is a one-line
+URL change. **Switched `cache.set()` and `precompute_store.put()` from
+`/data/{table}/delete` (404) to `/data/_delete` (200).** Cache leak is
+now self-healing on next process write per key.
+
+The asks we'd push back to core (now in §5):
+
+- **5a — docs:** `/data/_delete` is the working endpoint but isn't in
+  any obvious place we could find. Every reasonable URL guess returns
+  404/405 with misleading "table not found" errors when the table
+  exists. We spent two debug cycles concluding it didn't exist.
+- **5b — bug:** the table-in-URL jobs form
+  `POST /jobs/data/{table}/_delete` returns 201, marks the job
+  finished, and silently no-ops. `/jobs/{id}/result` reveals the 500;
+  `/jobs/{id}` doesn't.
+- **5c — discoverability:** `/jobs/{id}` should reflect that the job
+  errored instead of looking like a clean `finishedAt`. That's what
+  hid 5b from us originally.
+- **5d — upsert:** even with `/data/_delete` working, delete-then-insert
+  is two round-trips per cache write. A native upsert primitive
+  (`{rows, upsertOn}`) would let `cache.set()` be one call. Per @arau
+  this is merged to Aito core's main and ships next deploy.
 
 ### Q3. Did we want property-expansion behavior, or just identity?
 

@@ -212,17 +212,45 @@ def upload_data(client: AitoClient, table_name: str, records: list[dict]) -> Non
 def optimize_table(client: AitoClient, table_name: str) -> None:
     """Optimize an Aito table for faster query performance.
 
-    Aito's optimize endpoint compacts the table's index, which speeds up
-    _predict, _relate, and _evaluate queries. Should be run after bulk
-    uploads when the table won't change for a while.
+    Compacts the table's index — speeds up _predict, _relate, and
+    _evaluate. Critical after bulk ingest: without it, a fresh
+    1 M-row table answers `_search limit:1` in 25 s instead of
+    250 ms.
+
+    Uses the **jobs-based** endpoint (POST /jobs/data/{table}/optimize)
+    so the call doesn't race the still-running ingest jobs. The sync
+    POST /data/{table}/optimize used to time out client-side at
+    120 s when called immediately after a 1 M-row bulk ingest, with
+    the loader's best-effort try/except swallowing the error and
+    leaving the table un-optimized.
+
+    Best-effort: if the job submit / poll fails, log loudly and move
+    on — the data is still correct, just slow.
     """
-    print(f"  Optimizing '{table_name}'...")
+    import time as _time
+    print(f"  Optimizing '{table_name}' (jobs-based)...")
+    t0 = _time.monotonic()
     try:
-        # Aito's optimize endpoint requires an empty JSON body
-        client._request("POST", f"/data/{table_name}/optimize", json={})
+        job = client._request(
+            "POST", f"/jobs/data/{table_name}/optimize", json={},
+        )
+        job_id = job.get("id")
+        if not job_id:
+            raise AitoError(f"optimize job submit returned no id: {job}")
+
+        # Poll until the job finishes. /jobs/{id} returns finishedAt
+        # once the optimize is done; absent until then.
+        while True:
+            status = client._request("GET", f"/jobs/{job_id}", timeout=60)
+            if status.get("finishedAt"):
+                break
+            _time.sleep(2)
+        elapsed = _time.monotonic() - t0
+        print(f"    optimized in {elapsed:.1f}s (job {job_id[:8]})")
     except AitoError as exc:
-        # Optimize is best-effort — don't fail upload if it errors
-        print(f"    optimize warning: {exc}")
+        elapsed = _time.monotonic() - t0
+        print(f"    !! optimize FAILED for '{table_name}' after {elapsed:.1f}s: {exc}")
+        print(f"    !! queries against '{table_name}' will be slow until you re-run optimize.")
 
 
 def delete_table(client: AitoClient, table_name: str) -> None:

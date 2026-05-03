@@ -102,15 +102,18 @@ def put(name: str, data: Any) -> None:
     if _aito is None:
         raise RuntimeError("precompute_store.init() not called")
     payload = json.dumps(data, ensure_ascii=False)
-    # No native upsert; delete-then-insert. Same pattern as cache.py.
+    # No native upsert primitive yet (Aito core has it merged to
+    # main; ships next deploy). Until then: delete then insert.
+    # Working delete URL is `/data/_delete` with `from` in the body
+    # — `/data/{table}/delete` returns 404. See aito-core-message.md.
     try:
         _aito._request(
             "POST",
-            f"/data/{PRECOMPUTE_TABLE}/delete",
+            "/data/_delete",
             json={"from": PRECOMPUTE_TABLE, "where": {"name": name}},
         )
     except AitoError:
-        # Delete is best-effort — first-time writes will 404 here.
+        # Delete is best-effort — first-time writes will return total:0.
         pass
     _aito._request(
         "POST",
