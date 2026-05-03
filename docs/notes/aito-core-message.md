@@ -48,10 +48,12 @@ Already merged to Aito core main, shipping next deploy:
 Open performance question (worth investigating, not a blocker):
 
 6. **Sustained heavy precompute reads at 1 M scale produce a 504
-   storm.** Hypothesis: optimize-after-ingest was the missing piece;
-   we've verified jobs-based optimize works (Q1) but haven't yet
-   re-run a full 1 M precompute on top of an optimized state to
-   confirm the storm is purely about un-optimized indexes. (§1, Q1)
+   storm even after jobs-based optimize.** Verified empirically May 3:
+   re-ran top-20 precompute on a freshly jobs-optimized state and
+   got 2 ok / 2 partial / 16 stub — same collapse pattern. Optimize
+   is necessary (drops `_search` from 25 s to 280 ms) but not
+   sufficient. There's a residual concurrency or load-handling
+   issue separate from un-optimized indexes. (§1, Q1)
 
 Appendix-quality observations:
 
@@ -539,13 +541,17 @@ which races the still-running ingestion jobs and times out at our
 this and is what the core team should recommend in the documented
 ingest path.
 
-We haven't yet retried a full per-customer precompute on top of this
-optimized state to confirm the 504 storm doesn't recur — that's a
-many-hour run. The latency drop after the jobs-optimize matches what
-we saw with the sync optimize (after the ingest race had cleared),
-so the hypothesis stands: optimize-after-ingest is the missing
-piece. Worth core re-running the full 1 M precompute with this
-patch to verify.
+**Update (May 3 evening):** re-ran the full top-20 precompute on top
+of the jobs-optimized state. Result: **2 ok / 2 partial / 16 stub** —
+same collapse pattern as before. The breaker opens after ~2 successful
+customers and the rest fail-fast.
+
+So jobs-based optimize is the right path *and* fixes the post-ingest
+slowness, but it is **not sufficient on its own** to prevent the 504
+storm under sustained per-customer fan-out at 1 M scale. There's a
+residual concurrency or load-handling issue separate from
+un-optimized indexes. This is the open performance question for core
+to investigate (item 6 in the *Net asks* summary at the top).
 
 ### Q2. Does `POST /data/_delete` (with `{from, where}` body) actually delete?
 
