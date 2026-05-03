@@ -197,32 +197,123 @@ def create_schema(client: AitoClient, table_name: str, schema: dict) -> None:
     client._request("PUT", f"/schema/{table_name}", json=schema)
 
 
+# Tables above this size flip from /batch to the bulk file-upload
+# flow. The /batch endpoint times out as the target table grows
+# (httpx.ReadTimeout once invoices passes ~600k rows on
+# shared.aito.ai). The file-upload + jobs flow scales to millions.
+BULK_THRESHOLD = 50_000
+
+# Chunk the file upload so a single S3 PUT doesn't have to carry
+# the whole 488 MB invoices fixture. 100 k rows ≈ 50 MB per chunk.
+BULK_CHUNK_ROWS = 100_000
+
+
+def _ndjson_bytes(records: list[dict]) -> bytes:
+    """NDJSON, gzipped. Aito's bulk-upload ingestion expects gzip — an
+    uncompressed payload silently fails the job with "Unknown exception"
+    on the first row, no matter the format. Took a bisect to find."""
+    import gzip
+    import io
+    payload = "\n".join(json.dumps(r, separators=(",", ":")) for r in records).encode()
+    buf = io.BytesIO()
+    with gzip.GzipFile(fileobj=buf, mode="wb") as gz:
+        gz.write(payload)
+    return buf.getvalue()
+
+
+def _wait_for_ingest(client: AitoClient, table_name: str, file_id: str, label: str) -> None:
+    """Poll the file-upload status until Aito reports finished.
+
+    Aito surfaces ingestion progress via GET /data/{table}/file/{id}.
+    Status payload looks like:
+        {"status": {"phase": "Started"|"Running"|"Finished"|"FinishedInError",
+                    "finished": bool, "completedCount": N, ...}}
+    """
+    import time as _time
+    while True:
+        r = client._request("GET", f"/data/{table_name}/file/{file_id}")
+        st = r.get("status", {}) if isinstance(r, dict) else {}
+        if st.get("finished"):
+            phase = st.get("phase")
+            completed = st.get("completedCount", "?")
+            duration = st.get("totalDuration", "?")
+            if phase == "Finished":
+                print(f"    {label}: ingested {completed} rows in {duration}")
+                return
+            errs = r.get("errors") or {}
+            print(f"    {label}: {phase} after {duration}; errors: {errs.get('message','-')}")
+            raise AitoError(f"file ingest {phase} for {table_name}/{file_id}: {errs}")
+        # Aito is still running; back off a bit.
+        _time.sleep(2)
+
+
+def _upload_file_chunk(client: AitoClient, table_name: str, chunk: list[dict], label: str) -> None:
+    """Run one round of init → PUT → trigger → poll."""
+    import requests
+    init = client._request("POST", f"/data/{table_name}/file", json={})
+    file_id = init["id"]
+    put = requests.put(init["url"], data=_ndjson_bytes(chunk), timeout=600)
+    if put.status_code >= 300:
+        raise AitoError(f"S3 PUT failed: {put.status_code} {put.text[:200]}")
+    client._request("POST", f"/data/{table_name}/file/{file_id}", json={})
+    _wait_for_ingest(client, table_name, file_id, label)
+
+
 def upload_data(client: AitoClient, table_name: str, records: list[dict]) -> None:
-    """Upload records to an Aito table in batches."""
-    batch_size = 1000
+    """Upload records to an Aito table.
+
+    Small tables go through the row-by-row /batch endpoint.
+    Anything past BULK_THRESHOLD uses the file-upload + jobs flow,
+    which scales past a million rows where /batch starts timing out.
+    """
     total = len(records)
-    for i in range(0, total, batch_size):
-        batch = records[i : i + batch_size]
-        client._request("POST", f"/data/{table_name}/batch", json=batch)
-        uploaded = min(i + batch_size, total)
-        if uploaded % 10000 == 0 or uploaded == total:
-            print(f"  Uploaded {uploaded}/{total} records to '{table_name}'")
+    if total <= BULK_THRESHOLD:
+        batch_size = 1000
+        for i in range(0, total, batch_size):
+            batch = records[i : i + batch_size]
+            client._request("POST", f"/data/{table_name}/batch", json=batch)
+            uploaded = min(i + batch_size, total)
+            if uploaded % 10000 == 0 or uploaded == total:
+                print(f"  Uploaded {uploaded}/{total} records to '{table_name}'")
+        return
+
+    # Bulk path: chunk the records and submit each as a file upload job.
+    print(f"  Bulk upload to '{table_name}' ({total:,} rows in {(total + BULK_CHUNK_ROWS - 1) // BULK_CHUNK_ROWS} chunks)...")
+    for i in range(0, total, BULK_CHUNK_ROWS):
+        chunk = records[i : i + BULK_CHUNK_ROWS]
+        end = min(i + BULK_CHUNK_ROWS, total)
+        label = f"{table_name} {end:,}/{total:,}"
+        _upload_file_chunk(client, table_name, chunk, label)
 
 
 def optimize_table(client: AitoClient, table_name: str) -> None:
     """Optimize an Aito table for faster query performance.
 
-    Aito's optimize endpoint compacts the table's index, which speeds up
-    _predict, _relate, and _evaluate queries. Should be run after bulk
-    uploads when the table won't change for a while.
+    Aito's optimize endpoint compacts the table's index, which speeds
+    up _predict, _relate, and _evaluate queries. Critical after bulk
+    ingests — without it, a fresh 1 M-row table answers `_search
+    limit:1` in 25 s instead of 250 ms.
+
+    Optimize on a freshly-loaded large table can take a few minutes
+    while the index settles, which is well past the default 120 s
+    client timeout. We disable the timeout here so the call doesn't
+    silently time out and leave the table un-optimized.
+
+    Best-effort: if it still errors after that, log loudly and move
+    on — the data is still correct, just slow.
     """
+    import time as _time
     print(f"  Optimizing '{table_name}'...")
+    t0 = _time.monotonic()
     try:
-        # Aito's optimize endpoint requires an empty JSON body
-        client._request("POST", f"/data/{table_name}/optimize", json={})
+        # Empty JSON body, no client-side timeout cap.
+        client._request("POST", f"/data/{table_name}/optimize", json={}, timeout=None)
+        elapsed = _time.monotonic() - t0
+        print(f"    optimized in {elapsed:.1f}s")
     except AitoError as exc:
-        # Optimize is best-effort — don't fail upload if it errors
-        print(f"    optimize warning: {exc}")
+        elapsed = _time.monotonic() - t0
+        print(f"    !! optimize FAILED for '{table_name}' after {elapsed:.1f}s: {exc}")
+        print(f"    !! queries against '{table_name}' will be slow until you re-run optimize.")
 
 
 def delete_table(client: AitoClient, table_name: str) -> None:
