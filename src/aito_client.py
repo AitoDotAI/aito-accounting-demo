@@ -71,7 +71,13 @@ class AitoClient:
     def _url(self, path: str) -> str:
         return f"{self._base_url}/api/v1{path}"
 
-    def _request(self, method: str, path: str, json: dict | None = None) -> Any:
+    def _request(
+        self,
+        method: str,
+        path: str,
+        json: dict | None = None,
+        timeout: float | None = 120.0,
+    ) -> Any:
         """Make an HTTP request to Aito and return the parsed JSON response.
 
         Includes:
@@ -81,6 +87,11 @@ class AitoClient:
         - Circuit breaker: after 3 consecutive failures the breaker
           opens for 30 seconds; subsequent calls fail-fast with a
           helpful AitoError instead of waiting for timeouts.
+
+        `timeout` defaults to 120 s. Pass a larger value (or None for
+        no client-side cap) for inherently long calls — `optimize`
+        on a multi-million-row table can take several minutes
+        immediately after a bulk ingest while the index settles.
 
         Raises AitoError on non-2xx status, connection failure, or
         when the circuit breaker is open.
@@ -105,7 +116,7 @@ class AitoClient:
                     self._url(path),
                     headers=self._headers,
                     json=json,
-                    timeout=120.0,
+                    timeout=timeout,
                 )
             except httpx.HTTPError as exc:
                 last_exc = AitoError(f"Aito request failed: {method} {path}: {exc}")
