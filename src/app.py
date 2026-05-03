@@ -153,7 +153,7 @@ app.add_middleware(
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Aito-Ms", "X-Aito-Calls"],
+    expose_headers=["X-Aito-Ms", "X-Aito-Calls", "X-Aito-Ops"],
 )
 
 
@@ -170,15 +170,24 @@ async def aito_latency_middleware(request: Request, call_next):
     headers (and the frontend skips them).
     """
     from src.aito_client import aito_call_log
-    log: list[float] = []
+    log: list[tuple[str, float]] = []
     token = aito_call_log.set(log)
     try:
         response = await call_next(request)
     finally:
         aito_call_log.reset(token)
     if log:
-        response.headers["X-Aito-Ms"] = f"{sum(log):.1f}"
+        total_ms = sum(ms for _, ms in log)
+        response.headers["X-Aito-Ms"] = f"{total_ms:.1f}"
         response.headers["X-Aito-Calls"] = str(len(log))
+        # Per-call breakdown for the latency overlay. Format:
+        # "_predict:28.4,_relate:142.0,_search:11.2".
+        # Path → op: "/_predict" → "_predict"; "/data/x/file" → "data:x:file".
+        def _op_label(path: str) -> str:
+            return path.lstrip("/").replace("/", ":")
+        response.headers["X-Aito-Ops"] = ",".join(
+            f"{_op_label(p)}:{ms:.1f}" for p, ms in log
+        )
     return response
 
 

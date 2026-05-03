@@ -424,18 +424,59 @@ def main() -> None:
     t0 = time.time()
     completed = 0
 
+    # Backoff-retry for transient Aito failures during heavy
+    # precompute traffic.
+    #
+    # At 1 M-row scale, one customer's precompute fan-out
+    # (mine_rules + match_all + scan_all + compute_prediction_quality
+    # + compute_rule_performance) overloads shared.aito.ai enough to
+    # produce 504s. The client's circuit breaker then opens, every
+    # call for the next ~10 s fails fast with status_code=503, and
+    # the rest of the precompute writes empty stubs.
+    #
+    # Retry strategy: on AitoError, sleep, reset the breaker, and
+    # retry the whole customer. Three attempts with 60 / 120 / 240 s
+    # backoff gives Aito ~7 min to recover. Idempotent — save()
+    # overwrites the previous attempt's files and Aito-store rows.
+    PRECOMPUTE_MAX_ATTEMPTS = 3
+    PRECOMPUTE_BACKOFF = [60, 120, 240]
+
+    def _attempt_once(idx: int, cid: str, invs: list[dict], lite: bool) -> dict:
+        # Reset the breaker to clear any sticky 503 from a previous
+        # customer's failure.
+        client._breaker_failures = 0
+        client._breaker_open_until = 0.0
+        return precompute_one_customer(client, cid, invs, lite=lite)
+
     def run_one(idx_customer: tuple[int, dict]) -> tuple[int, str, dict, int, float, bool]:
         idx, customer = idx_customer
         cid = customer["customer_id"]
         invs = by_customer.get(cid, [])
         lite = args.lite_threshold > 0 and len(invs) < args.lite_threshold
         t_cust = time.time()
-        try:
-            sizes = precompute_one_customer(client, cid, invs, lite=lite)
-            return idx, cid, sizes, len(invs), time.time() - t_cust, lite
-        except Exception as e:
-            print(f"  [{idx}/{len(customers)}] {cid}: ERROR {e}", file=sys.stderr)
-            return idx, cid, {}, len(invs), time.time() - t_cust, lite
+        last_err: Exception | None = None
+        for attempt in range(PRECOMPUTE_MAX_ATTEMPTS):
+            try:
+                sizes = _attempt_once(idx, cid, invs, lite)
+                if attempt > 0:
+                    print(f"  [{idx}/{len(customers)}] {cid}: succeeded on attempt {attempt + 1}", flush=True)
+                return idx, cid, sizes, len(invs), time.time() - t_cust, lite
+            except Exception as e:
+                last_err = e
+                if attempt + 1 < PRECOMPUTE_MAX_ATTEMPTS:
+                    backoff = PRECOMPUTE_BACKOFF[attempt]
+                    print(
+                        f"  [{idx}/{len(customers)}] {cid}: attempt {attempt + 1} failed "
+                        f"({type(e).__name__}: {e}); sleeping {backoff}s then retrying...",
+                        file=sys.stderr, flush=True,
+                    )
+                    time.sleep(backoff)
+        print(
+            f"  [{idx}/{len(customers)}] {cid}: all {PRECOMPUTE_MAX_ATTEMPTS} attempts FAILED; "
+            f"last error: {last_err}",
+            file=sys.stderr, flush=True,
+        )
+        return idx, cid, {}, len(invs), time.time() - t_cust, lite
 
     def _print_row(idx: int, cid: str, n_inv: int, kb: float, elapsed: float, lite: bool, tier: str = "") -> None:
         suffix = " [lite]" if lite else ""

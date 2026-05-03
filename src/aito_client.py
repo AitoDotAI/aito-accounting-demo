@@ -21,7 +21,12 @@ from src.config import Config
 # can carry X-Aito-Ms / X-Aito-Calls headers. Frontend uses these
 # to render a persistent latency badge in the topbar — the demo's
 # answer to "is the predictive layer actually fast?"
-aito_call_log: ContextVar[list[float] | None] = ContextVar("aito_call_log", default=None)
+# Each entry is (path, ms) so the middleware can surface a
+# per-operation breakdown to the frontend, not just a total. The
+# topbar badge uses the breakdown to render "_predict 28 ms" lines
+# as queries fly — visceral proof for CTOs reading the demo's
+# latency claims.
+aito_call_log: ContextVar[list[tuple[str, float]] | None] = ContextVar("aito_call_log", default=None)
 
 
 class AitoError(Exception):
@@ -134,10 +139,11 @@ class AitoClient:
             # Success — reset breaker
             self._breaker_failures = 0
             # Record latency for the topbar badge (if a request-scoped
-            # log was set up by the middleware).
+            # log was set up by the middleware). Tuple form lets the
+            # frontend break down by Aito operation.
             log = aito_call_log.get()
             if log is not None:
-                log.append((_time.monotonic() - t0) * 1000.0)
+                log.append((path, (_time.monotonic() - t0) * 1000.0))
             break
 
         return response.json()

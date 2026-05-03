@@ -44,6 +44,9 @@ const NAV_ITEMS: { section: string; items: NavItem[] }[] = [
   { section: "Setup", items: [
     { href: "/integrations", label: "Integrations" },
   ]},
+  { section: "For procurement", items: [
+    { href: "/procurement", label: "Security, DPA, SLA, pricing" },
+  ]},
 ];
 
 export default function Nav() {
