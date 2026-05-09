@@ -1053,12 +1053,21 @@ def formfill_submit(body: dict):
             "timestamp": now,
         })
 
-    try:
-        # Best-effort batch upload; ignore errors so submit never blocks UX
-        aito._request("POST", "/data/prediction_log/batch", json=rows)
-        return {"logged": len(rows)}
-    except AitoError as exc:
-        return {"logged": 0, "error": str(exc)}
+    # Fire-and-forget the batch write. Aito's data-write path is
+    # noticeably slower than its query path (multiple seconds at
+    # scale), and the user-facing /api/formfill/submit shouldn't
+    # wait for the audit-log row to land — the demo's UX shouldn't
+    # surface write latency for a side-effect log.
+    import threading
+
+    def _persist_log() -> None:
+        try:
+            aito._request("POST", "/data/prediction_log/batch", json=rows)
+        except AitoError as exc:
+            print(f"prediction_log write failed: {exc}")
+
+    threading.Thread(target=_persist_log, daemon=True).start()
+    return {"logged": len(rows)}
 
 
 @app.get("/api/help/search")

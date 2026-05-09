@@ -222,7 +222,17 @@ def log_impression(
         "timestamp": int(time.time()),
         "prev_article_id": prev_article_id,
     }
-    try:
-        client._request("POST", "/data/help_impressions", json=row)
-    except AitoError:
-        pass  # best-effort
+    # Fire-and-forget. Aito's write path can take seconds at scale;
+    # the help-drawer click handler shouldn't block on it. If the
+    # write fails we log to stderr but return cleanly so the UX is
+    # always snappy — the impression-as-training-signal can be
+    # eventually consistent.
+    import threading
+
+    def _persist() -> None:
+        try:
+            client._request("POST", "/data/help_impressions", json=row)
+        except AitoError as exc:
+            print(f"help_impressions write failed: {exc}")
+
+    threading.Thread(target=_persist, daemon=True).start()
