@@ -49,6 +49,20 @@ def _semaphore_for(path: str) -> threading.Semaphore:
     return _aito_inflight_semaphore
 
 
+# User-facing query paths — the ones we surface in the latency
+# badge / ticker. Writes, schema ops, file uploads, and jobs API
+# calls are excluded so the displayed numbers reflect what a real
+# end-user actually waits for (a prediction, search, or recommend),
+# not background admin like cache writes or audit logs.
+_LATENCY_REPORTED_PREFIXES = (
+    "/_search", "/_predict", "/_relate", "/_recommend", "/_match", "/_evaluate",
+)
+
+
+def _path_is_user_facing(path: str) -> bool:
+    return any(path.startswith(p) or path.endswith(p) for p in _LATENCY_REPORTED_PREFIXES)
+
+
 # Per-request Aito-call accumulator. Set by the FastAPI middleware
 # at the start of each HTTP request; read at the end so the response
 # can carry X-Aito-Ms / X-Aito-Calls headers. Frontend uses these
@@ -201,7 +215,7 @@ class AitoClient:
             # claim look worse than it is. Fall back to wall-clock when
             # the header is missing.
             log = aito_call_log.get()
-            if log is not None:
+            if log is not None and _path_is_user_facing(path):
                 server_ms_header = response.headers.get("x-aitoai-response-time")
                 try:
                     ms = float(server_ms_header) if server_ms_header else (_time.monotonic() - t0) * 1000.0
