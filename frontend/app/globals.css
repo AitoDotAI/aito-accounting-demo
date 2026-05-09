@@ -69,7 +69,12 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 
 /* METRICS */
 .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-.metric{background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px 18px;position:relative;overflow:hidden;transition:border-color .15s,box-shadow .15s}
+/* `min-width:0` lets the metric shrink below its content's intrinsic
+   width inside the grid (long labels otherwise force horizontal
+   overflow). `overflow:hidden` removed — the ::before stripe is
+   absolutely-positioned at top:0 with a fixed height and doesn't
+   escape; clipping content was hiding wrapped labels.  */
+.metric{background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:14px 16px;position:relative;min-width:0;transition:border-color .15s,box-shadow .15s}
 .metric::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--gold-mid);opacity:.3}
 .metric.highlight::before{opacity:1}
 .metric[style*="cursor: pointer"]:hover{border-color:var(--gold-mid)}
@@ -81,7 +86,13 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 .tour-badge{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--gold-dark);color:#f5e8c0;font-size:10px;font-weight:700;font-family:'IBM Plex Mono',monospace;margin-right:6px;vertical-align:middle}
 .tour-step{padding:8px 10px;border-left:3px solid var(--gold-dark);background:var(--surface2);border-radius:0 4px 4px 0;font-size:11.5px;line-height:1.5;margin-bottom:6px}
 .tour-step strong{color:var(--gold-dark);margin-right:4px}
-.metric-label{font-size:10.5px;color:var(--text3);font-weight:500;text-transform:uppercase;letter-spacing:.6px}
+/* Slightly smaller font + tighter letter-spacing so labels like
+   "MOST-OVERRIDDEN FIELD" or "OVERALL AUTOMATION" fit at the typical
+   4-column metric width. line-height + min-height keep card heights
+   even whether the label is one line ("Pending") or two ("Avg
+   confidence", "Match rate"). word-break covers compound labels with
+   no space ("MOST-OVERRIDDEN" wraps cleanly). */
+.metric-label{font-size:10px;color:var(--text3);font-weight:500;text-transform:uppercase;letter-spacing:.4px;line-height:1.3;word-break:break-word;min-height:26px}
 .metric-value{font-size:24px;font-weight:600;color:var(--text);margin-top:5px;line-height:1;font-family:'IBM Plex Mono',monospace}
 .metric-sub{font-size:11px;margin-top:5px}
 .metric-up{color:var(--green)}
@@ -95,12 +106,20 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 .card-hint{font-size:11px;color:var(--text3)}
 
 /* TABLE */
-.table{width:100%;border-collapse:collapse}
-.table th{padding:10px 16px;text-align:left;font-size:10.5px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid var(--border2);background:var(--surface2);white-space:nowrap}
-.table td{padding:11px 16px;font-size:12.5px;color:var(--text);border-bottom:1px solid var(--border2)}
+.table{width:100%;border-collapse:collapse;table-layout:auto}
+/* Headers shrink letter-spacing slightly (was .6px → .4px) so labels
+   like "LAST REVIEWED" don't clip at common viewport widths. nowrap
+   stays so headers don't wrap mid-word, but small letter-spacing buys
+   the needed pixels. */
+.table th{padding:10px 16px;text-align:left;font-size:10.5px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--border2);background:var(--surface2);white-space:nowrap}
+.table td{padding:11px 16px;font-size:12.5px;color:var(--text);border-bottom:1px solid var(--border2);overflow:hidden;text-overflow:ellipsis;max-width:240px}
 .table tr:last-child td{border-bottom:none}
 .table tr:hover td{background:#faf6ec}
 .table td.mono{font-family:'IBM Plex Mono',monospace;font-size:12px}
+/* Mono cells (invoice ids, amounts) shouldn't wrap at all — single
+   long token, no break opportunity. The max-width above is per-cell;
+   override here so the column auto-fits. */
+.table td.mono{max-width:none;white-space:nowrap}
 
 /* BADGES */
 .badge{display:inline-flex;align-items:center;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:500;white-space:nowrap}
@@ -151,7 +170,7 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 .form-section-title{font-size:12px;font-weight:600;color:var(--text);margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border2)}
 .field-group{margin-bottom:14px}
 .field-label{font-size:11px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
-.field-input{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;color:var(--text);background:var(--surface);outline:none;transition:all .2s}
+.field-input{width:100%;min-width:0;padding:9px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;color:var(--text);background:var(--surface);outline:none;transition:all .2s}
 .field-input:focus{border-color:var(--gold-mid)}
 .field-input.predicted{border-color:#d8bc70;background:var(--gold-light);color:var(--gold-dark);font-style:italic}
 .field-input.highlighted{border-color:#f59e0b;background:#fffbeb;box-shadow:0 0 0 2px rgba(245,158,11,.2)}

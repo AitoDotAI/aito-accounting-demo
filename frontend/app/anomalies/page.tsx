@@ -149,9 +149,18 @@ export default function AnomaliesPage() {
             ))}
             {data && data.flags.length === 0 && (
               <div style={{ padding: 32, textAlign: "center", color: "var(--text3)", fontSize: 13, lineHeight: 1.6 }}>
-                No anomalies detected — every invoice fits a known pattern.
+                No anomalies detected on this customer's recent invoices.
                 <br />
-                <span style={{ fontSize: 11 }}>Try a smaller customer with less history to see cold-start anomaly behavior.</span>
+                <span style={{ fontSize: 11 }}>
+                  Anomaly detection runs an inverse <code>_predict</code> per invoice;
+                  rows where the predicted GL / approver disagrees with what's recorded
+                  surface here. The synthetic dataset for this demo is internally
+                  consistent (overrides are clustered around a handful of vendors but
+                  follow patterns Aito learns), so most tenants come up clean.
+                  In production you'd see flags on real-world data drift —
+                  new vendors miscategorised by old rules, expense reports posted
+                  to the wrong cost centre, etc.
+                </span>
               </div>
             )}
           </div>

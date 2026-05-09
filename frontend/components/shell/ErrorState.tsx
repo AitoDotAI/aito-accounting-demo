@@ -5,6 +5,8 @@ interface ErrorStateProps {
   message?: string;
   /** When provided, render a status-specific message instead of the default. */
   error?: Error | ApiError | null;
+  /** When provided, renders a "Retry" button that calls this. */
+  onRetry?: () => void;
 }
 
 function describe(error?: Error | ApiError | null): { title: string; message: string; showCmd: boolean } {
@@ -54,7 +56,7 @@ function describe(error?: Error | ApiError | null): { title: string; message: st
   };
 }
 
-export default function ErrorState({ title, message, error }: ErrorStateProps) {
+export default function ErrorState({ title, message, error, onRetry }: ErrorStateProps) {
   const d = describe(error);
   const finalTitle = title ?? d.title;
   const finalMessage = message ?? d.message;
@@ -70,7 +72,16 @@ export default function ErrorState({ title, message, error }: ErrorStateProps) {
       <div style={{ fontSize: 12, lineHeight: 1.6 }}>
         {finalMessage}
       </div>
-      {d.showCmd && (
+      {onRetry && (
+        <button
+          onClick={onRetry}
+          className="btn btn-outline"
+          style={{ marginTop: 16, cursor: "pointer" }}
+        >
+          Retry
+        </button>
+      )}
+      {d.showCmd && !onRetry && (
         <div style={{
           marginTop: 16,
           padding: "8px 14px",
