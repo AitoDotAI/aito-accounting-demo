@@ -7,6 +7,7 @@ import { GuidedTourProvider } from "@/lib/guided-tour";
 import HeadlineBanner from "@/components/shell/HeadlineBanner";
 import HelpDrawer from "@/components/help/HelpDrawer";
 import GuidedTourOverlay from "@/components/shell/GuidedTourOverlay";
+import LatencyTicker from "@/components/shell/LatencyTicker";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -21,6 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </div>
               <HelpDrawer />
               <GuidedTourOverlay />
+              <LatencyTicker />
             </GuidedTourProvider>
           </TourProvider>
         </CustomerProvider>

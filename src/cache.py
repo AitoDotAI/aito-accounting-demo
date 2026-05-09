@@ -109,9 +109,14 @@ def set(key: str, value: Any, ttl: int = DEFAULT_TTL) -> None:
     if _aito is None:
         return
     try:
-        # Delete existing entry for this key, then insert (no native upsert)
+        # Delete existing entry for this key, then insert. The
+        # working delete URL is `/data/_delete` (table goes in the
+        # body's `from`, *not* in the path) — every reasonable
+        # URL guess returns 404. See aito-core-message.md.
+        # No native upsert primitive yet; aito core has it merged
+        # to main and it ships in the next Aito deploy.
         try:
-            _aito._request("POST", f"/data/{CACHE_TABLE}/delete", json={"from": CACHE_TABLE, "where": {"key": key}})
+            _aito._request("POST", "/data/_delete", json={"from": CACHE_TABLE, "where": {"key": key}})
         except AitoError:
             pass
         _aito._request("POST", f"/data/{CACHE_TABLE}", json={

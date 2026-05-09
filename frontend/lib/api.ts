@@ -17,6 +17,10 @@ export interface AitoLatencySample {
   calls: number;
   path: string;
   at: number;
+  /** Per-Aito-call breakdown: e.g. [{op:"_predict", ms:28.4}, {op:"_relate", ms:142.0}].
+   *  Sourced from the X-Aito-Ops response header. Empty when the request
+   *  didn't hit Aito or the backend is older than the per-op breakdown. */
+  ops: { op: string; ms: number }[];
 }
 
 type LatencyListener = (sample: AitoLatencySample) => void;
@@ -40,12 +44,22 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   // simply emit nothing.
   const ms = res.headers.get("X-Aito-Ms");
   const calls = res.headers.get("X-Aito-Calls");
+  const opsHeader = res.headers.get("X-Aito-Ops");
   if (ms != null) {
+    const ops = opsHeader
+      ? opsHeader.split(",").map((entry) => {
+          const i = entry.lastIndexOf(":");
+          return i < 0
+            ? { op: entry, ms: NaN }
+            : { op: entry.slice(0, i), ms: parseFloat(entry.slice(i + 1)) };
+        })
+      : [];
     const sample: AitoLatencySample = {
       ms: parseFloat(ms),
       calls: parseInt(calls || "1", 10) || 1,
       path,
       at: Date.now(),
+      ops,
     };
     for (const fn of latencyListeners) {
       try { fn(sample); } catch { /* listener error must not break API call */ }

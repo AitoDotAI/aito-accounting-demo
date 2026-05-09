@@ -54,10 +54,13 @@ class TestGetSchema:
 
 
 class TestCheckConnectivity:
+    # check_connectivity probes via _search instead of /schema —
+    # /schema can hang on a degraded instance while _search still
+    # answers in seconds.
     def test_returns_true_when_reachable(self, httpx_mock):
         httpx_mock.add_response(
-            url="https://test.aito.app/db/demo/api/v1/schema",
-            json={"schema": {}},
+            url="https://test.aito.app/db/demo/api/v1/_search",
+            json={"offset": 0, "total": 1, "hits": [{"customer_id": "X"}]},
         )
 
         assert make_client().check_connectivity() is True
@@ -67,7 +70,7 @@ class TestCheckConnectivity:
         for _ in range(2):
             httpx_mock.add_exception(
                 httpx.ConnectError("Connection refused"),
-                url="https://test.aito.app/db/demo/api/v1/schema",
+                url="https://test.aito.app/db/demo/api/v1/_search",
             )
 
         assert make_client().check_connectivity() is False

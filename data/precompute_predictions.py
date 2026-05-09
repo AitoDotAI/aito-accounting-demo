@@ -173,6 +173,7 @@ def precompute_one_customer(
     customer_id: str,
     invoices_for_customer: list[dict],
     lite: bool = False,
+    skip_evaluate: bool = False,
 ) -> dict[str, int]:
     """Run all precomputes for a single customer, return {name: bytes_written}.
 
@@ -218,14 +219,29 @@ def precompute_one_customer(
         sizes["rules_candidates"] = save(
             customer_id, "rules_candidates", precompute_rules(client, customer_id),
         )
-        sizes["prediction_accuracy"] = save(
-            customer_id, "prediction_accuracy",
-            precompute_prediction_accuracy(client, customer_id),
-        )
-        sizes["rule_performance"] = save(
-            customer_id, "rule_performance",
-            precompute_rule_performance_for_customer(client, customer_id),
-        )
+        # _evaluate is the memory-heavy call on the Aito server side
+        # — it loads test/train splits + computes per-row predictions
+        # and is what tipped the 1 M-scale instance into 504s. We
+        # only run it for the headline customer (CUST-0000) by
+        # default; the long tail gets the empty stub. Override with
+        # --include-evaluate-for-tail if you really want full numbers
+        # everywhere and have a beefier instance.
+        if skip_evaluate:
+            sizes["prediction_accuracy"] = save(
+                customer_id, "prediction_accuracy", EMPTY_PREDICTION_ACCURACY,
+            )
+            sizes["rule_performance"] = save(
+                customer_id, "rule_performance", EMPTY_RULE_PERFORMANCE,
+            )
+        else:
+            sizes["prediction_accuracy"] = save(
+                customer_id, "prediction_accuracy",
+                precompute_prediction_accuracy(client, customer_id),
+            )
+            sizes["rule_performance"] = save(
+                customer_id, "rule_performance",
+                precompute_rule_performance_for_customer(client, customer_id),
+            )
     return sizes
 
 
@@ -358,6 +374,16 @@ def main() -> None:
              "precompute (no rule mining, no _evaluate, empty rule replay). "
              "Default 0 = full precompute for everyone.",
     )
+    parser.add_argument(
+        "--evaluate-for", default="CUST-0000",
+        help="Comma-separated customer ids that get full _evaluate-based "
+             "prediction_accuracy + rule_performance precompute. The "
+             "_evaluate call is the memory-heavy server-side path that "
+             "tipped 1 M-scale Aito into 504 storms; running it for every "
+             "customer is what produced the 2-customer cliff. Default: only "
+             "the headline tenant (CUST-0000). Pass an empty string to skip "
+             "for everyone, or `all` to opt back into the slow behaviour.",
+    )
     args = parser.parse_args()
 
     config = load_config()
@@ -370,8 +396,25 @@ def main() -> None:
     from src import precompute_store
     precompute_store.init(client)
 
-    if not client.check_connectivity():
-        print("Error: Cannot connect to Aito. Run ./do load-data first.", file=sys.stderr)
+    # Connectivity probe — degraded but not down is OK; the
+    # per-customer retry loop below will absorb transient failures.
+    # We only abort if we can't connect at all over multiple tries.
+    connectivity_ok = False
+    for attempt in range(3):
+        if client.check_connectivity():
+            connectivity_ok = True
+            break
+        wait = 30 * (attempt + 1)
+        print(
+            f"Aito connectivity probe failed (attempt {attempt + 1}/3); "
+            f"sleeping {wait}s before retry...",
+            file=sys.stderr,
+        )
+        time.sleep(wait)
+        client._breaker_failures = 0
+        client._breaker_open_until = 0.0
+    if not connectivity_ok:
+        print("Error: Cannot connect to Aito after 3 attempts. Run ./do load-data first.", file=sys.stderr)
         sys.exit(1)
 
     customers = load_fixture("customers")
@@ -424,18 +467,67 @@ def main() -> None:
     t0 = time.time()
     completed = 0
 
+    # Backoff-retry for transient Aito failures during heavy
+    # precompute traffic.
+    #
+    # At 1 M-row scale, one customer's precompute fan-out
+    # (mine_rules + match_all + scan_all + compute_prediction_quality
+    # + compute_rule_performance) overloads shared.aito.ai enough to
+    # produce 504s. The client's circuit breaker then opens, every
+    # call for the next ~10 s fails fast with status_code=503, and
+    # the rest of the precompute writes empty stubs.
+    #
+    # Retry strategy: on AitoError, sleep, reset the breaker, and
+    # retry the whole customer. Three attempts with 60 / 120 / 240 s
+    # backoff gives Aito ~7 min to recover. Idempotent — save()
+    # overwrites the previous attempt's files and Aito-store rows.
+    PRECOMPUTE_MAX_ATTEMPTS = 3
+    PRECOMPUTE_BACKOFF = [60, 120, 240]
+
+    # Allow `--evaluate-for=all` to opt back into running _evaluate
+    # everywhere, otherwise restrict to the listed ids.
+    if args.evaluate_for.strip().lower() == "all":
+        evaluate_for_set: set[str] | None = None  # None = run for everyone
+    else:
+        evaluate_for_set = {c.strip() for c in args.evaluate_for.split(",") if c.strip()}
+
+    def _attempt_once(idx: int, cid: str, invs: list[dict], lite: bool, skip_evaluate: bool) -> dict:
+        # Reset the breaker to clear any sticky 503 from a previous
+        # customer's failure.
+        client._breaker_failures = 0
+        client._breaker_open_until = 0.0
+        return precompute_one_customer(client, cid, invs, lite=lite, skip_evaluate=skip_evaluate)
+
     def run_one(idx_customer: tuple[int, dict]) -> tuple[int, str, dict, int, float, bool]:
         idx, customer = idx_customer
         cid = customer["customer_id"]
         invs = by_customer.get(cid, [])
         lite = args.lite_threshold > 0 and len(invs) < args.lite_threshold
+        skip_evaluate = evaluate_for_set is not None and cid not in evaluate_for_set
         t_cust = time.time()
-        try:
-            sizes = precompute_one_customer(client, cid, invs, lite=lite)
-            return idx, cid, sizes, len(invs), time.time() - t_cust, lite
-        except Exception as e:
-            print(f"  [{idx}/{len(customers)}] {cid}: ERROR {e}", file=sys.stderr)
-            return idx, cid, {}, len(invs), time.time() - t_cust, lite
+        last_err: Exception | None = None
+        for attempt in range(PRECOMPUTE_MAX_ATTEMPTS):
+            try:
+                sizes = _attempt_once(idx, cid, invs, lite, skip_evaluate)
+                if attempt > 0:
+                    print(f"  [{idx}/{len(customers)}] {cid}: succeeded on attempt {attempt + 1}", flush=True)
+                return idx, cid, sizes, len(invs), time.time() - t_cust, lite
+            except Exception as e:
+                last_err = e
+                if attempt + 1 < PRECOMPUTE_MAX_ATTEMPTS:
+                    backoff = PRECOMPUTE_BACKOFF[attempt]
+                    print(
+                        f"  [{idx}/{len(customers)}] {cid}: attempt {attempt + 1} failed "
+                        f"({type(e).__name__}: {e}); sleeping {backoff}s then retrying...",
+                        file=sys.stderr, flush=True,
+                    )
+                    time.sleep(backoff)
+        print(
+            f"  [{idx}/{len(customers)}] {cid}: all {PRECOMPUTE_MAX_ATTEMPTS} attempts FAILED; "
+            f"last error: {last_err}",
+            file=sys.stderr, flush=True,
+        )
+        return idx, cid, {}, len(invs), time.time() - t_cust, lite
 
     def _print_row(idx: int, cid: str, n_inv: int, kb: float, elapsed: float, lite: bool, tier: str = "") -> None:
         suffix = " [lite]" if lite else ""
