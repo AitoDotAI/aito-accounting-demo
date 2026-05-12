@@ -45,6 +45,12 @@ export default function HelpDrawer() {
   const { customerId } = useCustomer();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  // Debounced copy used by the search effect — typed input fires one
+  // recommend per pause, not one per keystroke. Without this, typing
+  // "GL code" fires 7 races and the slowest (longest-query) result
+  // can land before the fastest (shortest-query) one, leaving the
+  // list stuck on partial-prefix matches.
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -115,26 +121,24 @@ export default function HelpDrawer() {
   }, [open, customerId]);
 
   // Typed-query searches: only when the drawer is open AND the user
-  // typed something. Doesn't prefetch when closed (we'd be firing on
-  // every keystroke).
+  // typed something. Triggered off the debounced copy so we fire
+  // once per pause rather than once per keystroke.
   useEffect(() => {
-    if (!open || !query) return;
+    if (!open || !debouncedQuery) return;
     let cancelled = false;
     setLoading(true);
-    const url = `/api/help/search?customer_id=${encodeURIComponent(customerId)}&page=${encodeURIComponent(pathname || "")}&q=${encodeURIComponent(query)}&limit=5`;
+    const url = `/api/help/search?customer_id=${encodeURIComponent(customerId)}&page=${encodeURIComponent(pathname || "")}&q=${encodeURIComponent(debouncedQuery)}&limit=5`;
     apiFetch<{ articles: Article[] }>(url)
       .then((d) => { if (!cancelled) setArticles(d.articles ?? []); })
       .catch(() => { if (!cancelled) setArticles([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [open, pathname, customerId, query]);
+  }, [open, pathname, customerId, debouncedQuery]);
 
   const onQueryChange = (v: string) => {
     setQuery(v);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      // Re-fetch happens via useEffect on `query`
-    }, 250);
+    debounceRef.current = setTimeout(() => setDebouncedQuery(v), 250);
   };
 
   const onArticleClick = (a: Article) => {

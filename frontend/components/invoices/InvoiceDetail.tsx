@@ -425,7 +425,9 @@ function RoutingTab({ inv }: { inv: InvoicePrediction }) {
               <div style={{ position: "absolute", left: -20, top: 4, width: 9, height: 9, borderRadius: "50%", background: dotColor, border: "2px solid var(--surface)" }} />
               <div style={{ fontSize: 12.5, color: "var(--text)", lineHeight: 1.5 }}>{e.label}</div>
               <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2, fontFamily: "'IBM Plex Mono', monospace" }}>
-                {e.ts}{e.actor !== "pending" && ` · ${e.actor}`}
+                {e.actor === "pending"
+                  ? "Pending — not yet actioned"
+                  : <>{e.ts} · {e.actor}</>}
               </div>
             </div>
           );
