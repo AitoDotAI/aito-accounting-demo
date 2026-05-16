@@ -16,10 +16,11 @@ around the workarounds.
 | 4 | Boolean column rejects truthy non-bool (`1`, `"true"`) | Caught us during a bisect; clear error | pass `True`/`False` exactly |
 | 5 | `_search` `limit:0` count is ~1 s on cold table | `/api/help/stats` 2.1 s cold, 14 ms warm | included in startup warmup |
 | 6 | Cache `set` has no upsert primitive | 2× round-trip per write (delete + insert) | combine with #3 — delete is 404 anyway, so we're effectively just inserting |
+| 7 | `httpx.request(...)` per call repeats TLS handshake every request | ~110 ms steady-state vs ~280 ms per call (~3× faster after fix) | Pooled `httpx.Client` held on `AitoClient` instance |
 
 Items 1, 2, 4 are documented in detail in the original sections.
 Items 3, 5, 6 are new flags from the May 2 deploy iteration —
-captured below in §3.
+captured below in §3. Item 7 (May 2026) is documented in §4.
 
 ---
 
@@ -255,6 +256,81 @@ frameworks ship JSON payloads with `true` serialized as `1` /
 ### What we'd hope from core
 
 Nothing — strict typing is the right call. Just noting it.
+
+---
+
+## 4. `httpx.request(...)` per call repeats TLS handshake every request
+
+### Symptom
+
+Every `_recommend` / `_search` / `_predict` call paid 200-300 ms of
+"network overhead" on top of Aito's server-side time. Same code path
+on a shared instance, same payloads, same client process — the
+overhead repeated per call.
+
+### Diagnosis
+
+Aito returns its server-side execution time in the
+`x-aitoai-response-time` response header. Splitting client wall-clock
+against that header isolated the network/proxy cost cleanly:
+
+```
+requests.post() — fresh connection each call:
+  #1: client=1533ms  server=1300ms  net=232ms
+  #2: client=219ms   server=37ms    net=182ms
+  #3: client=196ms   server=36ms    net=160ms
+
+requests.Session() — pooled keep-alive connection:
+  #1: client=249ms   server=38ms    net=211ms   ← TLS handshake
+  #2: client=99ms    server=42ms    net=57ms    ← pooled
+  #3: client=92ms    server=35ms    net=57ms
+```
+
+Pooled connection ⇒ network overhead drops from ~200 ms to **~57 ms**
+(pure RTT). The 150 ms difference is the TLS handshake, paid once on
+the first call and then never again.
+
+`src/aito_client.py` was using `httpx.request(...)` — a top-level
+helper that opens a fresh `httpx.Client` (and a fresh TCP+TLS
+connection) per call. Every call paid the handshake.
+
+### Workaround
+
+Hold a single `httpx.Client` on the `AitoClient` instance and use
+its `.request(...)` method. Per-call `timeout` override still works.
+The circuit-breaker, retry, and per-path semaphore around the call
+are unchanged.
+
+```python
+class AitoClient:
+    def __init__(self, config):
+        # ...existing fields...
+        self._client = httpx.Client(headers=self._headers)
+
+    def _request(self, method, path, json=None, timeout=120.0):
+        # ...breaker / retry / semaphore unchanged...
+        response = self._client.request(
+            method, self._url(path), json=json, timeout=timeout,
+        )
+```
+
+Measured against the live shared Aito instance after the fix:
+~280 ms client-side per call → **~110 ms steady-state** (~3× faster,
+identical request payloads).
+
+### Cross-demo applicability
+
+Same bug existed in `aito-erp-demo/src/aito_client.py` and
+`aito-ecommerce-demo/src/aito_client.py`; both fixed in parallel
+PRs. `aito-demo` (JS) is fine — `fetch()` in modern Node pools via
+the global undici agent.
+
+### What we'd hope from core
+
+Nothing API-side — this is purely a client-side fix. But the official
+Python SDK (when it exists) should default to a pooled client, and
+the docs' Python examples should not show `httpx.request(...)` per
+call.
 
 ---
 
