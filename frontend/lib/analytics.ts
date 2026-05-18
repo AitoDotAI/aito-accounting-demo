@@ -62,7 +62,11 @@ export function initAnalytics(): void {
     serverZone: "EU",
     cookieOptions: { domain: ".aito.ai" },
     defaultTracking: {
-      pageViews: true,
+      // Disabled — `trackPage()` is the source of truth for page views
+      // (App Router soft navigations don't fire history events reliably,
+      // and defaultTracking would produce a second event under a
+      // different name `[Amplitude] Page Viewed`).
+      pageViews: false,
       sessions: true,
       formInteractions: false,
       fileDownloads: false,
