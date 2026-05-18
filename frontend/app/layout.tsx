@@ -11,10 +11,10 @@ import GuidedTourOverlay from "@/components/shell/GuidedTourOverlay";
 import LatencyTicker from "@/components/shell/LatencyTicker";
 import Analytics from "@/components/shell/Analytics";
 
-// Google Analytics 4 measurement ID. Same property aito-demo uses
-// (`public/index.html`) so the accounting demo lands in the same
-// GA4 view. anonymize_ip + cookie_expires:0 mirror that file too.
-const GA_MEASUREMENT_ID = "G-FDTBRCMZWJ";
+// GA4 measurement ID is provisioned at build time via
+// aito-demo-server's env_secrets (Azure Key Vault). Same GA4 property
+// as the other Aito demos so events land in the same view.
+const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA4_MEASUREMENT_ID;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -35,21 +35,25 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </TourProvider>
         </CustomerProvider>
 
-        <Script
-          src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
-          strategy="afterInteractive"
-        />
-        <Script id="ga-init" strategy="afterInteractive">
-          {`
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            gtag('js', new Date());
-            gtag('config', '${GA_MEASUREMENT_ID}', {
-              anonymize_ip: true,
-              cookie_expires: 0,
-            });
-          `}
-        </Script>
+        {GA_MEASUREMENT_ID && (
+          <>
+            <Script
+              src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
+              strategy="afterInteractive"
+            />
+            <Script id="ga-init" strategy="afterInteractive">
+              {`
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                gtag('js', new Date());
+                gtag('config', '${GA_MEASUREMENT_ID}', {
+                  anonymize_ip: true,
+                  cookie_expires: 0,
+                });
+              `}
+            </Script>
+          </>
+        )}
       </body>
     </html>
   );
