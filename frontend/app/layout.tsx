@@ -11,9 +11,9 @@ import GuidedTourOverlay from "@/components/shell/GuidedTourOverlay";
 import LatencyTicker from "@/components/shell/LatencyTicker";
 import Analytics from "@/components/shell/Analytics";
 
-// Google Analytics 4 measurement ID. Same property aito-demo uses
-// (`public/index.html`) so the accounting demo lands in the same
-// GA4 view. anonymize_ip + cookie_expires:0 mirror that file too.
+// Same GA4 property as the other Aito demos so events land in the same
+// view. Hardcoded literal — measurement ID is public anyway (visible in
+// the deployed bundle since GA4 was launched).
 const GA_MEASUREMENT_ID = "G-FDTBRCMZWJ";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
