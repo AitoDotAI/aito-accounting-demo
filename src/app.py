@@ -227,15 +227,20 @@ async def validate_customer_middleware(request: Request, call_next):
 
 # ── Health / keep-warm ────────────────────────────────────────────
 
+@app.get("/health")
 @app.get("/healthz")
 def healthz():
-    """Cheap liveness check for keep-warm pingers.
+    """Cheap liveness check for keep-warm pingers and aito-demo-server health.
 
     Azure App Service idles containers to zero after ~20 min of no
     traffic; the cold-start (~10 s) is the dominant first-paint
-    latency on the deployed demo. Hitting /healthz on a 4-minute
+    latency on the deployed demo. Hitting /health on a 4-minute
     cron from a free uptime service keeps the instance warm without
     triggering any Aito calls.
+
+    Exposes both /health (the convention shared across all aito-demo-server
+    demos so nginx per-demo health proxies work uniformly) and /healthz
+    (preserved for any existing pingers).
     """
     return {"ok": True}
 
