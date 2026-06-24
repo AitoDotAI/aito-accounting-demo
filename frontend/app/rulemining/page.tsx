@@ -175,7 +175,7 @@ export default function RuleMiningPage() {
   const [data, setData] = useState<RulesResponse | null>(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState<Error | null>(null);
-  const [drilldown, setDrilldown] = useState<{ rule: RuleCandidate; invoices: DrilldownInvoice[]; counts?: DrillCounts; diagnosis?: Diagnosis } | null>(null);
+  const [drilldown, setDrilldown] = useState<{ rule: RuleCandidate; invoices: DrilldownInvoice[]; counts?: DrillCounts; diagnosis?: Diagnosis; diagLoading?: boolean } | null>(null);
   const [drillLoading, setDrillLoading] = useState(false);
 
   useEffect(() => {
@@ -185,28 +185,29 @@ export default function RuleMiningPage() {
       .catch((e) => setError(e));
   }, [customerId]);
 
-  const openDrilldown = async (rule: RuleCandidate) => {
+  const openDrilldown = (rule: RuleCandidate) => {
     setDrillLoading(true);
-    setDrilldown({ rule, invoices: [] });
+    setDrilldown({ rule, invoices: [], diagLoading: true });
     const q =
       `customer_id=${customerId}` +
       `&clauses=${encodeURIComponent(JSON.stringify(rule.clauses))}` +
       `&target_value=${encodeURIComponent(rule.target_value)}` +
       `&target_field=${encodeURIComponent(rule.target_field)}`;
-    // Invoices and the diagnostic load in parallel.
-    const invoicesP = apiFetch<{ invoices: DrilldownInvoice[]; counts?: DrillCounts }>(
-      `/api/rules/drilldown?${q}`,
-    );
-    const diagP = apiFetch<Diagnosis>(`/api/rules/diagnose?${q}`).catch(() => undefined);
-    try {
-      const r = await invoicesP;
-      const diagnosis = await diagP;
-      setDrilldown({ rule, invoices: r.invoices, counts: r.counts, diagnosis });
-    } catch {
-      setDrilldown({ rule, invoices: [] });
-    } finally {
-      setDrillLoading(false);
-    }
+    // Only update if this drill-down is still the open one (guards against
+    // a fast second click landing while these are in flight).
+    const stillOpen = (prev: typeof drilldown) => prev && prev.rule === rule;
+
+    // Invoices: the fast call — render the list as soon as it lands, don't
+    // wait on the diagnostic.
+    apiFetch<{ invoices: DrilldownInvoice[]; counts?: DrillCounts }>(`/api/rules/drilldown?${q}`)
+      .then((r) => setDrilldown((p) => (stillOpen(p) ? { ...p!, invoices: r.invoices, counts: r.counts } : p)))
+      .catch(() => setDrilldown((p) => (stillOpen(p) ? { ...p!, invoices: [] } : p)))
+      .finally(() => setDrillLoading(false));
+
+    // Diagnostic: the slower _relate — fills the right panel in afterward.
+    apiFetch<Diagnosis>(`/api/rules/diagnose?${q}`)
+      .then((d) => setDrilldown((p) => (stillOpen(p) ? { ...p!, diagnosis: d, diagLoading: false } : p)))
+      .catch(() => setDrilldown((p) => (stillOpen(p) ? { ...p!, diagLoading: false } : p)));
   };
 
   const m = data?.metrics;
@@ -302,7 +303,7 @@ function DrilldownModal({
   loading,
   onClose,
 }: {
-  drill: { rule: RuleCandidate; invoices: DrilldownInvoice[]; counts?: DrillCounts; diagnosis?: Diagnosis };
+  drill: { rule: RuleCandidate; invoices: DrilldownInvoice[]; counts?: DrillCounts; diagnosis?: Diagnosis; diagLoading?: boolean };
   loading: boolean;
   onClose: () => void;
 }) {
@@ -385,7 +386,7 @@ function DrilldownModal({
 
             {/* Right: why the exceptions happen — _relate over the rule's invoices. */}
             <div style={{ flex: "1 1 34%", minWidth: 260 }}>
-              <DiagnosticPanel diagnosis={drill.diagnosis} />
+              <DiagnosticPanel diagnosis={drill.diagnosis} loading={!!drill.diagLoading} />
             </div>
           </div>
         )}
@@ -464,7 +465,7 @@ function FeatureBar({ f, kind }: { f: DiagFeature; kind: "exception" | "agree" }
   );
 }
 
-function DiagnosticPanel({ diagnosis }: { diagnosis?: Diagnosis }) {
+function DiagnosticPanel({ diagnosis, loading }: { diagnosis?: Diagnosis; loading?: boolean }) {
   const muted = { color: "var(--text3)", fontSize: 11.5 };
   return (
     <div style={{ border: "1px solid var(--border2)", borderRadius: 6, padding: 14 }}>
@@ -475,9 +476,16 @@ function DiagnosticPanel({ diagnosis }: { diagnosis?: Diagnosis }) {
         <code style={{ fontFamily: "'IBM Plex Mono', monospace" }}>_relate</code> over the rule&apos;s invoices, scoring each remaining input by lift toward the rule&apos;s output.
       </div>
 
-      {!diagnosis && <div style={muted}>Diagnostics unavailable.</div>}
+      {loading && (
+        <div style={{ ...muted, display: "flex", alignItems: "center", gap: 8 }}>
+          <span className="spinner" style={{ width: 12, height: 12, border: "2px solid var(--border2)", borderTopColor: "var(--aito-accent)", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite" }} />
+          Analyzing exceptions…
+        </div>
+      )}
 
-      {diagnosis && (
+      {!loading && !diagnosis && <div style={muted}>Diagnostics unavailable.</div>}
+
+      {!loading && diagnosis && (
         <>
           {diagnosis.suggestion && (
             <div style={{

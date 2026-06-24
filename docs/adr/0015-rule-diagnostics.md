@@ -55,7 +55,11 @@ Verified live:
 ### Backend
 
 - `AitoClient.relate_features(table, population_where, target, relate_fields)`
-  — the thin wrapper for the diagnostic `_relate`.
+  — the thin wrapper for the diagnostic `_relate`. It uses the `$on`
+  proposition (`{"$on": [target, clauses]}`) on the **flat** table, not a
+  nested `from` subquery: same result, but ~50× faster (138 ms vs 7 s
+  verified) because Aito hits the index directly instead of materializing
+  the subquery.
 - `rulemining_service.diagnose_rule(...)` — interprets the response into
   `explains_exceptions` (lift < 0.9), `explains_agreement` (lift > 1.1),
   and an optional `suggestion` (the dominant agreeing feature value to add

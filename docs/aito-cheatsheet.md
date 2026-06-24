@@ -249,6 +249,14 @@ With this, `condition` is reliably `{gl_code: …}` and `fs.n` equals the
 tenant's row count. *(Verified live 2026-06-23 — the `where`-filter form
 returned `n=128000` global vs. `n=16000` for the tenant.)*
 
+For a **plain `_relate`** (not `$patterns`) that scopes to a
+sub-population *and* conditions on a value, prefer the `$on` proposition
+over a nested `from`: `"where": {"$on": [{"gl_code": "1600"}, {<scope>}]}`
+("output GIVEN scope"). On the flat table Aito hits the index directly
+instead of materializing the subquery — ~50× faster (138 ms vs 7 s,
+verified). `$patterns` still needs the nested `from` above; this trick is
+for ordinary relate (e.g. rule diagnostics, ADR 0015).
+
 **Gotchas:**
 - `$related.k` defaults to 32 and is a focus cap, *not* a result limit
   — use the outer `limit` for row count.
