@@ -112,14 +112,36 @@ function ClauseList({ clauses }: { clauses: RuleClause[] }) {
 interface DrilldownInvoice {
   invoice_id: string;
   vendor: string;
+  vendor_country?: string;
   amount: number;
   gl_code: string;
   approver?: string;
   category: string;
   amount_band?: string;
+  cost_centre?: string;
+  payment_method?: string;
+  due_days?: number;
+  description?: string;
   invoice_date?: string;
   target_actual?: string;  // the rule's output field value on this invoice
   matched_rule: boolean;
+}
+
+interface DiagFeature {
+  field: string;
+  value: string;
+  lift: number;
+  agree: number;
+  total: number;
+  agree_ratio: number;
+}
+
+interface Diagnosis {
+  remaining_inputs: string[];
+  explains_exceptions: DiagFeature[];
+  explains_agreement: DiagFeature[];
+  suggestion: { field: string; value: string; text: string } | null;
+  error?: string;
 }
 
 // Render a rule's right-hand side: "GL is 1600 (Capital Equipment)" or
@@ -153,7 +175,7 @@ export default function RuleMiningPage() {
   const [data, setData] = useState<RulesResponse | null>(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState<Error | null>(null);
-  const [drilldown, setDrilldown] = useState<{ rule: RuleCandidate; invoices: DrilldownInvoice[]; counts?: DrillCounts } | null>(null);
+  const [drilldown, setDrilldown] = useState<{ rule: RuleCandidate; invoices: DrilldownInvoice[]; counts?: DrillCounts; diagnosis?: Diagnosis } | null>(null);
   const [drillLoading, setDrillLoading] = useState(false);
 
   useEffect(() => {
@@ -166,14 +188,20 @@ export default function RuleMiningPage() {
   const openDrilldown = async (rule: RuleCandidate) => {
     setDrillLoading(true);
     setDrilldown({ rule, invoices: [] });
+    const q =
+      `customer_id=${customerId}` +
+      `&clauses=${encodeURIComponent(JSON.stringify(rule.clauses))}` +
+      `&target_value=${encodeURIComponent(rule.target_value)}` +
+      `&target_field=${encodeURIComponent(rule.target_field)}`;
+    // Invoices and the diagnostic load in parallel.
+    const invoicesP = apiFetch<{ invoices: DrilldownInvoice[]; counts?: DrillCounts }>(
+      `/api/rules/drilldown?${q}`,
+    );
+    const diagP = apiFetch<Diagnosis>(`/api/rules/diagnose?${q}`).catch(() => undefined);
     try {
-      const r = await apiFetch<{ invoices: DrilldownInvoice[]; counts?: DrillCounts }>(
-        `/api/rules/drilldown?customer_id=${customerId}` +
-        `&clauses=${encodeURIComponent(JSON.stringify(rule.clauses))}` +
-        `&target_value=${encodeURIComponent(rule.target_value)}` +
-        `&target_field=${encodeURIComponent(rule.target_field)}`
-      );
-      setDrilldown({ rule, invoices: r.invoices, counts: r.counts });
+      const r = await invoicesP;
+      const diagnosis = await diagP;
+      setDrilldown({ rule, invoices: r.invoices, counts: r.counts, diagnosis });
     } catch {
       setDrilldown({ rule, invoices: [] });
     } finally {
@@ -274,7 +302,7 @@ function DrilldownModal({
   loading,
   onClose,
 }: {
-  drill: { rule: RuleCandidate; invoices: DrilldownInvoice[]; counts?: DrillCounts };
+  drill: { rule: RuleCandidate; invoices: DrilldownInvoice[]; counts?: DrillCounts; diagnosis?: Diagnosis };
   loading: boolean;
   onClose: () => void;
 }) {
@@ -284,6 +312,8 @@ function DrilldownModal({
   // are fetched, matches are a sample, so prefer counts when present.
   const matchCount = drill.counts?.match ?? matched.length;
   const disagreeCount = drill.counts?.disagree ?? disagreeing.length;
+  const rows = [...disagreeing, ...matched.slice(0, 10)];
+  const outputLabel = TARGET_KIND[drill.rule.target_field] ?? "Output";
 
   return (
     <div
@@ -296,8 +326,8 @@ function DrilldownModal({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "var(--surface)", borderRadius: 8, width: "min(720px, 90vw)",
-          maxHeight: "80vh", overflow: "auto", padding: 24,
+          background: "var(--surface)", borderRadius: 8, width: "min(1080px, 95vw)",
+          maxHeight: "86vh", overflow: "auto", padding: 24,
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
@@ -320,54 +350,159 @@ function DrilldownModal({
         )}
 
         {!loading && drill.invoices.length > 0 && (
-          <>
-            <div style={{ fontSize: 12, color: "var(--text2)", margin: "16px 0 8px" }}>
-              <strong style={{ color: "var(--green)" }}>{matchCount}</strong> match the rule
-              {disagreeCount > 0 && (
-                <>
-                  {" · "}
-                  <strong style={{ color: "var(--red)" }}>{disagreeCount}</strong> disagree (different GL)
-                </>
-              )}
-              {drill.counts && matched.length < matchCount && (
-                <span style={{ color: "var(--text3)" }}> · showing all exceptions + a sample of matches</span>
-              )}
+          <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
+            {/* Left: the invoices the rule fires on (click a row for detail). */}
+            <div style={{ flex: "1 1 56%", minWidth: 320 }}>
+              <div style={{ fontSize: 12, color: "var(--text2)", margin: "4px 0 8px" }}>
+                <strong style={{ color: "var(--green)" }}>{matchCount}</strong> match the rule
+                {disagreeCount > 0 && (
+                  <>
+                    {" · "}
+                    <strong style={{ color: "var(--red)" }}>{disagreeCount}</strong> disagree (different {outputLabel.toLowerCase()})
+                  </>
+                )}
+                {drill.counts && matched.length < matchCount && (
+                  <span style={{ color: "var(--text3)" }}> · all exceptions + a sample of matches</span>
+                )}
+              </div>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                <thead>
+                  <tr style={{ fontSize: 10, color: "var(--text3)", textAlign: "left" }}>
+                    <th style={{ padding: "6px 4px", borderBottom: "1px solid var(--border2)" }}>Invoice</th>
+                    <th style={{ padding: "6px 4px", borderBottom: "1px solid var(--border2)" }}>Date</th>
+                    <th style={{ padding: "6px 4px", borderBottom: "1px solid var(--border2)" }}>Amount</th>
+                    <th style={{ padding: "6px 4px", borderBottom: "1px solid var(--border2)" }}>{outputLabel}</th>
+                    <th style={{ padding: "6px 4px", borderBottom: "1px solid var(--border2)" }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((inv) => <InvoiceRow key={inv.invoice_id} inv={inv} />)}
+                </tbody>
+              </table>
+              {matchCount > 10 && <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 8 }}>... and {matchCount - Math.min(matched.length, 10)} more matching invoices</div>}
+              <div style={{ fontSize: 10.5, color: "var(--text3)", marginTop: 8, fontStyle: "italic" }}>Click any invoice for its full details.</div>
             </div>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-              <thead>
-                <tr style={{ fontSize: 10, color: "var(--text3)", textAlign: "left" }}>
-                  <th style={{ padding: "6px 4px", borderBottom: "1px solid var(--border2)" }}>Invoice</th>
-                  <th style={{ padding: "6px 4px", borderBottom: "1px solid var(--border2)" }}>Date</th>
-                  <th style={{ padding: "6px 4px", borderBottom: "1px solid var(--border2)" }}>Amount</th>
-                  <th style={{ padding: "6px 4px", borderBottom: "1px solid var(--border2)" }}>{TARGET_KIND[drill.rule.target_field] ?? "Output"}</th>
-                  <th style={{ padding: "6px 4px", borderBottom: "1px solid var(--border2)" }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {disagreeing.map((inv) => (
-                  <tr key={inv.invoice_id} style={{ borderBottom: "1px solid var(--border2)", background: "rgba(220, 53, 69, 0.04)" }}>
-                    <td className="mono" style={{ padding: "6px 4px", color: "var(--gold-dark)" }}>{inv.invoice_id}</td>
-                    <td style={{ padding: "6px 4px", color: "var(--text3)" }}>{inv.invoice_date ?? "—"}</td>
-                    <td className="mono" style={{ padding: "6px 4px" }}>€{inv.amount.toLocaleString()}</td>
-                    <td className="mono" style={{ padding: "6px 4px" }}>{inv.target_actual ?? inv.gl_code}</td>
-                    <td style={{ padding: "6px 4px" }}><span className="badge badge-red" style={{ fontSize: 10 }}>disagrees</span></td>
-                  </tr>
-                ))}
-                {matched.slice(0, 10).map((inv) => (
-                  <tr key={inv.invoice_id} style={{ borderBottom: "1px solid var(--border2)" }}>
-                    <td className="mono" style={{ padding: "6px 4px", color: "var(--gold-dark)" }}>{inv.invoice_id}</td>
-                    <td style={{ padding: "6px 4px", color: "var(--text3)" }}>{inv.invoice_date ?? "—"}</td>
-                    <td className="mono" style={{ padding: "6px 4px" }}>€{inv.amount.toLocaleString()}</td>
-                    <td className="mono" style={{ padding: "6px 4px" }}>{inv.target_actual ?? inv.gl_code}</td>
-                    <td style={{ padding: "6px 4px" }}><span className="badge badge-green" style={{ fontSize: 10 }}>matches</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {matchCount > 10 && <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 8 }}>... and {matchCount - Math.min(matched.length, 10)} more matching invoices</div>}
-          </>
+
+            {/* Right: why the exceptions happen — _relate over the rule's invoices. */}
+            <div style={{ flex: "1 1 34%", minWidth: 260 }}>
+              <DiagnosticPanel diagnosis={drill.diagnosis} />
+            </div>
+          </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function InvoiceRow({ inv }: { inv: DrilldownInvoice }) {
+  const [open, setOpen] = useState(false);
+  const detail: [string, string | number | undefined][] = [
+    ["vendor", inv.vendor],
+    ["vendor_country", inv.vendor_country],
+    ["category", inv.category],
+    ["amount_band", inv.amount_band],
+    ["gl_code", inv.gl_code],
+    ["approver", inv.approver],
+    ["cost_centre", inv.cost_centre],
+    ["payment_method", inv.payment_method],
+    ["due_days", inv.due_days],
+    ["description", inv.description],
+  ];
+  return (
+    <>
+      <tr
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          borderBottom: "1px solid var(--border2)", cursor: "pointer",
+          background: inv.matched_rule ? "transparent" : "rgba(220, 53, 69, 0.04)",
+        }}
+      >
+        <td className="mono" style={{ padding: "6px 4px", color: "var(--gold-dark)" }}>{inv.invoice_id}</td>
+        <td style={{ padding: "6px 4px", color: "var(--text3)" }}>{inv.invoice_date ?? "—"}</td>
+        <td className="mono" style={{ padding: "6px 4px" }}>€{inv.amount.toLocaleString()}</td>
+        <td className="mono" style={{ padding: "6px 4px" }}>{inv.target_actual ?? inv.gl_code}</td>
+        <td style={{ padding: "6px 4px" }}>
+          <span className={`badge ${inv.matched_rule ? "badge-green" : "badge-red"}`} style={{ fontSize: 10 }}>
+            {inv.matched_rule ? "matches" : "disagrees"}
+          </span>
+        </td>
+      </tr>
+      {open && (
+        <tr>
+          <td colSpan={5} style={{ background: "var(--surface2)", padding: "10px 14px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "4px 18px" }}>
+              {detail.filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => (
+                <div key={k} style={{ fontSize: 11.5 }}>
+                  <span style={{ color: "var(--text3)" }}>{k}: </span>
+                  <span className="mono" style={{ color: "var(--text2)" }}>{String(v)}</span>
+                </div>
+              ))}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function FeatureBar({ f, kind }: { f: DiagFeature; kind: "exception" | "agree" }) {
+  const color = kind === "exception" ? "var(--red)" : "var(--green)";
+  return (
+    <div style={{ marginBottom: 7 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11.5 }}>
+        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <code style={{ color: "var(--text3)" }}>{f.field}</code> = <strong>{f.value}</strong>
+        </span>
+        <span style={{ color, whiteSpace: "nowrap", fontFamily: "'IBM Plex Mono', monospace" }}>
+          {f.agree}/{f.total} · {f.lift}×
+        </span>
+      </div>
+      <div style={{ height: 4, background: "var(--border2)", borderRadius: 2, marginTop: 3, overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${Math.round(f.agree_ratio * 100)}%`, background: color, opacity: 0.7 }} />
+      </div>
+    </div>
+  );
+}
+
+function DiagnosticPanel({ diagnosis }: { diagnosis?: Diagnosis }) {
+  const muted = { color: "var(--text3)", fontSize: 11.5 };
+  return (
+    <div style={{ border: "1px solid var(--border2)", borderRadius: 6, padding: 14 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 4 }}>
+        Why the exceptions?
+      </div>
+      <div style={{ ...muted, marginBottom: 10 }}>
+        <code style={{ fontFamily: "'IBM Plex Mono', monospace" }}>_relate</code> over the rule&apos;s invoices, scoring each remaining input by lift toward the rule&apos;s output.
+      </div>
+
+      {!diagnosis && <div style={muted}>Diagnostics unavailable.</div>}
+
+      {diagnosis && (
+        <>
+          {diagnosis.suggestion && (
+            <div style={{
+              background: "rgba(212, 160, 23, 0.10)", border: "1px solid var(--gold-dark)",
+              borderRadius: 4, padding: "8px 10px", marginBottom: 12, fontSize: 11.5, lineHeight: 1.45,
+            }}>
+              <strong style={{ color: "var(--gold-dark)" }}>Refine →</strong> {diagnosis.suggestion.text}
+            </div>
+          )}
+
+          <div style={{ fontSize: 10.5, fontWeight: 600, color: "var(--red)", marginBottom: 6 }}>What marks the exceptions</div>
+          {diagnosis.explains_exceptions.length === 0
+            ? <div style={{ ...muted, marginBottom: 12 }}>No input feature tracks the exceptions — they look random (e.g. one-off miscodes).</div>
+            : <div style={{ marginBottom: 12 }}>{diagnosis.explains_exceptions.map((f, i) => <FeatureBar key={i} f={f} kind="exception" />)}</div>}
+
+          <div style={{ fontSize: 10.5, fontWeight: 600, color: "var(--green)", marginBottom: 6 }}>What the agreements share</div>
+          {diagnosis.explains_agreement.length === 0
+            ? <div style={muted}>—</div>
+            : <div>{diagnosis.explains_agreement.map((f, i) => <FeatureBar key={i} f={f} kind="agree" />)}</div>}
+
+          {diagnosis.remaining_inputs.length === 0 && (
+            <div style={{ ...muted, marginTop: 10 }}>The rule already conditions on every input field.</div>
+          )}
+        </>
+      )}
     </div>
   );
 }

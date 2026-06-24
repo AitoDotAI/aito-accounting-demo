@@ -353,6 +353,126 @@ def _count(client: AitoClient, where: dict) -> int:
     return int(client.search("invoices", where, limit=0).get("total", 0))
 
 
+# ── Rule diagnostics (ADR 0015) ───────────────────────────────────────
+#
+# Relate the rule's *remaining* input features to its output, within the
+# rule's matched population, to explain its exceptions. A feature value's
+# lift toward the output sorts it: > 1 goes with agreement, < 1 marks the
+# exceptions. Thresholds keep near-neutral (lift ≈ 1) features out.
+DIAGNOSE_AGREE_LIFT = 1.05
+DIAGNOSE_EXCEPTION_LIFT = 0.9
+DIAGNOSE_MIN_F = 3  # min support for a feature value to be worth reporting
+
+
+def diagnose_rule(
+    client: AitoClient,
+    customer_id: str | None,
+    clauses: list[dict],
+    target_field: str,
+    target_value: str,
+) -> dict:
+    """Explain a rule's exceptions by relating its remaining inputs to the
+    output within its matched population (ADR 0015).
+
+    `clauses` is the rule's `$and` conjunction as `[{field, value}, ...]`.
+    """
+    clause_fields = {c["field"] for c in clauses}
+    remaining = [f for f in CANDIDATE_FIELDS if f not in clause_fields]
+    empty = {
+        "remaining_inputs": remaining,
+        "explains_exceptions": [],
+        "explains_agreement": [],
+        "suggestion": None,
+    }
+    if not remaining:
+        return empty
+
+    population_where: dict = {"customer_id": customer_id} if customer_id else {}
+    for c in clauses:
+        population_where[c["field"]] = c["value"]
+    try:
+        result = client.relate_features(
+            "invoices", population_where, {target_field: target_value}, remaining
+        )
+    except AitoError:
+        return empty
+    return interpret_diagnosis(remaining, result)
+
+
+def interpret_diagnosis(remaining_inputs: list[str], relate_result: dict) -> dict:
+    """Split a diagnostic `_relate` response into agreement vs exception
+    drivers, and propose a refinement. Pure — no network.
+    """
+    agreement: list[dict] = []
+    exceptions: list[dict] = []
+    entries: list[dict] = []
+    for hit in relate_result.get("hits", []):
+        related = hit.get("related", {})
+        parsed = parse_conjunction(related)  # a single-feature proposition
+        if len(parsed) != 1:
+            continue
+        clause = parsed[0]
+        fs = hit.get("fs", {})
+        total = int(fs.get("f", 0))
+        agree = int(fs.get("fOnCondition", 0))
+        if total < DIAGNOSE_MIN_F:
+            continue
+        lift = float(hit.get("lift", 0.0) or 0.0)
+        entry = {
+            "field": clause.field,
+            "value": clause.value,
+            "lift": round(lift, 2),
+            "agree": agree,
+            "total": total,
+            "agree_ratio": round(agree / total, 3) if total else 0.0,
+        }
+        entries.append(entry)
+        if lift >= DIAGNOSE_AGREE_LIFT:
+            agreement.append(entry)
+        elif lift <= DIAGNOSE_EXCEPTION_LIFT:
+            exceptions.append(entry)
+
+    exceptions.sort(key=lambda e: e["lift"])       # most disagreeing first
+    agreement.sort(key=lambda e: -e["lift"])       # strongest agreement first
+    return {
+        "remaining_inputs": remaining_inputs,
+        "explains_exceptions": exceptions,
+        "explains_agreement": agreement,
+        "suggestion": _suggest_refinement(entries, exceptions),
+    }
+
+
+def _suggest_refinement(entries: list[dict], exceptions: list[dict]) -> dict | None:
+    """If the exceptions concentrate on one feature value, suggest adding
+    the complementary (agreeing) value of that field as a clause.
+
+    e.g. exceptions are all `amount_band=medium` (0/26) and the agreements
+    are `amount_band=large` (322/327) → add `amount_band="large"`.
+    """
+    if not exceptions:
+        return None
+    worst = exceptions[0]
+    # Best agreeing value of the SAME field: high agree ratio, real support.
+    same_field = [
+        e for e in entries
+        if e["field"] == worst["field"] and e["value"] != worst["value"]
+        and e["agree_ratio"] >= 0.9 and e["agree"] >= DIAGNOSE_MIN_F
+    ]
+    if not same_field:
+        return None
+    best = max(same_field, key=lambda e: e["agree"])
+    return {
+        "field": best["field"],
+        "value": best["value"],
+        "text": (
+            f'Add {best["field"]}="{best["value"]}" — the rule holds in '
+            f'{best["agree"]}/{best["total"]} of those, and it drops the '
+            f'{worst["field"]}="{worst["value"]}" exceptions '
+            f'({worst["agree"]}/{worst["total"]} matched).'
+        ),
+    }
+
+
 def _top_values(client: AitoClient, field: str, where_filter: dict) -> list[str]:
     """Most frequent values of a target field in scope, most-common first.
 

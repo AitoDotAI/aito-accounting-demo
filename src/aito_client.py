@@ -391,6 +391,35 @@ class AitoClient:
         }
         return self._request("POST", "/_relate", json=query)
 
+    def relate_features(
+        self,
+        table: str,
+        population_where: dict,
+        target: dict,
+        relate_fields: list[str],
+    ) -> dict:
+        """Relate features to a target *within a sub-population* — the
+        diagnostic behind "why does this rule have exceptions?".
+
+        `population_where` scopes the rows (a rule's clauses, via nested
+        `from`); `target` is the rule's output (e.g. {"gl_code": "1600"}),
+        pinned as the relate condition. Each hit reports a `relate_fields`
+        value and its `lift` toward the target across that population:
+            - lift > 1 → the value goes with *agreement* (rule holds)
+            - lift < 1 → the value marks the *exceptions*
+        `fs.fOnCondition / fs.f` is the exact agree-count for that value.
+
+        See docs/adr/0015-rule-diagnostics.md.
+        """
+        query = {
+            "from": {"from": table, "where": population_where},
+            "where": target,
+            "relate": relate_fields,
+            "select": ["related", "lift", "fs"],
+            "orderBy": "lift",
+        }
+        return self._request("POST", "/_relate", json=query)
+
     def match(self, table: str, where: dict, match_field: str, limit: int = 5) -> dict:
         """Run a _match query to find records related to a context.
 

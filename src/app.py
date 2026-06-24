@@ -569,11 +569,16 @@ def rules_drilldown(
         return {
             "invoice_id": hit.get("invoice_id"),
             "vendor": hit.get("vendor"),
+            "vendor_country": hit.get("vendor_country"),
             "amount": hit.get("amount"),
             "gl_code": hit.get("gl_code"),
             "approver": hit.get("approver"),
             "category": hit.get("category"),
             "amount_band": hit.get("amount_band"),
+            "cost_centre": hit.get("cost_centre"),
+            "payment_method": hit.get("payment_method"),
+            "due_days": hit.get("due_days"),
+            "description": hit.get("description"),
             "invoice_date": shift_iso(hit.get("invoice_date")),
             "target_actual": hit.get(target_field),
             "matched_rule": hit.get(target_field) == target_value,
@@ -605,6 +610,30 @@ def rules_drilldown(
             "disagree": total - match_total,
         },
     }
+
+
+@app.get("/api/rules/diagnose")
+def rules_diagnose(
+    customer_id: str = Query(...),
+    clauses: str = Query(..., description="JSON list of {field, value} — the rule's AND-conjunction"),
+    target_field: str = Query(...),
+    target_value: str = Query(...),
+):
+    """Explain a rule's exceptions: relate its remaining input features to
+    its output, within the rule's matched population (ADR 0015).
+
+    Returns the feature values that mark the exceptions vs the agreements,
+    and an optional "add clause X" refinement suggestion.
+    """
+    try:
+        parsed = json.loads(clauses)
+    except (ValueError, TypeError) as exc:
+        return {"error": f"Invalid clauses payload: {exc}"}
+    if not isinstance(parsed, list) or not parsed:
+        return {"error": "clauses must be a non-empty JSON list"}
+
+    from src.rulemining_service import diagnose_rule
+    return diagnose_rule(aito, customer_id, parsed, target_field, target_value)
 
 
 @app.get("/api/rules/candidates")

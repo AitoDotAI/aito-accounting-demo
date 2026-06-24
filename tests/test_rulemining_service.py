@@ -21,6 +21,7 @@ from src.rulemining_service import (
     build_candidate,
     classify_strength,
     discover_conjunctions,
+    interpret_diagnosis,
     parse_conjunction,
     target_value_label,
 )
@@ -178,3 +179,45 @@ class TestRuleCandidate:
     def test_single_feature_renders_without_and(self):
         c = self._candidate(clauses=[RuleClause("category", "insurance")])
         assert c.pattern_display == 'category="insurance"'
+
+
+class TestInterpretDiagnosis:
+    def _hit(self, field, value, *, lift, f, f_on):
+        return {"related": {field: {"$has": value}}, "lift": lift,
+                "fs": {"f": f, "fOnCondition": f_on}}
+
+    def test_structural_exceptions_suggest_a_refinement(self):
+        """K. Itäluoma case: exceptions are amount_band=medium; agreements
+        are amount_band=large → suggest adding amount_band=large."""
+        result = {"hits": [
+            self._hit("amount_band", "large", lift=1.08, f=327, f_on=322),
+            self._hit("vendor_country", "FI", lift=1.0, f=353, f_on=322),
+            self._hit("amount_band", "medium", lift=0.02, f=26, f_on=0),
+        ]}
+
+        d = interpret_diagnosis(["amount_band", "vendor_country"], result)
+
+        assert d["explains_exceptions"][0]["field"] == "amount_band"
+        assert d["explains_exceptions"][0]["value"] == "medium"
+        assert d["explains_exceptions"][0]["agree"] == 0
+        assert d["suggestion"]["field"] == "amount_band"
+        assert d["suggestion"]["value"] == "large"
+        assert "large" in d["suggestion"]["text"]
+
+    def test_random_exceptions_yield_no_suggestion(self):
+        """Dottoressa case: all lifts ≈ 1 → exceptions are noise."""
+        result = {"hits": [
+            self._hit("amount_band", "medium", lift=1.0, f=778, f_on=764),
+            self._hit("vendor_country", "FI", lift=1.0, f=831, f_on=815),
+            self._hit("amount_band", "large", lift=0.98, f=53, f_on=51),
+        ]}
+
+        d = interpret_diagnosis(["amount_band", "vendor_country"], result)
+
+        assert d["explains_exceptions"] == []
+        assert d["suggestion"] is None
+
+    def test_low_support_feature_values_are_dropped(self):
+        result = {"hits": [self._hit("amount_band", "small", lift=0.1, f=2, f_on=0)]}
+        d = interpret_diagnosis(["amount_band"], result)
+        assert d["explains_exceptions"] == []
