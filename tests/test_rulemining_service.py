@@ -1,16 +1,28 @@
 """Tests for the rule mining service.
 
-Tests verify pattern extraction from _relate responses, support ratio
-classification, and candidate sorting. These double as documentation
-for how Aito _relate responses map to human-readable rule candidates.
+Rule mining is two stages (ADR 0014), now across multiple target fields:
+
+  1. `discover_conjunctions` pulls candidate input-only conjunctions out of
+     a `$patterns` response — discovery only, since `$patterns`' `fs` are
+     estimates.
+  2. `build_candidate` turns exact `_search` counts into the rule's
+     support/coverage/lift, so the displayed "X of Y" matches the
+     drill-down.
+
+Rules are mined for each *output* field (gl_code, approver) from
+inputs-only clauses — never conditioning on another output (no leakage).
 """
 
 import pytest
 
 from src.rulemining_service import (
     RuleCandidate,
+    RuleClause,
+    build_candidate,
     classify_strength,
-    extract_candidates_from_relate,
+    discover_conjunctions,
+    parse_conjunction,
+    target_value_label,
 )
 
 
@@ -30,141 +42,139 @@ class TestClassifyStrength:
     def test_74_percent_is_weak(self):
         assert classify_strength(0.74) == "weak"
 
-    def test_zero_is_weak(self):
-        assert classify_strength(0.0) == "weak"
+
+class TestTargetValueLabel:
+    def test_gl_code_maps_to_label(self):
+        assert target_value_label("gl_code", "5400") == "Professional Services"
+        assert target_value_label("gl_code", "1600") == "Capital Equipment"
+
+    def test_unknown_gl_falls_back_to_code(self):
+        assert target_value_label("gl_code", "9999") == "9999"
+
+    def test_approver_is_its_own_label(self):
+        assert target_value_label("approver", "Liisa Virtanen") == "Liisa Virtanen"
 
 
-class TestExtractCandidates:
-    def _make_relate_hit(self, gl_code, f_on_condition, f_condition, n=230, lift=5.0):
+class TestParseConjunction:
+    def test_single_feature_becomes_one_clause(self):
+        assert parse_conjunction({"category": {"$has": "insurance"}}) == [
+            RuleClause("category", "insurance")
+        ]
+
+    def test_and_conjunction_becomes_multiple_clauses(self):
+        related = {"$and": [
+            {"category": {"$has": "it_equipment"}},
+            {"amount_band": {"$has": "large"}},
+        ]}
+        assert parse_conjunction(related) == [
+            RuleClause("category", "it_equipment"),
+            RuleClause("amount_band", "large"),
+        ]
+
+
+class TestDiscoverConjunctions:
+    def _hit(self, related, *, lift=10.0, condition=None):
         return {
-            "related": {"gl_code": {"$has": gl_code}},
-            "condition": {"category": {"$has": "telecom"}},
+            "related": related,
+            "condition": condition or {"gl_code": {"$has": "1600"}},
             "lift": lift,
-            "fs": {
-                "f": f_on_condition + 10,
-                "fOnCondition": f_on_condition,
-                "fOnNotCondition": 10,
-                "fCondition": f_condition,
-                "n": n,
-            },
-            "ps": {
-                "p": 0.1,
-                "pOnCondition": f_on_condition / max(f_condition, 1),
-                "pOnNotCondition": 0.05,
-                "pCondition": f_condition / max(n, 1),
-            },
         }
 
-    def test_extracts_strong_pattern_from_relate(self):
-        """17/17 telecom → GL 6200 should be a strong candidate."""
-        result = {
-            "offset": 0,
-            "total": 1,
-            "hits": [self._make_relate_hit("6200", 17, 17, 230, 10.7)],
-        }
+    def test_discovers_input_conjunction(self):
+        related = {"$and": [
+            {"category": {"$has": "it_equipment"}},
+            {"amount_band": {"$has": "large"}},
+        ]}
+        out = discover_conjunctions("gl_code", "1600", {"hits": [self._hit(related)]})
+        assert out == [[RuleClause("category", "it_equipment"), RuleClause("amount_band", "large")]]
 
-        candidates = extract_candidates_from_relate("category", "telecom", result)
+    def test_drops_negative_estimated_lift(self):
+        result = {"hits": [
+            self._hit({"category": {"$has": "supplies"}}, lift=0.1),
+            self._hit({"category": {"$has": "it_equipment"}}, lift=8.0),
+        ]}
+        out = discover_conjunctions("gl_code", "1600", result)
+        assert out == [[RuleClause("category", "it_equipment")]]
 
-        assert len(candidates) == 1
-        c = candidates[0]
-        assert c.condition_field == "category"
-        assert c.condition_value == "telecom"
-        assert c.target_value == "6200"
-        assert c.support_match == 17
-        assert c.support_total == 17
+    def test_deduplicates(self):
+        related = {"category": {"$has": "it_equipment"}}
+        result = {"hits": [self._hit(related), self._hit(related)]}
+        assert len(discover_conjunctions("gl_code", "1600", result)) == 1
+
+    def test_works_for_approver_target(self):
+        """Discovery is target-agnostic — condition must match the target field."""
+        related = {"$and": [
+            {"category": {"$has": "consulting"}},
+            {"amount_band": {"$has": "large"}},
+        ]}
+        hit = self._hit(related, condition={"approver": {"$has": "Markku Heikkinen"}})
+        out = discover_conjunctions("approver", "Markku Heikkinen", {"hits": [hit]})
+        assert out == [[RuleClause("category", "consulting"), RuleClause("amount_band", "large")]]
+
+    def test_raises_when_condition_is_not_the_target_field(self):
+        bad = self._hit({"category": {"$has": "x"}}, condition={"customer_id": {"$has": "C"}})
+        with pytest.raises(ValueError, match="wrong target"):
+            discover_conjunctions("gl_code", "1600", {"hits": [bad]})
+
+    def test_empty_hits(self):
+        assert discover_conjunctions("gl_code", "1600", {"hits": []}) == []
+
+
+class TestBuildCandidate:
+    def test_gl_target_exact_counts(self):
+        """The capitalization rule: it_equipment+large mostly → 1600."""
+        c = build_candidate(
+            [RuleClause("category", "it_equipment"), RuleClause("amount_band", "large")],
+            "gl_code", "1600",
+            rule_total=1261, rule_match=1251, target_total=12222, n=16000,
+        )
+        assert c.target_field == "gl_code"
+        assert c.support_ratio == pytest.approx(1251 / 1261, abs=0.001)
+        assert c.coverage == pytest.approx(1251 / 12222, abs=0.001)
+        # lift = precision / (target_total/n)
+        assert c.lift == pytest.approx((1251 / 1261) / (12222 / 16000), abs=0.02)
         assert c.strength == "strong"
-        assert c.support_ratio == 1.0
+        assert c.target_display == "GL 1600 (Capital Equipment)"
 
-    def test_extracts_review_pattern(self):
-        """33/34 food_bev → GL 4100 should be review (97%)."""
-        result = {
-            "offset": 0,
-            "total": 1,
-            "hits": [self._make_relate_hit("4100", 33, 34, 230, 6.0)],
-        }
+    def test_approver_target_display_is_the_name(self):
+        c = build_candidate(
+            [RuleClause("amount_band", "large")],
+            "approver", "Markku Heikkinen",
+            rule_total=600, rule_match=590, target_total=900, n=16000,
+        )
+        assert c.target_field == "approver"
+        assert c.target_label == "Markku Heikkinen"
+        assert c.target_display == "Markku Heikkinen"
+        assert c.support_ratio == pytest.approx(590 / 600, abs=0.001)
 
-        candidates = extract_candidates_from_relate("category", "food_bev", result)
-
-        assert len(candidates) == 1
-        assert candidates[0].strength == "strong"  # 33/34 = 97%
-        assert candidates[0].support_ratio == pytest.approx(0.97, abs=0.01)
-
-    def test_skips_low_support_patterns(self):
-        """Patterns with fewer than MIN_SUPPORT matches are ignored."""
-        result = {
-            "offset": 0,
-            "total": 1,
-            "hits": [self._make_relate_hit("4400", 2, 5, 230, 1.0)],
-        }
-
-        candidates = extract_candidates_from_relate("vendor", "Rare Corp", result)
-
-        assert len(candidates) == 0
-
-    def test_only_takes_top_hit(self):
-        """Should only extract the first (highest-lift) hit per condition."""
-        result = {
-            "offset": 0,
-            "total": 2,
-            "hits": [
-                self._make_relate_hit("6200", 17, 17, 230, 10.7),
-                self._make_relate_hit("4400", 5, 17, 230, 0.5),
-            ],
-        }
-
-        candidates = extract_candidates_from_relate("category", "telecom", result)
-
-        assert len(candidates) == 1
-        assert candidates[0].target_value == "6200"
-
-    def test_empty_hits_returns_empty(self):
-        result = {"offset": 0, "total": 0, "hits": []}
-
-        candidates = extract_candidates_from_relate("vendor", "Nobody", result)
-
-        assert candidates == []
+    def test_zero_division_guards(self):
+        c = build_candidate([RuleClause("category", "x")], "gl_code", "1600", 0, 0, 0, 0)
+        assert c.support_ratio == 0.0 and c.coverage == 0.0 and c.lift == 0.0
 
 
 class TestRuleCandidate:
-    def test_pattern_display(self):
-        c = RuleCandidate(
-            condition_field="category",
-            condition_value="telecom",
-            target_field="gl_code",
-            target_value="6200",
-            target_label="Telecom",
-            support_match=17,
-            support_total=17,
-            coverage=0.074,
-            lift=10.7,
-            strength="strong",
+    def _candidate(self, **overrides):
+        defaults = dict(
+            clauses=[RuleClause("category", "it_equipment"), RuleClause("amount_band", "large")],
+            target_field="gl_code", target_value="1600", target_label="Capital Equipment",
+            rule_match=1251, rule_total=1261, target_total=12222, n=16000,
+            lift=1.6, strength="strong",
         )
+        defaults.update(overrides)
+        return RuleCandidate(**defaults)
 
-        assert c.pattern_display == 'category="telecom"'
-        assert c.target_display == "GL 6200 (Telecom)"
-
-    def test_to_dict_includes_all_fields(self):
-        c = RuleCandidate(
-            condition_field="vendor",
-            condition_value="Kesko Oyj",
-            target_field="gl_code",
-            target_value="4400",
-            target_label="Supplies",
-            support_match=18,
-            support_total=18,
-            coverage=0.078,
-            lift=6.5,
-            strength="strong",
-        )
-        d = c.to_dict()
-
-        assert d["pattern"] == 'vendor="Kesko Oyj"'
-        assert d["target"] == "GL 4400 (Supplies)"
-        assert d["support"] == "18/18"
-        assert d["support_ratio"] == 1.0
-        assert d["coverage"] == 7.8
+    def test_to_dict_includes_target_field_and_clauses(self):
+        d = self._candidate().to_dict()
+        assert d["pattern"] == 'category="it_equipment" AND amount_band="large"'
+        assert d["clauses"] == [
+            {"field": "category", "value": "it_equipment"},
+            {"field": "amount_band", "value": "large"},
+        ]
+        assert d["target_field"] == "gl_code"
+        assert d["target"] == "GL 1600 (Capital Equipment)"
+        assert d["support"] == "1251/1261"
         assert d["strength"] == "strong"
 
-    def test_support_ratio_zero_division(self):
-        c = RuleCandidate("f", "v", "t", "x", "X", 0, 0, 0.0, 0.0, "weak")
-        assert c.support_ratio == 0.0
+    def test_single_feature_renders_without_and(self):
+        c = self._candidate(clauses=[RuleClause("category", "insurance")])
+        assert c.pattern_display == 'category="insurance"'

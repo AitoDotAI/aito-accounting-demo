@@ -49,6 +49,31 @@ GL_CODES = {
     "consulting": ("5400", "Professional Services"),
 }
 
+# Capitalization: for capex-prone categories, large purchases land on the
+# balance-sheet capital account instead of the normal expense GL. This is
+# a real accounting rule (a €15k server is an asset; a €200 cable is an
+# expense) and gives rule discovery a genuine multi-field INPUT rule:
+# `category=it_equipment AND amount_band=large -> 1600`. The threshold is
+# the same €10k as the approval escalation below, so both show cleanly.
+CAPEX_GL = ("1600", "Capital Equipment")
+CAPEX_CATEGORIES = {"it_equipment", "software", "maintenance"}
+
+# amount_band thresholds (EUR). Derived from `amount` at intake, so it is
+# a legitimate prediction input. `large` (>= 10k) is both the
+# capitalization boundary and the approver escalation boundary.
+AMOUNT_BAND_SMALL_MAX = 1_000.0
+AMOUNT_BAND_LARGE_MIN = 10_000.0
+
+
+def amount_band(amount: float) -> str:
+    """Bucket an invoice amount into small / medium / large."""
+    if amount < AMOUNT_BAND_SMALL_MAX:
+        return "small"
+    if amount >= AMOUNT_BAND_LARGE_MIN:
+        return "large"
+    return "medium"
+
+
 COST_CENTRES = {
     "Finance": "CC-100", "Operations": "CC-200", "Sales": "CC-300",
     "IT": "CC-400", "HR": "CC-500", "Procurement": "CC-600",
@@ -656,8 +681,17 @@ def generate_invoices_for_customer(
         else:
             approver = category_to_approver[vdef["category"]]
 
-        # Occasional GL anomaly (2%)
+        band = amount_band(amount)
+
+        # Capitalization split: large capex-category purchases book to the
+        # capital account, not the category's expense GL. This is the only
+        # place gl_code depends on more than the vendor/category — it's
+        # what makes `category=X AND amount_band=large -> 1600` a real
+        # rule rather than a redundant conjunction.
         gl_code = vdef["gl_code"]
+        if vdef["category"] in CAPEX_CATEGORIES and band == "large":
+            gl_code = CAPEX_GL[0]
+        # Occasional GL anomaly (2%)
         if rng.random() < 0.02:
             gl_code = rng.choice(list(set(v[0] for v in GL_CODES.values())))
 
@@ -669,6 +703,7 @@ def generate_invoices_for_customer(
             "vendor_country": vdef["country"],
             "category": vdef["category"],
             "amount": amount,
+            "amount_band": band,
             "gl_code": gl_code,
             "cost_centre": COST_CENTRES.get(processor["department"], "CC-100"),
             "approver": approver["name"],

@@ -10,6 +10,7 @@
      * [test_02_predict.py::test_predict_approver](book/test_02_predict.py::test_predict_approver.md)
      * [test_02_predict.py::test_predict_gl_code](book/test_02_predict.py::test_predict_gl_code.md)
      * [test_03_relate.py::test_relate_category_to_gl](book/test_03_relate.py::test_relate_category_to_gl.md)
+     * [test_03_relate.py::test_relate_patterns_conjunctions](book/test_03_relate.py::test_relate_patterns_conjunctions.md)
      * [test_03_relate.py::test_relate_vendor_to_gl](book/test_03_relate.py::test_relate_vendor_to_gl.md)
      * [test_04_match.py::test_predict_invoice_from_bank_txn](book/test_04_match.py::test_predict_invoice_from_bank_txn.md)
      * [test_04_match.py::test_predict_vendor_name](book/test_04_match.py::test_predict_vendor_name.md)

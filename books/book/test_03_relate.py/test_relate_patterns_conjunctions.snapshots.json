@@ -1,0 +1,62 @@
+{
+  "httpx": {
+    "1ce61547ec92b64e9b9c8ac902cb0fbc40c7ed06": {
+      "request": {
+        "hash": "1ce61547ec92b64e9b9c8ac902cb0fbc40c7ed06",
+        "method": "POST",
+        "url": "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_relate"
+      },
+      "response": {
+        "content": "eyJvZmZzZXQiOjAsInRvdGFsIjo0LCJoaXRzIjpbeyJyZWxhdGVkIjp7IiRhbmQiOlt7InZlbmRvciI6eyIkaGFzIjoiQXZhcm4gU2VjdXJpdHkgT3kifX0seyJhbW91bnRfYmFuZCI6eyIkaGFzIjoibGFyZ2UifX1dfSwiY29uZGl0aW9uIjp7ImFwcHJvdmVyIjp7IiRoYXMiOiJNYXJra3UgSGVpa2tpbmVuIn19LCJsaWZ0IjozLjA5NTkyMzU4MTk2NDgwOCwiZnMiOnsiZiI6OTA5LjU5NTcwMzEyNSwiZk9uQ29uZGl0aW9uIjo5MDkuNTk1NzAzMTI1LCJmT25Ob3RDb25kaXRpb24iOjAuMCwiZkNvbmRpdGlvbiI6NTE0Ni4wLCJuIjoxNjAwMC4wfSwicHMiOnsicCI6MC4wNTY5MDUxMTgzMDU1MjQzMSwicE9uQ29uZGl0aW9uIjowLjE3NjE3Mzg5NzY5NjU3LCJwT25Ob3RDb25kaXRpb24iOjIuNzcyMDk5NzYxNTgzNzczRS00LCJwQ29uZGl0aW9uIjowLjMyMTYyNTEwODYwNzkwNjk0fX0seyJyZWxhdGVkIjp7IiRhbmQiOlt7InZlbmRvciI6eyIkaGFzIjoiS3VsamV0dXNsaWlrZSBSb3NlbmJlcmctQm9tYW4gT3kifX0seyJjYXRlZ29yeSI6eyIkaGFzIjoibG9naXN0aWNzIn19XX0sImNvbmRpdGlvbiI6eyJhcHByb3ZlciI6eyIkaGFzIjoiTWFya2t1IEhlaWtraW5lbiJ9fSwibGlmdCI6Mi41NjQ1ODAxMDAxNDg3NTE0LCJmcyI6eyJmIjo5OTMuNzU3ODEyNSwiZk9uQ29uZGl0aW9uIjo4MjQuMTY0MDYyNSwiZk9uTm90Q29uZGl0aW9uIjoxNjkuNTkzNzUsImZDb25kaXRpb24iOjUxNDYuMCwibiI6MTYwMDAuMH0sInBzIjp7InAiOjAuMDYyMTY0NTkyNzA3MTYxNjA1LCJwT25Db25kaXRpb24iOjAuMTU5NDI2MDc3MzkwNjM4ODUsInBPbk5vdENvbmRpdGlvbiI6MC4wMTU5NzE3NDg4MDA3MjgyMjQsInBDb25kaXRpb24iOjAuMzIxNjI1MTY2MTEwMTg4NzZ9fSx7InJlbGF0ZWQiOnsiJGFuZCI6W3sidmVuZG9yIjp7IiRoYXMiOiJLYXJkZXggRmlubGFuZCBPeSJ9fSx7ImFtb3VudF9iYW5kIjp7IiRoYXMiOiJtZWRpdW0ifX1dfSwiY29uZGl0aW9uIjp7ImFwcHJvdmVyIjp7IiRoYXMiOiJNYXJra3UgSGVpa2tpbmVuIn19LCJsaWZ0IjowLjAyNDMxMDgyNjcxNjU3ODI1LCJmcyI6eyJmIjoxNzkwLjc4NTE1NjI1LCJmT25Db25kaXRpb24iOjEwLjA1MDc4MTI1LCJmT25Ob3RDb25kaXRpb24iOjE3ODAuNzM0Mzc1LCJmQ29uZGl0aW9uIjo1MTQ2LjAsIm4iOjE2MDAwLjB9LCJwcyI6eyJwIjowLjExMTk3MjU3NTY5MzY2MzMsInBPbkNvbmRpdGlvbiI6MC4wMDI3MjIxNDU4ODQ2OTc1OSwicE9uTm90Q29uZGl0aW9uIjowLjE2MzY5ODQzNTUwODQ4ODI1LCJwQ29uZGl0aW9uIjowLjMyMTYyNTE1NTgyMTg5NjJ9fSx7InJlbGF0ZWQiOnsiJGFuZCI6W3sidmVuZG9yIjp7IiRoYXMiOiJFRUUgRW5lcmd5IEVjb2xvZ3kgRW5naW5lZXJpbmcgT3kifX0seyJjYXRlZ29yeSI6eyIkaGFzIjoic3VwcGxpZXMifX1dfSwiY29uZGl0aW9uIjp7ImFwcHJvdmVyIjp7IiRoYXMiOiJNYXJra3UgSGVpa2tpbmVuIn19LCJsaWZ0IjowLjAxMTQ4NjAyNjE3MDQ4MzE2NCwiZnMiOnsiZiI6MzM1OS41MjczNDM3NSwiZk9uQ29uZGl0aW9uIjoxMC4wNTA3ODEyNSwiZk9uTm90Q29uZGl0aW9uIjozMzQ5LjQ3NjU2MjUsImZDb25kaXRpb24iOjUxNDYuMCwibiI6MTYwMDAuMH0sInBzIjp7InAiOjAuMjEwMDA2NzA4MTQ1ODU2NzYsInBPbkNvbmRpdGlvbiI6MC4wMDI0MTIxNDI1NDU3NDAzMzA1LCJwT25Ob3RDb25kaXRpb24iOjAuMzA4Mzc2MjY0ODMxOTIzMTUsInBDb25kaXRpb24iOjAuMzIxNjI1MDQ5MTgyODU4NX19XX0=",
+        "headers": {
+          "access-control-allow-credentials": "true",
+          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
+          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
+          "access-control-allow-origin": "*",
+          "connection": "keep-alive",
+          "content-type": "application/json",
+          "date": "Wed, 24 Jun 2026 10:33:09 GMT",
+          "permissions-policy": "geolocation=(), microphone=(), camera=()",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "transfer-encoding": "chunked",
+          "x-aitoai-response-time": "7706.50",
+          "x-azure-ref": "20260624T103301Z-1665d88fc9dfmlbbhC1STOmhnn00000005g00000000008xe",
+          "x-cache": "CONFIG_NOCACHE",
+          "x-content-type-options": "nosniff",
+          "x-frame-options": "DENY",
+          "x-xss-protection": "1; mode=block"
+        },
+        "statusCode": 200
+      }
+    },
+    "8197c58fd1d95f25b45d208c476f2d74a75c14cf": {
+      "request": {
+        "hash": "8197c58fd1d95f25b45d208c476f2d74a75c14cf",
+        "method": "POST",
+        "url": "https://shared.aito.ai/db/aito-accounting-demo/api/v1/_relate"
+      },
+      "response": {
+        "content": "eyJvZmZzZXQiOjAsInRvdGFsIjo0LCJoaXRzIjpbeyJyZWxhdGVkIjp7IiRhbmQiOlt7InZlbmRvciI6eyIkaGFzIjoiQnJvbmV4IFNvZnR3YXJlIE95In19LHsiYW1vdW50X2JhbmQiOnsiJGhhcyI6ImxhcmdlIn19XX0sImNvbmRpdGlvbiI6eyJnbF9jb2RlIjp7IiRoYXMiOiIxNjAwIn19LCJsaWZ0IjoyMy40Njc3OTY5MjI1MzY1NjgsImZzIjp7ImYiOjE0NS4wLCJmT25Db25kaXRpb24iOjE0NC4wLCJmT25Ob3RDb25kaXRpb24iOjEuMCwiZkNvbmRpdGlvbiI6NjYyLjAsIm4iOjE2MDAwLjB9LCJwcyI6eyJwIjowLjAwOTEyMzg1OTUxNzU2MDMwNSwicE9uQ29uZGl0aW9uIjowLjIxNDExNjg4MjMwNzg1NzcsInBPbk5vdENvbmRpdGlvbiI6Mi4xMzAyOTM4NzU3NzMyMjgzRS00LCJwQ29uZGl0aW9uIjowLjA0MTM3NTkzNTQ5ODEzMzg4fX0seyJyZWxhdGVkIjp7IiRhbmQiOlt7InZlbmRvciI6eyIkaGFzIjoiVE1ULVNvZnR3YXJlIFRlY2hub2xvZ2llcyBPeSJ9fSx7ImNhdGVnb3J5Ijp7IiRoYXMiOiJzb2Z0d2FyZSJ9fV19LCJjb25kaXRpb24iOnsiZ2xfY29kZSI6eyIkaGFzIjoiMTYwMCJ9fSwibGlmdCI6MjIuNzkxNTgzNDQ0NDc0OTYsImZzIjp7ImYiOjIwNC4wLCJmT25Db25kaXRpb24iOjE5NS4wLCJmT25Ob3RDb25kaXRpb24iOjkuMCwiZkNvbmRpdGlvbiI6NjYyLjAsIm4iOjE2MDAwLjB9LCJwcyI6eyJwIjowLjAxMjgxMDg5ODYzNzY3MDI5MSwicE9uQ29uZGl0aW9uIjowLjI5MTk4MDY2NTI5OTE3MywicE9uTm90Q29uZGl0aW9uIjo2Ljk4NjA5MzM3Njk4MDUxNUUtNCwicENvbmRpdGlvbiI6MC4wNDEzNzU1MjQ0MjczMzUwOTV9fSx7InJlbGF0ZWQiOnsiJGFuZCI6W3sidmVuZG9yIjp7IiRoYXMiOiJLLiBJdMOkbHVvbWEgT3kifX0seyJjYXRlZ29yeSI6eyIkaGFzIjoibWFpbnRlbmFuY2UifX1dfSwiY29uZGl0aW9uIjp7ImdsX2NvZGUiOnsiJGhhcyI6IjE2MDAifX0sImxpZnQiOjIxLjkxMzIwMjQyOTAwMjcyMywiZnMiOnsiZiI6MzUzLjAsImZPbkNvbmRpdGlvbiI6MzIyLjAsImZPbk5vdENvbmRpdGlvbiI6MzEuMCwiZkNvbmRpdGlvbiI6NjYyLjAsIm4iOjE2MDAwLjB9LCJwcyI6eyJwIjowLjAyMjEyMjIzNDcyMDY1OTkxOCwicE9uQ29uZGl0aW9uIjowLjQ4NDc2OTAwNzYxNTczMzI3LCJwT25Ob3RDb25kaXRpb24iOjAuMDAyMDkxODQ1MjM0NDIyMDI1LCJwQ29uZGl0aW9uIjowLjA0MTM3NTIwMTY4Mjg5ODQ0Nn19LHsicmVsYXRlZCI6eyIkYW5kIjpbeyJjYXRlZ29yeSI6eyIkaGFzIjoic3VwcGxpZXMifX0seyJhbW91bnRfYmFuZCI6eyIkaGFzIjoibWVkaXVtIn19XX0sImNvbmRpdGlvbiI6eyJnbF9jb2RlIjp7IiRoYXMiOiIxNjAwIn19LCJsaWZ0IjowLjAyNzE4OTkxMDE5OTU2NDEyNywiZnMiOnsiZiI6NjY3MS4wNzMwODM3Nzg5NjYsImZPbkNvbmRpdGlvbiI6MC4wLCJmT25Ob3RDb25kaXRpb24iOjY2NzEuMDczMDgzNzc4OTY2LCJmQ29uZGl0aW9uIjo2NjIuMCwibiI6MTYwMDAuMH0sInBzIjp7InAiOjAuNDE2OTUyNDQ4NjgwMTAwMzQsInBPbkNvbmRpdGlvbiI6MC4wMTEzMzY4OTk2MzcxMDAyOTksInBPbk5vdENvbmRpdGlvbiI6MC40MzQ0NDkyODMwMzExNDI3LCJwQ29uZGl0aW9uIjowLjA0MTM3NjU1NjQ1NDA2ODg2fX1dfQ==",
+        "headers": {
+          "access-control-allow-credentials": "true",
+          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
+          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
+          "access-control-allow-origin": "*",
+          "connection": "keep-alive",
+          "content-type": "application/json",
+          "date": "Wed, 24 Jun 2026 10:33:01 GMT",
+          "permissions-policy": "geolocation=(), microphone=(), camera=()",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "transfer-encoding": "chunked",
+          "x-aitoai-response-time": "8305.75",
+          "x-azure-ref": "20260624T103253Z-1665d88fc9dfmlbbhC1STOmhnn00000005g00000000008aq",
+          "x-cache": "CONFIG_NOCACHE",
+          "x-content-type-options": "nosniff",
+          "x-frame-options": "DENY",
+          "x-xss-protection": "1; mode=block"
+        },
+        "statusCode": 200
+      }
+    }
+  }
+}

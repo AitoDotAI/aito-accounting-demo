@@ -535,101 +535,75 @@ def matching_pairs(customer_id: str = Query(...)):
 @app.get("/api/rules/drilldown")
 def rules_drilldown(
     customer_id: str = Query(...),
-    condition_field: str = Query(...),
-    condition_value: str = Query(...),
+    clauses: str = Query(..., description="JSON list of {field, value} — the rule's AND-conjunction"),
     target_value: str = Query(...),
+    target_field: str = Query("gl_code", description="the output the rule predicts (gl_code or approver)"),
 ):
-    """Return invoices matching a rule's condition, marked by whether
-    they agree with the predicted GL or disagree."""
-    where = {"customer_id": customer_id, condition_field: condition_value}
+    """Return invoices matching a conjunction rule's left-hand side,
+    marked by whether they agree with the rule's predicted output value.
+
+    `clauses` is the discovered `$and` conjunction (from
+    `/api/rules/candidates`), serialized as JSON. Every clause is ANDed
+    into the where, so the drill-down lists exactly the rows the rule
+    fires on — the same set the rule's exact support was counted over.
+
+    We fetch the *exceptions* explicitly (clauses where `target_field`
+    differs) rather than relying on a single capped sample, so a
+    98%-precision rule shows all its disagreements — the support ratio is
+    auditable, not just asserted. `counts` returns the exact totals.
+    """
     try:
-        result = aito.search("invoices", where, limit=50)
-    except AitoError as exc:
-        return {"invoices": [], "error": str(exc)}
+        parsed = json.loads(clauses)
+    except (ValueError, TypeError) as exc:
+        return {"invoices": [], "error": f"Invalid clauses payload: {exc}"}
+    if not isinstance(parsed, list) or not parsed:
+        return {"invoices": [], "error": "clauses must be a non-empty JSON list"}
+
+    clause_where = {"customer_id": customer_id}
+    for clause in parsed:
+        clause_where[clause["field"]] = clause["value"]
 
     from src.date_window import shift_iso
-    invoices = []
-    for hit in result.get("hits", []):
-        invoices.append({
+
+    def to_row(hit: dict) -> dict:
+        return {
             "invoice_id": hit.get("invoice_id"),
             "vendor": hit.get("vendor"),
             "amount": hit.get("amount"),
             "gl_code": hit.get("gl_code"),
+            "approver": hit.get("approver"),
             "category": hit.get("category"),
+            "amount_band": hit.get("amount_band"),
             "invoice_date": shift_iso(hit.get("invoice_date")),
-            "matched_rule": hit.get("gl_code") == target_value,
-        })
-    # Show disagreeing ones first
+            "target_actual": hit.get(target_field),
+            "matched_rule": hit.get(target_field) == target_value,
+        }
+
+    try:
+        # All exceptions (where the predicted output differs), then a
+        # sample of agreeing rows. Exact totals come from count-only
+        # searches so the modal shows the same ratio as the rule headline.
+        disagree = aito.search(
+            "invoices", {**clause_where, target_field: {"$not": target_value}}, limit=50
+        )
+        agree = aito.search("invoices", {**clause_where, target_field: target_value}, limit=25)
+        total = int(aito.search("invoices", clause_where, limit=0).get("total", 0))
+        match_total = int(agree.get("total", 0))
+    except AitoError as exc:
+        return {"invoices": [], "error": str(exc)}
+
+    invoices = [to_row(h) for h in disagree.get("hits", [])] + [
+        to_row(h) for h in agree.get("hits", [])
+    ]
+    # Disagreements first, then by date.
     invoices.sort(key=lambda i: (i["matched_rule"], i.get("invoice_date") or ""))
-    return {"invoices": invoices}
-
-
-@app.get("/api/rules/sub_patterns")
-def rules_sub_patterns(
-    customer_id: str = Query(...),
-    condition_field: str = Query(...),
-    condition_value: str = Query(...),
-    target_field: str = Query("gl_code"),
-    target_value: str = Query(...),
-):
-    """Drill into a discovered rule by relating against secondary inputs.
-
-    Given a top-level rule like `vendor=Telia -> gl_code=6200`, fix
-    that conjunction in the where clause and run _relate against
-    each remaining input field. Returns the strongest sub-pattern
-    per field, e.g.:
-        vendor=Telia & gl_code=6200 -> cost_centre=CC-200 (lift 12x)
-        vendor=Telia & gl_code=6200 -> approver=Mikael H. (lift 8x)
-
-    Poor-man's "pattern proposition": instead of asking Aito for
-    rules whose LHS is a conjunction of anything, we chain _relate
-    calls with the discovered conjunction baked into the where.
-    """
-    SECONDARY_FIELDS = ["category", "cost_centre", "approver", "payment_method", "due_days"]
-    base_where = {
-        "customer_id": customer_id,
-        condition_field: condition_value,
-        target_field: target_value,
-    }
-    rows: list[dict] = []
-    for field in SECONDARY_FIELDS:
-        if field == condition_field or field == target_field:
-            continue
-        try:
-            r = aito.relate("invoices", base_where, field)
-        except AitoError:
-            continue
-        hits = r.get("hits", [])
-        if not hits:
-            continue
-        top = hits[0]
-        related = top.get("related", {}).get(field, {})
-        value = related.get("$has")
-        if value is None:
-            continue
-        f_on = int(top.get("fs", {}).get("fOnCondition", 0))
-        f_total = int(top.get("fs", {}).get("fCondition", 0))
-        lift = float(top.get("lift", 0) or 0)
-        if f_on < 3 or lift < 1.5:
-            continue
-        rows.append({
-            "field": field,
-            "value": value,
-            "support_match": f_on,
-            "support_total": f_total,
-            "support_ratio": round(f_on / f_total, 2) if f_total else 0,
-            "lift": round(lift, 1),
-        })
-
-    rows.sort(key=lambda r: (r["lift"], r["support_match"]), reverse=True)
     return {
-        "anchor": {
-            "condition_field": condition_field,
-            "condition_value": condition_value,
-            "target_field": target_field,
-            "target_value": target_value,
+        "invoices": invoices,
+        "counts": {
+            "match": match_total,
+            "total": total,
+            "disagree": total - match_total,
         },
-        "sub_patterns": rows[:8],
     }
 
 

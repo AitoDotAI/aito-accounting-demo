@@ -129,17 +129,36 @@ Click **Payment Matching**.
 
 Click **Rule Mining**.
 
-- Each row is a sentence: *"When vendor = 'Investra Management Oy',
-  GL is 5300 (Insurance) in 25 of 25 cases — lift 38× over baseline."*
-- Click any row → modal opens showing the matching invoices, with
-  any disagreeing rows shown first in red.
+- Each row is a multi-field sentence, and rows come in two kinds (chip
+  on the left: **GL code** or **Approver**) — Aito mines a rule set for
+  each output an AP clerk codes, from intake inputs only:
+  - **GL** — the capitalization rule: *"When vendor = 'Bronex Software
+    Oy' AND amount_band = 'large', GL is 1600 (Capital Equipment) in 144
+    of 145 — 99%."* A €15k server is an asset; a €200 cable is an
+    expense — and Aito found the threshold.
+  - **Approver** — the escalation rule: *"When vendor = 'Avarn Security
+    Oy' AND amount_band = 'large', approver is Markku Heikkinen in 925
+    of 925 — 100%."* The same vendor's smaller invoices route to a
+    different signer; large ones escalate to the senior.
+- Click any row → modal lists the invoices it fires on, every exception
+  first in red, with exact totals that match the headline.
 
 **What to say:**
 
-> "These are deterministic patterns, not ML. Support ratio is the
-> exact historical count from this customer's data. Lift > 5× means
-> the pattern is far stronger than random — these are rule
-> candidates, ready to promote once support stabilises."
+> "This is the differentiator. Aito mines the multi-field rules a human
+> would write — for *every* field they have to code, GL and approver,
+> each predicted only from what's known when the invoice arrives. Notice
+> it found amount thresholds: large IT purchases capitalize, large
+> invoices escalate to a senior approver. Crucially it never uses the
+> approver to predict the GL — those are both *outputs*, decided later,
+> so a rule that leaned on one couldn't actually fire. Support is the
+> exact historical count, auditable in the drill-down — not a model
+> estimate. Strong ones are ready to promote."
+
+> Aside for the technical buyer: the `$related` knob caps how many
+> candidate fields Aito mines over, so this stays fast even as you add
+> input columns — and tenant scoping is a nested `from`, so the numbers
+> are this customer's, never the global table's.
 
 ### 7 — Quality / Predictions (close on accuracy) [~45 sec]
 

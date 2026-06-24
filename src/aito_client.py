@@ -323,6 +323,74 @@ class AitoClient:
         }
         return self._request("POST", "/_relate", json=query)
 
+    def relate_patterns(
+        self,
+        table: str,
+        target: dict,
+        candidate_fields: list[str],
+        where_filter: dict | None = None,
+        k: int = 8,
+        limit: int = 8,
+    ) -> dict:
+        """Mine AND-conjunction rules (`A & B → X`) with `_relate` + `$patterns`.
+
+        Unlike `relate()` (which scores single features against a
+        condition), this discovers multi-field conjunctions that predict
+        the `target` proposition — server-side, in one call.
+
+        Args:
+            target: the prediction target, e.g. {"gl_code": "6200"}. It is
+                both pinned in `where` and repeated as the `$related.to`
+                narrowing goal.
+            candidate_fields: fields the conjunctions may be built from.
+            where_filter: constraints that scope the *population* but are
+                NOT the prediction target — e.g. {"customer_id": "acme"}
+                for multi-tenancy. These go in a nested `from`, NOT the
+                `where`. Merging them into `where` breaks $patterns: it
+                then conditions on the filter field (a linked customer_id
+                dominates as the condition) and mines the *global* table,
+                so the support counts come back un-scoped. A nested
+                `from` filters the row population first, then $patterns
+                conditions purely on the target. (Verified live — see
+                ADR 0014.)
+            k: `$related` focus cap — top-k fields most related to the
+                target are kept before mining. Smaller = faster/narrower.
+                This is the cost/latency knob; NOT a result-row limit.
+            limit: max rule rows returned (that's the outer `limit`).
+
+        Each hit's `related` is a ready-to-reuse `$and` proposition, and
+        `condition` echoes the target. Because the target is the
+        condition here (not the feature), the support stats invert vs.
+        `relate()`:
+            - precision = fs.fOnCondition / fs.f      (rule LHS → target)
+            - coverage  = fs.fOnCondition / fs.fCondition  (share of target)
+
+        See docs/adr/0014-pattern-rule-discovery.md and the cheatsheet's
+        "$patterns" section.
+        """
+        # Scope the population with a nested `from` (not the where) so
+        # $patterns conditions purely on `target`.
+        from_clause: Any = (
+            {"from": table, "where": where_filter} if where_filter else table
+        )
+        query = {
+            "from": from_clause,
+            "where": target,
+            "relate": {
+                "$patterns": {
+                    "$related": {
+                        "relate": candidate_fields,
+                        "k": k,
+                        "to": target,
+                    }
+                }
+            },
+            "select": ["related", "condition", "lift", "fs", "ps"],
+            "orderBy": "lift",
+            "limit": limit,
+        }
+        return self._request("POST", "/_relate", json=query)
+
     def match(self, table: str, where: dict, match_field: str, limit: int = 5) -> dict:
         """Run a _match query to find records related to a context.
 
