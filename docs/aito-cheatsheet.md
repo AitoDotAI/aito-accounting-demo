@@ -14,6 +14,7 @@
 | `_predict` | Predict a field value given known fields | Invoice Processing, Smart Form Fill, Anomaly Detection |
 | `_match` | Find related records across linked tables | Payment Matching |
 | `_relate` | Find statistical relationships between features | Rule Mining, Human Overrides |
+| `_relate` + `$patterns` | Mine AND-conjunction rules (`A & B → X`) server-side | Pattern Rule Discovery |
 | `_search` | Retrieve matching records | Data lookups |
 
 ## Pattern: GL code prediction
@@ -152,8 +153,125 @@ schema: `"invoice_id": {"type": "String", "link": "invoices.invoice_id"}`
 - `fs.f` — total count of this related value (the denominator context)
 - `ps.pOnCondition` — probability of related value given the condition
 
-**Note:** `_relate` does not accept a `select` parameter. The full
-statistical breakdown is always returned.
+**Note:** `_relate` accepts an optional `select` to trim the returned
+fields (e.g. `["related", "lift", "condition"]`); omit it to get the
+full statistical breakdown. *(Verified live 2026-06-23 — an earlier
+version of this note claimed `select` was unsupported; it is.)*
+
+## Pattern: Conjunction rule discovery with `$patterns`
+
+Mine multi-field AND-rules (`A & B → X`) server-side in a single
+`_relate`. The `where` pins the prediction target X; `$patterns`
+discovers the left-hand-side conjunctions. Wrap the candidate fields in
+`$related` to narrow them to the top-`k` most related to X *before*
+mining — this is the cost/latency knob (smaller `k` = faster, narrower
+search). `to` repeats the target.
+
+**Candidate fields must be *inputs*, not outputs.** Only put fields
+known at the time the rule will be *applied* into `relate`. Mining
+`gl_code` with `approver` as a candidate finds `approver=X → gl_code=Y`,
+but the approver isn't known when an invoice arrives — it's assigned by
+the same workflow. That's leakage; the rule can't fire. Restrict
+candidates to intake inputs (vendor, category, amount_band), and mine
+each *output* (gl_code, approver, …) as a **separate target** from those
+same inputs. `$patterns` only mines categorical-ish fields — a numeric
+`amount` is ignored, so derive a categorical `amount_band` for
+amount-conditional rules (capitalization, approval thresholds).
+
+**Query:**
+```json
+{
+  "from": "invoices",
+  "where": { "gl_code": "1600" },
+  "relate": {
+    "$patterns": {
+      "$related": {
+        "relate": ["vendor", "category", "vendor_country", "amount_band"],
+        "k": 8,
+        "to": { "gl_code": "1600" }
+      }
+    }
+  },
+  "select": ["related", "condition", "lift", "fs", "ps"],
+  "orderBy": "lift",
+  "limit": 8
+}
+```
+
+**Response hit** — `related` is a copy-pasteable `$and` proposition:
+```json
+{
+  "related": { "$and": [
+    { "vendor":   { "$has": "Oy Retail Clinic Ab" } },
+    { "approver": { "$has": "Matti Heikkinen" } }
+  ] },
+  "condition": { "gl_code": { "$has": "6200" } },
+  "lift": 13.7,
+  "fs": { "f": 1006, "fOnCondition": 992, "fCondition": 9130, "n": 128000 }
+}
+```
+
+**`fs` is a smoothed ESTIMATE — don't display it as exact support.**
+`$patterns`' `fs` comes from the re-expression learner, not a row count:
+you'll see *fractional* values (`f: 836.36`) and rules rounded to
+deterministic (`fOnCondition == f` → "100%") when the data actually has
+exceptions. If you print that as "836 of 836" next to an exact-`_search`
+drill-down, the two disagree (the drill-down surfaces a row at a
+different GL). Use `$patterns` to **discover** the conjunctions, then
+compute exact support with `_search` `limit:0` counts:
+- **precision** = `count(clauses & GL) / count(clauses)`
+- **coverage**  = `count(clauses & GL) / count(GL)`
+- **lift**      = `precision / (count(GL) / count(scope))`
+
+all scoped to the same tenant. (Live: `fs` estimated 836/836 = 100%;
+exact `_search` gave 815/831 = 98.1%, the 16 exceptions visible in
+drill-down.) The `lift` in the response is a fine *discovery* signal
+(positive vs. anti-correlated); recompute it exactly for display.
+
+**Multi-tenancy — scope with a nested `from`, NOT the `where`:**
+Adding a filter like `customer_id` to the `where` *breaks* `$patterns`.
+The mining then treats the filter as (part of) the condition — a linked
+`customer_id` expands and dominates — and the support counts come back
+computed over the **global** table, not the tenant. Filter the row
+population with a nested `from` instead, leaving `where` as the pure
+target:
+```json
+{
+  "from": { "from": "invoices", "where": { "customer_id": "CUST-0000" } },
+  "where": { "gl_code": "6200" },
+  "relate": { "$patterns": { "$related": {
+    "relate": ["vendor", "category", "approver"], "k": 8,
+    "to": { "gl_code": "6200" }
+  } } }
+}
+```
+With this, `condition` is reliably `{gl_code: …}` and `fs.n` equals the
+tenant's row count. *(Verified live 2026-06-23 — the `where`-filter form
+returned `n=128000` global vs. `n=16000` for the tenant.)*
+
+For a **plain `_relate`** (not `$patterns`) that scopes to a
+sub-population *and* conditions on a value, prefer the `$on` proposition
+over a nested `from`: `"where": {"$on": [{"gl_code": "1600"}, {<scope>}]}`
+("output GIVEN scope"). On the flat table Aito hits the index directly
+instead of materializing the subquery — ~50× faster (138 ms vs 7 s,
+verified). `$patterns` still needs the nested `from` above; this trick is
+for ordinary relate (e.g. rule diagnostics, ADR 0015).
+
+**Gotchas:**
+- `$related.k` defaults to 32 and is a focus cap, *not* a result limit
+  — use the outer `limit` for row count.
+- `$related`'s default `infoGain` mode surfaces anti-correlated
+  candidates (large `fs.f`, but `fs.fOnCondition = 0` — match many rows,
+  never the target). Gate on `fs.fOnCondition >= MIN_SUPPORT`, not on
+  `fs.f`, to drop them along with rules too rare to trust.
+- For a "what predicts X" rule list, keep only **positive** patterns:
+  `lift > 1` (the conjunction makes X more likely than its base rate).
+  `infoGain` re-emits every strong rule as a `lift ≈ 0` anti-pattern for
+  each *other* target — drop those (`lift <= 1`).
+- `$related.by` defaults to `infoGain` (keeps anti-correlations, good
+  for classification). Use `lift` only for basket-affinity mining.
+- Pattern mining is heavy (~9-11 s server-side at 128 k rows). Keep it
+  on the precompute/warm-cache path, never in a synchronous request.
 
 ## Pattern: Anomaly detection (inverse prediction)
 

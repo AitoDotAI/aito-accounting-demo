@@ -17,6 +17,7 @@ from src.aito_client import AitoClient, AitoError
 REVIEW_THRESHOLD = 0.50
 
 GL_LABELS = {
+    "1600": "Capital Equipment",
     "4100": "COGS",
     "4400": "Materials & Supplies",
     "4500": "Office Expenses",

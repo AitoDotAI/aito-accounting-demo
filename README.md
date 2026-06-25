@@ -110,23 +110,33 @@ return the linked invoice row — no second query, no manual join.
 
 [→ Implementation](src/matching_service.py) | [Use case guide](docs/use-cases/03-payment-matching.md) | [ADR](docs/adr/0007-payment-matching.md)
 
-### 4. 🧠 Rule mining — discover patterns + drill into compounds
+### 4. 🧠 Rule mining — discover multi-field conjunction rules
 
 ![Rule Mining](screenshots/04-rulemining.png)
 
 ```json
 {
-  "from": "invoices",
-  "where": {"customer_id": "CUST-0000", "category": "telecom"},
-  "relate": "gl_code"
+  "from": {"from": "invoices", "where": {"customer_id": "CUST-0000"}},
+  "where": {"gl_code": "1600"},
+  "relate": {"$patterns": {"$related": {
+    "relate": ["vendor", "category", "vendor_country", "amount_band"],
+    "k": 8, "to": {"gl_code": "1600"}
+  }}}
 }
 ```
 
-Each candidate row expands into a chained `_relate` for compound
-patterns: `category=telecom & gl_code=6200 → approver=Timo Järvinen
-(701/8000, 15.8× lift)`. The poor-man's pattern proposition.
+`$patterns` mines the AND-rules a human would write — for each output an
+AP clerk codes (`gl_code` **and** `approver`), from intake **inputs
+only**, so the rules actually fire at routing time. It finds amount
+thresholds: `vendor="Bronex Software Oy" AND amount_band="large" → GL
+1600 (Capital Equipment)` (capitalization) and `vendor="Avarn Security
+Oy" AND amount_band="large" → approver Markku Heikkinen` (escalation).
+Support is the exact historical count (recomputed with `_search`, since
+`$patterns`' own `fs` are estimates), so it matches the drill-down to the
+invoice. Tenant scoping is a nested `from`; `$related` bounds the mining
+cost.
 
-[→ Implementation](src/rulemining_service.py) | [Use case guide](docs/use-cases/04-rule-mining.md) | [ADR](docs/adr/0006-rule-mining.md)
+[→ Implementation](src/rulemining_service.py) | [Use case guide](docs/use-cases/04-rule-mining.md) | [ADR](docs/adr/0014-pattern-rule-discovery.md)
 
 ### 5. 🚨 Anomaly detection — inverse prediction
 
@@ -321,7 +331,8 @@ low confidence on novel vendors.
 | Operator | What it does | Used in |
 |----------|--------------|---------|
 | `_predict` | Predict a field value from context | Invoice processing, Form Fill, Anomaly detection, Matching |
-| `_relate` | Discover statistical patterns with support and lift | Rule mining, override analysis, mined rules per customer, sub-pattern drill |
+| `_relate` | Discover statistical patterns with support and lift | Rule mining, override analysis, mined rules per customer |
+| `_relate` + `$patterns` | Mine multi-field AND-conjunction rules server-side | Rule mining (conjunction discovery) |
 | `_recommend` | Goal-oriented ranking over an impressions table | Help drawer (CTR ranking) and "users who read this also read" |
 | `_evaluate` | Cross-validation accuracy on a held-out sample | Quality / Predictions matrix |
 | `_search` | Retrieve records | Aggregate metrics, customer/vendor lookup |
@@ -417,6 +428,7 @@ Deployment:
 | [0011](docs/adr/0011-precomputed-views.md) | Precomputed JSON for hosted demo |
 | [0012](docs/adr/0012-single-table-multitenancy.md) | Single-table multi-tenancy |
 | [0013](docs/adr/0013-help-drawer-recommend.md) | Help drawer ranked by `_recommend` |
+| [0014](docs/adr/0014-pattern-rule-discovery.md) | Pattern Rule Discovery — `$patterns` conjunction mining |
 
 ## Learn more
 

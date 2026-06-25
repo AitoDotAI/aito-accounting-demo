@@ -60,6 +60,11 @@ SCHEMAS = {
             "vendor_country": {"type": "String", "nullable": False},
             "category": {"type": "String", "nullable": False},
             "amount": {"type": "Decimal", "nullable": False},
+            # Derived at intake from `amount` (small/medium/large). A
+            # categorical band lets rule discovery mine amount-conditional
+            # rules — e.g. capitalization and approval-escalation
+            # thresholds — which $patterns can't express over raw Decimal.
+            "amount_band": {"type": "String", "nullable": False},
             "gl_code": {"type": "String", "nullable": False},
             "cost_centre": {"type": "String", "nullable": False},
             "approver": {"type": "String", "nullable": False},
