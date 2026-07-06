@@ -10,7 +10,7 @@
           "title": "Predictive Ledger",
           "size": "full",
           "config": {
-            "content": "# Predictive Ledger — multi-tenant accounting on Aito\n\nThis workbook demonstrates how Aito powers a SaaS accounting product: **255 customer companies, 128 000 invoices, one shared Aito instance**, with predictions scoped per-tenant via `customer_id` in the `where` clause.\n\n**Repo:** [github.com/AitoDotAI/aito-accounting-demo](https://github.com/AitoDotAI/aito-accounting-demo) · **Companion:** [aito-demo](https://github.com/AitoDotAI/aito-demo) (the e-commerce reference).\n\n## Dataset\n\n| Layer | Records |\n|-------|---------|\n| `customers` | 255 (geometric: 3 enterprise / 12 large / 48 midmarket / 192 small) |\n| `invoices` | 128 000 (24-month spread, Zipfian vendor distribution) |\n| `bank_transactions` | ~68 000 (linked to invoices via schema link) |\n| `corporate_entities` | 1 362 real Finnish vendors from PRH YTJ |\n| `overrides` | ~7 500 human corrections |\n| `help_articles` + `help_impressions` | 120 + 14 500 (CTR-ranked drawer) |\n\n## Aito operators used\n\n- **`_predict`** — GL code, approver, vendor matching, anomaly scoring\n- **`_relate`** — rule mining, override pattern discovery, chained sub-pattern drill\n- **`_recommend`** — help article CTR ranking, \"users who read this also read\"\n- **`_evaluate`** — held-out accuracy with per-case results\n\n## The headline\n\nSame vendor, different customer → different prediction, because the conditional probability is computed only over rows that match the where filter. **No per-tenant model.**"
+            "content": "# Predictive Ledger — multi-tenant accounting on Aito\n\nThis workbook demonstrates how Aito powers a SaaS accounting product: **255 customer companies, 128 000 invoices, one shared Aito instance**, with predictions scoped per-tenant via `customer_id` in the `where` clause.\n\n**Repo:** [github.com/AitoDotAI/aito-accounting-demo](https://github.com/AitoDotAI/aito-accounting-demo) · **Companion:** [aito-demo](https://github.com/AitoDotAI/aito-demo) (the e-commerce reference).\n\n## Dataset\n\n| Layer | Records |\n|-------|---------|\n| `customers` | 255 (geometric: 3 enterprise / 12 large / 48 midmarket / 192 small) |\n| `invoices` | 128 000 (24-month spread, Zipfian vendor distribution) |\n| `bank_transactions` | ~68 000 (linked to invoices via schema link) |\n| `corporate_entities` | 1 362 real Finnish vendors from PRH YTJ |\n| `overrides` | ~7 500 human corrections |\n| `help_articles` + `help_impressions` | 120 + 14 500 (CTR-ranked drawer) |\n\n## Aito operators used\n\n- **`_predict`** — GL code, approver, vendor matching, anomaly scoring\n- **`_relate` + `$patterns`** — multi-field conjunction rule mining (GL + approver), exception diagnostics, override pattern discovery\n- **`_recommend`** — help article CTR ranking, \"users who read this also read\"\n- **`_evaluate`** — held-out accuracy with per-case results\n\n## The headline\n\nSame vendor, different customer → different prediction, because the conditional probability is computed only over rows that match the where filter. **No per-tenant model.**"
           }
         },
         {
@@ -368,25 +368,36 @@
     },
     {
       "title": "Rule Mining",
-      "description": "Discover deterministic patterns with _relate, then chain to find compound sub-rules",
+      "description": "Discover multi-field conjunction rules with _relate $patterns — inputs only, one rule set per output — then diagnose their exceptions",
       "widgets": [
         {
           "type": "text",
           "title": "How it works",
           "size": "full",
           "config": {
-            "content": "## Rule Mining\n\n`_relate` finds statistical relationships between fields. For each (customer, condition value), it shows how strongly that condition predicts a target — with **exact support ratios** like 4123/4156, not ML estimates.\n\n## Chained drill (poor-man's pattern proposition)\n\nAito's `_relate` takes a single conjunction in the where clause. To discover compound rules — `vendor=X & gl_code=Y → cost_centre=Z` — chain the calls: fix the discovered conjunction in `where`, run `_relate` against the next field. The third query below is exactly that pattern."
+            "content": "## Rule Mining with `$patterns`\n\n`_relate` with `$patterns` mines multi-field **AND-conjunction rules** server-side — the rules a human would write, e.g. `vendor=\"Bronex Software Oy\" AND category=\"software\" → gl_code=1600`. `$related` narrows the candidate fields to the top-`k` most related to the target *before* mining (the cost knob); scope to one tenant with a nested `from`.\n\n**Inputs only.** Candidate fields are what's known at intake — `vendor, category, vendor_country, amount_band` — never outputs like `approver` or `gl_code`, which are assigned during coding/approval. A rule that conditioned on an output couldn't fire at routing time (that's leakage).\n\n**One rule set per output.** Mine each field an AP clerk codes — `gl_code` and `approver` — as its own target. That's where the genuine multi-field rules live: a **capitalization** rule (large IT/software/maintenance → the capital GL 1600) and an approver **escalation** rule (large amounts → a senior signer). The first two queries below discover each.\n\n**Estimates vs exact.** `$patterns`' `fs` are smoothed estimates (you'll see fractional counts). Use `$patterns` only to *discover* the conjunctions; recompute exact support with `_search` counts before displaying \"X of Y\".\n\n## Diagnose the exceptions\n\nThe third query relates a rule's *remaining* inputs to its output via the `$on` proposition — `output GIVEN the rule's clauses`. Features with `lift < 1` mark the exceptions: it shows the `K. Itäluoma & maintenance → 1600` rule's misses are all `amount_band=medium` (the non-capitalized invoices), i.e. adding `amount_band=large` tightens the rule to ~100%. `$on` on the flat table is ~50× faster than a nested `from` here."
           }
         },
         {
           "type": "query",
-          "title": "Top-level: which GL does category=telecom predict (CUST-0000)?",
+          "title": "Discover GL rules — $patterns finds the capitalization rule (gl_code = 1600)",
           "size": "full",
           "config": {
             "query": {
-              "from": "invoices",
-              "where": {"customer_id": "CUST-0000", "category": "telecom"},
-              "relate": "gl_code"
+              "from": {"from": "invoices", "where": {"customer_id": "CUST-0000"}},
+              "where": {"gl_code": "1600"},
+              "relate": {
+                "$patterns": {
+                  "$related": {
+                    "relate": ["vendor", "category", "vendor_country", "amount_band"],
+                    "k": 8,
+                    "to": {"gl_code": "1600"}
+                  }
+                }
+              },
+              "select": ["related", "condition", "lift"],
+              "orderBy": "lift",
+              "limit": 8
             },
             "endpoint": "relate",
             "displayMode": "playground",
@@ -396,13 +407,47 @@
         },
         {
           "type": "query",
-          "title": "Drill: under telecom & gl_code=6200, who tends to approve?",
+          "title": "Discover approver rules — the amount escalation (approver = Markku Heikkinen)",
+          "size": "full",
+          "config": {
+            "query": {
+              "from": {"from": "invoices", "where": {"customer_id": "CUST-0000"}},
+              "where": {"approver": "Markku Heikkinen"},
+              "relate": {
+                "$patterns": {
+                  "$related": {
+                    "relate": ["vendor", "category", "vendor_country", "amount_band"],
+                    "k": 8,
+                    "to": {"approver": "Markku Heikkinen"}
+                  }
+                }
+              },
+              "select": ["related", "condition", "lift"],
+              "orderBy": "lift",
+              "limit": 8
+            },
+            "endpoint": "relate",
+            "displayMode": "playground",
+            "outputFormat": "table",
+            "runPolicy": "manual"
+          }
+        },
+        {
+          "type": "query",
+          "title": "Diagnose exceptions — why does 'K. Itäluoma & maintenance → 1600' miss? ($on)",
           "size": "full",
           "config": {
             "query": {
               "from": "invoices",
-              "where": {"customer_id": "CUST-0000", "category": "telecom", "gl_code": "6200"},
-              "relate": "approver"
+              "where": {
+                "$on": [
+                  {"gl_code": "1600"},
+                  {"customer_id": "CUST-0000", "vendor": "K. Itäluoma Oy", "category": "maintenance"}
+                ]
+              },
+              "relate": ["vendor_country", "amount_band"],
+              "select": ["related", "lift", "fs"],
+              "orderBy": "lift"
             },
             "endpoint": "relate",
             "displayMode": "playground",
