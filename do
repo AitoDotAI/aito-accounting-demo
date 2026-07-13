@@ -15,6 +15,7 @@ Commands:
     generate-data     Generate fixture data (--small / --medium / default 1M)
     load-data         Upload fixture data to Aito (and optimize tables)
     reset-data        Drop all tables and reload from fixtures
+    v2-build          Build the dataset as v2 collections in an env (Aito v2 API)
     optimize          Optimize Aito tables for faster queries
     warm-cache        Pre-warm API cache for top customers
     precompute        Pre-compute predictions for demo views
@@ -123,6 +124,14 @@ cmd_reset_data() {
 cmd_generate_data() {
   cd "$SCRIPT_DIR"
   uv run python data/generate_fixtures.py "$@"
+}
+
+# Build the dataset as Aito v2 collections in an environment. Defaults to
+# env.v2-demo; pass --reset to drop existing tables first, or e.g.
+# `--only invoices --customer CUST-0000` for a fast slice. See ADR 0017.
+cmd_v2_build() {
+  cd "$SCRIPT_DIR"
+  uv run python -m src.data_loader_v2 --env "${AITO_V2_ENV:-env.v2-demo}" "$@"
 }
 
 cmd_precompute() {
@@ -322,6 +331,7 @@ case "${1:-help}" in
   load-data)       cmd_load_data ;;
   reset-data)      cmd_reset_data ;;
   generate-data)   cmd_generate_data "${@:2}" ;;
+  v2-build)        cmd_v2_build "${@:2}" ;;
   precompute)      cmd_precompute "${@:2}" ;;
   screenshots)     cmd_screenshots "${@:2}" ;;
   test)            cmd_test ;;
