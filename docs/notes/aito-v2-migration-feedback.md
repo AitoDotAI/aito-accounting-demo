@@ -274,15 +274,24 @@ consistent with the improved collection-side pattern miner.
   precision rules through; a min-precision floor would be cleaner. Pre-existing
   discovery-threshold nuance, not v2-specific.
 
-### [deferred] v2 diagnostics ($on) needs count recomputation
-The ADR 0015 drill-down uses `relate_features` (an `$on` conditional relate) and
-reads `fs.f` / `fs.fOnCondition` for exact agree/total. On v2 collections the
-`$on` query **works and returns `related` + `lift`, but omits `fs`/counts**
-entirely (even with `select:["...","fs"]`). So `interpret_diagnosis` would drop
-everything (total=0). Porting diagnostics therefore needs the agree/total counts
-recomputed with exact `_query limit:0` calls (the same two-stage trick mining
-uses), rather than read from the relate response. Deferred to a follow-up; core
-mining is the higher-value port and is done.
+### [done, with workaround] v2 diagnostics ($on) — 3 core-side gaps
+Full report: **`docs/notes/aito-v2-on-operator-report.md`**. The ADR 0015
+drill-down (`relate_features`) is ported and reproduces v1's output exactly
+(same exception `medium 0/26`, same "add amount_band=large" suggestion), but v2's
+`$on` relate has three independent problems that forced a recompute workaround:
+1. **omits `fs`/counts** (even with `select:["…","fs"]`);
+2. **`lift` is wrong** — reports 0.29 for a value whose true agreement is 0.96
+   (should be ≈0.98); a lift-thresholded diagnostic would misclassify it;
+3. **`$on` hides the exception values** — conditioning on target=yes drops any
+   value that never co-occurs with the target (the `0/26` exception is exactly
+   what the diagnostic must find).
+Workaround (`AitoV2Client.relate_features`): enumerate each feature's values over
+the *unconditioned* population and recompute `f`, `fOnCondition`, and
+`lift = agree_ratio/base_rate` with exact `_query limit:0` counts — O(values)
+extra round-trips vs one relate call. Wired into the app: `AITO_RULES_ENV=env.v2-demo`
+routes just the `/api/rules/*` endpoints (candidates/drilldown/diagnose) at v2,
+rest of the app stays on v1. `AitoV2Error` subclasses `AitoError` so the v2
+client is a true drop-in for the existing handlers.
 
 ## Open questions / decisions needed
 

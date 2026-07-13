@@ -6,7 +6,7 @@ the existing rule-mining code can consume v2 responses unchanged. These
 tests pin that parser against the exact (non-JSON) strings v2 returns.
 """
 
-from src.aito_v2_client import parse_pattern_proposition
+from src.aito_v2_client import AitoV2Client, parse_pattern_proposition
 
 
 class TestParsePatternProposition:
@@ -53,3 +53,48 @@ class TestParsePatternProposition:
                 {"amount_band": {"$has": "medium"}},
             ]
         }
+
+
+class _FakeSearchClient(AitoV2Client):
+    """AitoV2Client with `search` stubbed against an in-memory table, so the
+    pure recompute logic in `relate_features` can be tested without network.
+    """
+
+    def __init__(self, rows):
+        self._rows = rows  # deliberately skip the HTTP client setup
+
+    def search(self, table, where, limit=10):
+        matched = [r for r in self._rows
+                   if all(r.get(k) == v for k, v in where.items())]
+        return {"total": len(matched), "hits": matched[:limit] if limit else []}
+
+
+class TestRelateFeaturesRecompute:
+    """`relate_features` must recompute exact fs and a v1-matching lift
+    (agree_ratio / base_rate) over the UNCONDITIONED population — including
+    the exception values that never hit the target.
+    """
+
+    def _rows(self):
+        # Population vendor="X": 5 large (4 hit 1600), 3 medium (0 hit 1600).
+        rows = []
+        rows += [{"vendor": "X", "amount_band": "large", "gl_code": "1600"}] * 4
+        rows += [{"vendor": "X", "amount_band": "large", "gl_code": "4400"}] * 1
+        rows += [{"vendor": "X", "amount_band": "medium", "gl_code": "4400"}] * 3
+        return rows
+
+    def test_recomputes_fs_and_lift_including_the_exception(self):
+        client = _FakeSearchClient(self._rows())
+        out = client.relate_features(
+            "invoices", {"vendor": "X"}, {"gl_code": "1600"}, ["amount_band"]
+        )
+        by_value = {h["related"]["amount_band"]["$has"]: h for h in out["hits"]}
+        # base_rate = 4/8 = 0.5
+        large = by_value["large"]
+        assert large["fs"] == {"f": 5, "fOnCondition": 4}
+        assert large["lift"] == (4 / 5) / 0.5  # 1.6 — agreement driver
+
+        # The exception value (never hits the target) must still appear.
+        medium = by_value["medium"]
+        assert medium["fs"] == {"f": 3, "fOnCondition": 0}
+        assert medium["lift"] == 0.0

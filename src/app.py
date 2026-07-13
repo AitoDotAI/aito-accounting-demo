@@ -9,6 +9,7 @@ Form Fill calls Aito live. Other views can use pre-computed data
 """
 
 import json
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, Query, Request
@@ -29,6 +30,18 @@ from src.rate_limit import check_rate_limit
 
 config = load_config()
 aito = AitoClient(config)
+
+# Rule mining can optionally run against a v2 environment (collections),
+# which discovers a richer, stronger ruleset than the v1 legacy tables
+# (see ADR 0017). Set AITO_RULES_ENV=env.v2-demo to point just the
+# `/api/rules/*` endpoints at v2; the rest of the app stays on v1.
+# `AitoV2Client` is a drop-in for the v1 client's rule-mining interface.
+_rules_env = os.environ.get("AITO_RULES_ENV", "").strip()
+if _rules_env:
+    from src.aito_v2_client import AitoV2Client
+    rules_client = AitoV2Client(config.aito_api_url, config.aito_api_key, env=_rules_env)
+else:
+    rules_client = aito
 
 # Initialize two-layer cache: in-memory L1 + Aito-persistent L2
 cache.init(aito)
@@ -588,11 +601,11 @@ def rules_drilldown(
         # All exceptions (where the predicted output differs), then a
         # sample of agreeing rows. Exact totals come from count-only
         # searches so the modal shows the same ratio as the rule headline.
-        disagree = aito.search(
+        disagree = rules_client.search(
             "invoices", {**clause_where, target_field: {"$not": target_value}}, limit=50
         )
-        agree = aito.search("invoices", {**clause_where, target_field: target_value}, limit=25)
-        total = int(aito.search("invoices", clause_where, limit=0).get("total", 0))
+        agree = rules_client.search("invoices", {**clause_where, target_field: target_value}, limit=25)
+        total = int(rules_client.search("invoices", clause_where, limit=0).get("total", 0))
         match_total = int(agree.get("total", 0))
     except AitoError as exc:
         return {"invoices": [], "error": str(exc)}
@@ -633,20 +646,23 @@ def rules_diagnose(
         return {"error": "clauses must be a non-empty JSON list"}
 
     from src.rulemining_service import diagnose_rule
-    return diagnose_rule(aito, customer_id, parsed, target_field, target_value)
+    return diagnose_rule(rules_client, customer_id, parsed, target_field, target_value)
 
 
 @app.get("/api/rules/candidates")
 def rules_candidates(customer_id: str = Query(...)):
     """Mine rule candidates for a customer."""
-    pre = precomputed.load(customer_id, "rules_candidates")
-    if pre is not None:
-        return pre
-    cache_key = f"rules:{customer_id}"
+    # On v2 we mine live — the shipped precompute bootstrap is v1-derived,
+    # so serving it would hide the richer v2 ruleset. On v1, prefer it.
+    if not _rules_env:
+        pre = precomputed.load(customer_id, "rules_candidates")
+        if pre is not None:
+            return pre
+    cache_key = f"rules:{'v2:' if _rules_env else ''}{customer_id}"
     cached = cache.get(cache_key)
     if cached:
         return cached
-    result = mine_rules(aito, customer_id=customer_id)
+    result = mine_rules(rules_client, customer_id=customer_id)
     cache.set(cache_key, result, ttl=300)
     return result
 

@@ -26,6 +26,8 @@ from typing import Any
 
 import httpx
 
+from src.aito_client import AitoError
+
 
 # v2's `$patterns` returns each `related`/`condition` proposition as a
 # stringified, NON-JSON blob, e.g.
@@ -50,17 +52,14 @@ def parse_pattern_proposition(text: str) -> dict:
     return {"$and": props}
 
 
-class AitoV2Error(Exception):
+class AitoV2Error(AitoError):
     """Raised when an Aito v2 API call fails.
 
-    Carries the HTTP status and response body so a caller can diagnose
-    without a debugger.
+    Subclasses `AitoError` so the v2 client is a genuine drop-in: existing
+    `except AitoError` handlers (in the rule-mining service and the API
+    endpoints) catch v2 failures too. Carries the HTTP status and response
+    body so a caller can diagnose without a debugger.
     """
-
-    def __init__(self, message: str, status_code: int | None = None, body: Any = None):
-        self.status_code = status_code
-        self.body = body
-        super().__init__(message)
 
 
 class AitoV2Client:
@@ -187,6 +186,51 @@ class AitoV2Client:
             result = self._request("POST", f"/data/{name}/batch", json=chunk)
             total += int(result.get("count", len(chunk)))
         return total
+
+    def relate_features(
+        self,
+        table: str,
+        population_where: dict,
+        target: dict,
+        relate_fields: list[str],
+    ) -> dict:
+        """Relate features to a target within a sub-population (ADR 0015 diagnostic).
+
+        Drop-in for the v1 client's `relate_features`, returning the same hit
+        shape (`related` dict, `lift`, `fs.f` / `fs.fOnCondition`) so
+        `interpret_diagnosis` works unchanged.
+
+        We recompute rather than read the response, because v2's `$on` relate
+        (see the v2 feedback note's "$on" section):
+          - omits `fs`/counts entirely,
+          - returns an unreliable `lift` (e.g. 0.29 for a value whose actual
+            agreement is 0.96), and
+          - being conditioned on the target, it can't even enumerate the
+            *exception* values (those that never co-occur with the target) —
+            exactly the ones a diagnostic needs.
+        So we enumerate each field's values over the UNCONDITIONED population
+        and compute `f`, `fOnCondition`, and `lift = agree_ratio / base_rate`
+        exactly (matching v1's `$on` lift semantics). The candidate fields are
+        low-cardinality categoricals, so a bounded population sample surfaces
+        every value with meaningful support.
+        """
+        pop_total = self.search(table, population_where, limit=0)["total"]
+        target_in_pop = self.search(table, {**population_where, **target}, limit=0)["total"]
+        base_rate = target_in_pop / pop_total if pop_total else 0.0
+
+        sample = self.search(table, population_where, limit=1000).get("hits", [])
+        hits = []
+        for field in relate_fields:
+            for value in sorted({row[field] for row in sample if row.get(field) is not None}):
+                with_value = {**population_where, field: value}
+                f = self.search(table, with_value, limit=0)["total"]
+                f_on_condition = self.search(table, {**with_value, **target}, limit=0)["total"]
+                lift = (f_on_condition / f) / base_rate if f and base_rate else 0.0
+                hits.append(
+                    {"related": {field: {"$has": value}}, "lift": lift,
+                     "fs": {"f": f, "fOnCondition": f_on_condition}}
+                )
+        return {"hits": hits}
 
     def optimize(self, name: str) -> dict:
         """Rebuild a collection's index after a bulk load.
