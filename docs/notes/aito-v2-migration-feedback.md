@@ -248,6 +248,42 @@ Returns *"internal server error"* (HTTP 500) instead of 404. Makes idempotent
 "drop if exists" loader logic awkward — can't distinguish "didn't exist" from a
 real failure by status. (v1's DELETE returned a clean 404 the loader keys off.)
 
+### [milestone] Rule mining ports to v2 as a drop-in — and improves (2026-07-13)
+`AitoV2Client` was made interface-compatible with the v1 client for rule mining
+(`search`, `relate_patterns(where_filter=…)`), and it **normalizes v2's
+stringified `$patterns` response back to the v1 `{field:{"$has":v}}` dict shape**
+(`parse_pattern_proposition`, tested in `tests/test_aito_v2_client.py`). Result:
+`rulemining_service.mine_rules` runs **completely unchanged** with a v2 client
+passed in — zero edits to the service, zero risk to v1.
+
+Comparing `mine_rules(v1)` vs `mine_rules(v2)` for CUST-0000 (same data, exact
+counts recomputed identically):
+- v1: 14 rules (9 strong), coverage 44.3%. v2: **41 rules (34 strong), coverage
+  77.2%**.
+- v2 **covers every v1 rule** (same vendor/GL/support; clause order differs, so
+  naive string-equality overlap looked like 1) and adds many more vendors.
+- v2 **refines weak→strong** using the amount_band conjunction the collection
+  `$patterns` now discovers: e.g. Bronex `144/186` (77%, review) →
+  `144/145` (99%, strong) by adding `amount_band="large"`; Dottoressa consulting
+  and Ville Saarinen likewise sharpen.
+So migrating rule mining to v2 is a net **quality gain**, not just parity —
+consistent with the improved collection-side pattern miner.
+- **Residual:** v2 surfaces a few more marginal weaks (e.g. `Tapani Laine
+  3/324` — 0.9% precision but lift>1 because the approver is globally rare).
+  They're correctly *flagged* weak, but MIN_SUPPORT=3 alone lets near-zero-
+  precision rules through; a min-precision floor would be cleaner. Pre-existing
+  discovery-threshold nuance, not v2-specific.
+
+### [deferred] v2 diagnostics ($on) needs count recomputation
+The ADR 0015 drill-down uses `relate_features` (an `$on` conditional relate) and
+reads `fs.f` / `fs.fOnCondition` for exact agree/total. On v2 collections the
+`$on` query **works and returns `related` + `lift`, but omits `fs`/counts**
+entirely (even with `select:["...","fs"]`). So `interpret_diagnosis` would drop
+everything (total=0). Porting diagnostics therefore needs the agree/total counts
+recomputed with exact `_query limit:0` calls (the same two-stage trick mining
+uses), rather than read from the relate response. Deferred to a follow-up; core
+mining is the higher-value port and is done.
+
 ## Open questions / decisions needed
 
 - **[decision] Collection naming for the full build.** `env.v2-demo` was branched

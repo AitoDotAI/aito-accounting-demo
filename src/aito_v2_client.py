@@ -21,9 +21,33 @@ once. The v1 client stays untouched so the live v1 demo keeps working.
 Aito v2 API docs: https://aito.ai/docs/api/v2/
 """
 
+import re
 from typing import Any
 
 import httpx
+
+
+# v2's `$patterns` returns each `related`/`condition` proposition as a
+# stringified, NON-JSON blob, e.g.
+#   '{ "$and" : [ { vendor:Investra Management Oy }, { category:insurance } ] }'
+# — values are unquoted, may contain spaces, and terms are separated by
+# ordinary or non-breaking (\xa0) spaces. This grabs each `{ field:value }`
+# term (values can't contain braces). See the v2 feedback note.
+_PATTERN_TERM = re.compile(r"\{\s*(\w+)\s*:\s*([^{}]*?)\s*\}")
+
+
+def parse_pattern_proposition(text: str) -> dict:
+    """Parse v2's stringified `$patterns` proposition into the v1 dict shape.
+
+    Rebuilds the `{field: {"$has": value}}` / `{"$and": [...]}` form the rest
+    of the codebase already understands, so v2 `$patterns` responses can flow
+    through the existing rule-mining logic unchanged.
+    """
+    terms = _PATTERN_TERM.findall(text.replace("\xa0", " "))
+    props = [{field: {"$has": value}} for field, value in terms]
+    if len(props) == 1:
+        return props[0]
+    return {"$and": props}
 
 
 class AitoV2Error(Exception):
@@ -186,6 +210,14 @@ class AitoV2Client:
         """
         return self._request("POST", "/_query", json=body)
 
+    def search(self, table: str, where: dict, limit: int = 10) -> dict:
+        """Retrieve matching rows (v2 has no separate `_search`; it's `_query`).
+
+        Returns ``{offset, total, hits}`` — the same envelope callers use to
+        read `total` (for exact counts with ``limit=0``) or iterate `hits`.
+        """
+        return self.query({"from": table, "where": where, "limit": limit})
+
     def predict(
         self,
         table: str,
@@ -212,20 +244,31 @@ class AitoV2Client:
         table: str,
         target: dict,
         candidate_fields: list[str],
-        *,
+        where_filter: dict | None = None,
         k: int = 8,
         limit: int = 8,
     ) -> dict:
         """Mine AND-conjunction rules with `relate` + `$patterns`.
 
-        Same request shape as v1, but runs on **collections only** (a
-        legacy table returns 501). Each hit's ``related``/``condition``
-        come back as stringified propositions and stats are flat
-        (``lift``, ``info``, ``f``, ``n``) — reshaped from v1's `fs`/`ps`.
+        Signature matches the v1 client's `relate_patterns`, so it is a
+        drop-in for the rule-mining service. Runs on **collections only** (a
+        legacy table returns 501). `where_filter` scopes the population via a
+        nested `from` (e.g. `{"customer_id": ...}` for multi-tenancy), exactly
+        as in v1.
+
+        v2 returns each hit's `related`/`condition` as a stringified,
+        non-JSON proposition with flat stats (`lift`, `f`, `n`). We normalize
+        `related`/`condition` back to the v1 `{field: {"$has": v}}` dict shape
+        (via `parse_pattern_proposition`) and keep `lift`, so downstream code
+        that expects the v1 response works untouched. Support counts are
+        recomputed exactly by the caller (they don't rely on `$patterns`' fs).
         """
-        return self.query(
+        from_clause: Any = (
+            {"from": table, "where": where_filter} if where_filter else table
+        )
+        raw = self.query(
             {
-                "from": table,
+                "from": from_clause,
                 "where": target,
                 "relate": {
                     "$patterns": {
@@ -236,3 +279,13 @@ class AitoV2Client:
                 "limit": limit,
             }
         )
+        hits = []
+        for hit in raw.get("hits", []):
+            hits.append(
+                {
+                    "related": parse_pattern_proposition(hit.get("related", "")),
+                    "condition": parse_pattern_proposition(hit.get("condition", "")),
+                    "lift": hit.get("lift", 0.0),
+                }
+            )
+        return {"hits": hits}
