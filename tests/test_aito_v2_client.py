@@ -1,100 +1,74 @@
-"""Tests for the Aito v2 client's pure helpers.
+"""Tests for the Aito v2 client's request construction.
 
-The one piece of real logic (vs. thin HTTP) in `AitoV2Client` is parsing
-v2's stringified `$patterns` proposition back into the v1 dict shape, so
-the existing rule-mining code can consume v2 responses unchanged. These
-tests pin that parser against the exact (non-JSON) strings v2 returns.
+`AitoV2Client` is a thin wrapper over the unified `_query` endpoint. The
+two things worth pinning are (1) how an environment is addressed in the URL
+path, and (2) the Query2 bodies it builds for rule mining — both were the
+non-obvious parts of the v2 migration. These are pure (no network): the URL
+tests read `_url`, the body tests capture what would be sent.
 """
 
-from src.aito_v2_client import AitoV2Client, parse_pattern_proposition
+from src.aito_v2_client import AitoV2Client
 
 
-class TestParsePatternProposition:
-    def test_single_clause_becomes_has_dict(self):
-        # A `condition` like `{ gl_code:5300 }` → `{gl_code: {$has: "5300"}}`.
-        assert parse_pattern_proposition("{ gl_code:5300 }") == {
-            "gl_code": {"$has": "5300"}
-        }
-
-    def test_and_conjunction_becomes_and_list(self):
-        text = '{ "$and" : [ { category:supplies }, { vendor:EEE Energy Oy } ] }'
-        assert parse_pattern_proposition(text) == {
-            "$and": [
-                {"category": {"$has": "supplies"}},
-                {"vendor": {"$has": "EEE Energy Oy"}},
-            ]
-        }
-
-    def test_values_may_contain_spaces(self):
-        # Vendor names are unquoted yet contain spaces — the value runs to
-        # the closing brace.
-        assert parse_pattern_proposition("{ vendor:Investra Management Oy }") == {
-            "vendor": {"$has": "Investra Management Oy"}
-        }
-
-    def test_non_breaking_space_separator_is_handled(self):
-        # v2 emits a NBSP (\xa0) after the `[` in some responses.
-        text = '{ "$and" : [\xa0{ vendor:Acme Oy }, { category:insurance } ] }'
-        assert parse_pattern_proposition(text) == {
-            "$and": [
-                {"vendor": {"$has": "Acme Oy"}},
-                {"category": {"$has": "insurance"}},
-            ]
-        }
-
-    def test_three_clause_conjunction(self):
-        text = ('{ "$and" : [ { vendor:Dottoressa Oy }, { category:consulting }, '
-                "{ amount_band:medium } ] }")
-        parsed = parse_pattern_proposition(text)
-        assert parsed == {
-            "$and": [
-                {"vendor": {"$has": "Dottoressa Oy"}},
-                {"category": {"$has": "consulting"}},
-                {"amount_band": {"$has": "medium"}},
-            ]
-        }
+def _client(env=None):
+    """An AitoV2Client without the HTTP setup, for URL/body inspection."""
+    client = AitoV2Client.__new__(AitoV2Client)
+    client._base_url = "https://shared.aito.ai/db/aito-accounting-demo"
+    client._env = env
+    return client
 
 
-class _FakeSearchClient(AitoV2Client):
-    """AitoV2Client with `search` stubbed against an in-memory table, so the
-    pure recompute logic in `relate_features` can be tested without network.
-    """
-
-    def __init__(self, rows):
-        self._rows = rows  # deliberately skip the HTTP client setup
-
-    def search(self, table, where, limit=10):
-        matched = [r for r in self._rows
-                   if all(r.get(k) == v for k, v in where.items())]
-        return {"total": len(matched), "hits": matched[:limit] if limit else []}
-
-
-class TestRelateFeaturesRecompute:
-    """`relate_features` must recompute exact fs and a v1-matching lift
-    (agree_ratio / base_rate) over the UNCONDITIONED population — including
-    the exception values that never hit the target.
-    """
-
-    def _rows(self):
-        # Population vendor="X": 5 large (4 hit 1600), 3 medium (0 hit 1600).
-        rows = []
-        rows += [{"vendor": "X", "amount_band": "large", "gl_code": "1600"}] * 4
-        rows += [{"vendor": "X", "amount_band": "large", "gl_code": "4400"}] * 1
-        rows += [{"vendor": "X", "amount_band": "medium", "gl_code": "4400"}] * 3
-        return rows
-
-    def test_recomputes_fs_and_lift_including_the_exception(self):
-        client = _FakeSearchClient(self._rows())
-        out = client.relate_features(
-            "invoices", {"vendor": "X"}, {"gl_code": "1600"}, ["amount_band"]
+class TestEnvAddressing:
+    def test_master_url_has_no_env_segment(self):
+        assert _client()._url("/_query") == (
+            "https://shared.aito.ai/db/aito-accounting-demo/api/v2/_query"
         )
-        by_value = {h["related"]["amount_band"]["$has"]: h for h in out["hits"]}
-        # base_rate = 4/8 = 0.5
-        large = by_value["large"]
-        assert large["fs"] == {"f": 5, "fOnCondition": 4}
-        assert large["lift"] == (4 / 5) / 0.5  # 1.6 — agreement driver
 
-        # The exception value (never hits the target) must still appear.
-        medium = by_value["medium"]
-        assert medium["fs"] == {"f": 3, "fOnCondition": 0}
-        assert medium["lift"] == 0.0
+    def test_env_is_addressed_as_a_path_segment(self):
+        # The migration's main gotcha: an env is `/env/<full-name>/`, not a
+        # dotted name in place of the db.
+        assert _client("env.v2-demo")._url("/_query") == (
+            "https://shared.aito.ai/db/aito-accounting-demo/env/env.v2-demo/api/v2/_query"
+        )
+
+
+class _CapturingClient(AitoV2Client):
+    """Captures the body that would be POSTed, instead of making a request."""
+
+    def __init__(self):
+        self._base_url = "https://h/db/x"
+        self._env = None
+        self.body = None
+
+    def _request(self, method, path, json=None, timeout=120.0):
+        self.body = json
+        return {"hits": [], "total": 0}
+
+
+class TestQueryBodies:
+    def test_relate_patterns_scopes_with_nested_from_and_mines_target(self):
+        client = _CapturingClient()
+        client.relate_patterns(
+            "invoices", {"gl_code": "1600"}, ["vendor", "category"],
+            where_filter={"customer_id": "C"}, k=6, limit=5,
+        )
+        assert client.body["from"] == {"from": "invoices", "where": {"customer_id": "C"}}
+        assert client.body["where"] == {"gl_code": "1600"}
+        assert client.body["relate"] == {
+            "$patterns": {"$related": {"relate": ["vendor", "category"], "k": 6,
+                                       "to": {"gl_code": "1600"}}}
+        }
+        assert client.body["orderBy"] == "lift" and client.body["limit"] == 5
+
+    def test_relate_features_is_a_conditional_on_relate(self):
+        client = _CapturingClient()
+        client.relate_features("invoices", {"vendor": "X"}, {"gl_code": "1600"}, ["amount_band"])
+        # "target GIVEN the rule's population" — the diagnostic condition.
+        assert client.body["where"] == {"$on": [{"gl_code": "1600"}, {"vendor": "X"}]}
+        assert client.body["relate"] == ["amount_band"]
+        assert "fs" in client.body["select"]
+
+    def test_search_count_uses_limit_zero(self):
+        client = _CapturingClient()
+        client.search("invoices", {"customer_id": "C"}, limit=0)
+        assert client.body == {"from": "invoices", "where": {"customer_id": "C"}, "limit": 0}

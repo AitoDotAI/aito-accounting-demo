@@ -443,3 +443,13 @@ alone. An `llms.txt` for v2, or server-rendered examples, would fix this —
   (stringified `related`/`condition`, flat stats) as the main client-side
   adaptation. Migration is de-risked end-to-end; next is the actual build
   (ADR 0017 → collections rebuild + client v2 path + response parsing).
+- **2026-07-14** — Core update (rev `b97566fd`) re-check: **8/10 issues fixed, 1
+  clarified, 1 minor open** (see `aito-v2-core-issues.md`). Both P0s resolved —
+  predict is sharp & batch-invariant after optimize (EEE 0.97), and `$on` returns
+  `fs` + correct `lift` + the exception values. `$patterns` and `$on` `related`
+  now come back as **structured dicts**, so both client workarounds
+  (`parse_pattern_proposition`, the `relate_features` count-recompute) are
+  obsolete — deleted; `AitoV2Client.relate_patterns`/`relate_features` are thin
+  wrappers again. `mine_rules`/`diagnose_rule` parity holds (41 rules/34 strong;
+  identical suggestion). Remaining: V2-3 (403 vs 404 on malformed env path).
+  Predict-side migration is now UNBLOCKED.

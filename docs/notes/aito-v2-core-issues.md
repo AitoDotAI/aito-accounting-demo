@@ -5,6 +5,11 @@ Single actionable list of everything found while migrating a real application
 from the v1 API to v2. Each item is self-contained: severity, a concrete repro,
 expected vs actual, and why it matters. IDs (`V2-n`) are stable references.
 
+> **Re-check 2026-07-14** — after the core update (rev `b97566fd`), **8 of 10
+> are fixed, 1 clarified, 1 minor open.** Both P0s are resolved. See the Status
+> column and the per-issue **Status** lines. Remaining: **V2-3** (403 vs 404 on a
+> malformed env path) and **V2-10** (docs, unverified from here).
+
 **Reproduction environment**
 - Instance / db: `https://shared.aito.ai/db/aito-accounting-demo`
 - Env (branched from master): `env.v2-demo` → base URL
@@ -16,18 +21,18 @@ expected vs actual, and why it matters. IDs (`V2-n`) are stable references.
 
 **Priority summary**
 
-| ID | Sev | Area | One-liner |
-|----|-----|------|-----------|
-| V2-1 | **P0** | predict | `predict` is segment-sensitive → flat/unstable posteriors |
-| V2-2 | **P0** | relate `$on` | `$on` relate: no `fs`, wrong `lift`, hides exception values |
-| V2-3 | P1 | routing | non-matching env path returns 403, not 404 (addressing trap) |
-| V2-4 | P1 | errors | several 500s that should be 4xx (empty body, missing table, oversize) |
-| V2-5 | P1 | errors | validation error leaks internal Scala class name |
-| V2-6 | P1 | query | unknown headers / query params silently ignored |
-| V2-7 | P1 | predict | `basedOn` featurization has no effect on `predict` |
-| V2-8 | P2 | relate `$patterns` | `related`/`condition` returned as stringified non-JSON |
-| V2-9 | P2 | schema | `GET /schema/{t}` drops `link` / `analyzer` (not round-tripped) |
-| V2-10 | P3 | docs | v2 docs lack predictive-query examples / operator ref; `/llms.txt` 404 |
+| ID | Sev | Area | One-liner | Status (rev b97566fd) |
+|----|-----|------|-----------|-----------------------|
+| V2-1 | **P0** | predict | `predict` is segment-sensitive → flat/unstable posteriors | ✅ **Fixed** — sharp & batch-invariant after optimize |
+| V2-2 | **P0** | relate `$on` | `$on` relate: no `fs`, wrong `lift`, hides exception values | ✅ **Fixed** — all three |
+| V2-3 | P1 | routing | non-matching env path returns 403, not 404 (addressing trap) | ❌ Open — still 403 |
+| V2-4 | P1 | errors | several 500s that should be 4xx (empty body, missing table, oversize) | ✅ **Fixed** — 400 / 404 / 200 |
+| V2-5 | P1 | errors | validation error leaks internal Scala class name | ✅ **Fixed** |
+| V2-6 | P1 | query | unknown headers / query params silently ignored | ✅ **Fixed** — errors helpfully |
+| V2-7 | P1 | predict | `basedOn` featurization has no effect on `predict` | ✅ Clarified — link-field predict; errors helpfully |
+| V2-8 | P2 | relate `$patterns` | `related`/`condition` returned as stringified non-JSON | ✅ **Fixed** — structured dicts |
+| V2-9 | P2 | schema | `GET /schema/{t}` drops `link` / `analyzer` (not round-tripped) | ✅ **Fixed** — round-trips |
+| V2-10 | P3 | docs | v2 docs lack predictive-query examples / operator ref; `/llms.txt` 404 | ⏳ Not re-verified |
 
 What already works well (please don't regress): unified `_query`; `predict`
 top-1 matches v1; `$patterns` on collections is numerically identical to v1;
@@ -76,6 +81,13 @@ calibration (concentrated on the empirically dominant value).
 **Impact:** wrong/again unstable top-1 on larger collections; user-visible
 confidence scores become meaningless. Blocks migrating any prediction UI to v2.
 
+**Status (2026-07-14, rev b97566fd): ✅ Fixed.** After `optimize`, predict is
+now batch-invariant and sharp: the same 16k rows loaded as 4 vs 80 batches both
+give `EEE → 4400 @ 0.973` post-optimize (pre-optimize still differs, 0.786 vs
+0.667 — an expected transient of an un-merged collection). The existing 128-batch
+production collection now predicts `EEE @ 0.974` / `Bronex @ 0.906` at query time
+(was 0.19/0.47). Matches v1's calibration. Predict-side migration unblocked.
+
 ## V2-2 — [P0] `$on` conditional relate: no `fs`, wrong `lift`, hides exceptions
 
 Used for "why does this rule have exceptions": relate a rule's remaining features
@@ -104,6 +116,13 @@ feature values including the ones with zero agreement.
 **Impact:** exception diagnostics can't be built on `$on` as-is; we worked around
 it by recomputing from exact counts (O(values) extra round-trips).
 
+**Status (2026-07-14, rev b97566fd): ✅ Fixed — all three.** The K. Itäluoma repro
+now returns `fs = {f:327, fOnCondition:322, fCondition:322, …}`; `lift` is correct
+(large `1.083`, medium `0.023` — matches v1); and the exception value
+`amount_band=medium` (0/26) is present. `related` also now comes back as a
+structured dict (see V2-8). We dropped the recompute workaround — the client is a
+thin `$on` wrapper again and `interpret_diagnosis` consumes the response directly.
+
 ## V2-3 — [P1] Non-matching env path returns 403 instead of 404
 
 An env is addressed as `…/db/{db}/env/{name}/api/v2/…`. A path that doesn't match
@@ -116,6 +135,10 @@ segment) → 403; `…/env/v2-demo/…` (name without the `env.` prefix) → a c
 non-existent env-scoped key for a full session. Addressing errors should 404, not
 403.
 
+**Status (2026-07-14, rev b97566fd): ❌ Still open.** The dotted path (missing the
+`/env/` segment) still returns 403, not 404. Minor, but still the one addressing
+trap that remains.
+
 ## V2-4 — [P1] Several 500s that should be 4xx
 
 - `POST /_envs` with `{}` → **500 "internal server error"** (expected 400 naming
@@ -124,6 +147,10 @@ non-existent env-scoped key for a full session. Addressing errors should 404, no
   Breaks idempotent "drop if exists" loaders.
 - One insert batch of 16 000 rows → **500 "Request too large"** (expected 413 with
   the actual size/row limit).
+
+**Status (2026-07-14, rev b97566fd): ✅ Fixed.** Empty `_envs` → `400 "Missing or
+invalid 'name'"`; DELETE missing collection → `404 "No such table"`; the 16 000-row
+insert now succeeds (`200`, limit raised).
 
 ## V2-5 — [P1] Validation error leaks an internal class name
 
@@ -147,6 +174,13 @@ returns the *identical* distribution to no `basedOn` and to `basedOn:[all
 fields]`. So predict's feature set can't be steered — relevant to V2-1 (can't
 manually restrict to the good predictors as a mitigation).
 
+**Status (2026-07-14, rev b97566fd): ✅ Clarified — not a bug.** `basedOn` now
+errors helpfully: *"basedOn applies when the predict target is a link field;
+'gl_code' is not a resolvable link. basedOn names fields of the LINKED table to
+use as candidate evidence…"*. So `basedOn` was never a feature-selection knob for
+an ordinary predict; the original expectation was wrong. It no longer silently
+no-ops.
+
 ## V2-8 — [P2] `$patterns` returns stringified, non-JSON propositions
 
 Each hit's `related`/`condition` come back as a string, e.g.
@@ -157,6 +191,11 @@ bespoke parser. v1 returned reusable JSON objects
 (`{"vendor":{"$has":"…"}}`). Prefer structured JSON. (Stats are also flat —
 `lift`, `info`, `f`, `n` — vs v1's nested `fs`/`ps`; fine, just note it.)
 
+**Status (2026-07-14, rev b97566fd): ✅ Fixed.** `related`/`condition` now come
+back as structured dicts (`{"$and": [{"vendor": "…"}, {"category": "…"}]}` /
+`{"gl_code": "5300"}`), directly consumable by the existing `parse_conjunction`.
+We deleted the string parser.
+
 ## V2-9 — [P2] `GET /schema/{table}` drops `link` and `analyzer`
 
 Creating a collection with `link` and `analyzer:"english"` columns succeeds and
@@ -165,6 +204,10 @@ they work (dotted-link selects resolve; presumably FTS too), but
 (`nullable` is kept). So you can't read back the schema you wrote, and a
 "does the live schema match?" check spuriously fails. Round-trip them, or reject
 if unsupported — don't accept-then-hide.
+
+**Status (2026-07-14, rev b97566fd): ✅ Fixed.** `GET /schema/{t}` now echoes
+`link` and `analyzer` back (`{"note": {"type":"Text","analyzer":"english"}, …,
+"parent": {"type":"String","link":"customers.customer_id"}}`).
 
 ## V2-10 — [P3] v2 documentation gaps
 

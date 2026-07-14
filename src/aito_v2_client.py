@@ -21,35 +21,11 @@ once. The v1 client stays untouched so the live v1 demo keeps working.
 Aito v2 API docs: https://aito.ai/docs/api/v2/
 """
 
-import re
 from typing import Any
 
 import httpx
 
 from src.aito_client import AitoError
-
-
-# v2's `$patterns` returns each `related`/`condition` proposition as a
-# stringified, NON-JSON blob, e.g.
-#   '{ "$and" : [ { vendor:Investra Management Oy }, { category:insurance } ] }'
-# — values are unquoted, may contain spaces, and terms are separated by
-# ordinary or non-breaking (\xa0) spaces. This grabs each `{ field:value }`
-# term (values can't contain braces). See the v2 feedback note.
-_PATTERN_TERM = re.compile(r"\{\s*(\w+)\s*:\s*([^{}]*?)\s*\}")
-
-
-def parse_pattern_proposition(text: str) -> dict:
-    """Parse v2's stringified `$patterns` proposition into the v1 dict shape.
-
-    Rebuilds the `{field: {"$has": value}}` / `{"$and": [...]}` form the rest
-    of the codebase already understands, so v2 `$patterns` responses can flow
-    through the existing rule-mining logic unchanged.
-    """
-    terms = _PATTERN_TERM.findall(text.replace("\xa0", " "))
-    props = [{field: {"$has": value}} for field, value in terms]
-    if len(props) == 1:
-        return props[0]
-    return {"$and": props}
 
 
 class AitoV2Error(AitoError):
@@ -200,37 +176,20 @@ class AitoV2Client:
         shape (`related` dict, `lift`, `fs.f` / `fs.fOnCondition`) so
         `interpret_diagnosis` works unchanged.
 
-        We recompute rather than read the response, because v2's `$on` relate
-        (see the v2 feedback note's "$on" section):
-          - omits `fs`/counts entirely,
-          - returns an unreliable `lift` (e.g. 0.29 for a value whose actual
-            agreement is 0.96), and
-          - being conditioned on the target, it can't even enumerate the
-            *exception* values (those that never co-occur with the target) —
-            exactly the ones a diagnostic needs.
-        So we enumerate each field's values over the UNCONDITIONED population
-        and compute `f`, `fOnCondition`, and `lift = agree_ratio / base_rate`
-        exactly (matching v1's `$on` lift semantics). The candidate fields are
-        low-cardinality categoricals, so a bounded population sample surfaces
-        every value with meaningful support.
+        The relate condition is the `$on` proposition "target GIVEN population".
+        v2 returns each feature value with `lift` and `fs` (`f`, `fOnCondition`),
+        including the *exception* values that never co-occur with the target —
+        the same shape v1 returns — so `interpret_diagnosis` consumes it directly.
         """
-        pop_total = self.search(table, population_where, limit=0)["total"]
-        target_in_pop = self.search(table, {**population_where, **target}, limit=0)["total"]
-        base_rate = target_in_pop / pop_total if pop_total else 0.0
-
-        sample = self.search(table, population_where, limit=1000).get("hits", [])
-        hits = []
-        for field in relate_fields:
-            for value in sorted({row[field] for row in sample if row.get(field) is not None}):
-                with_value = {**population_where, field: value}
-                f = self.search(table, with_value, limit=0)["total"]
-                f_on_condition = self.search(table, {**with_value, **target}, limit=0)["total"]
-                lift = (f_on_condition / f) / base_rate if f and base_rate else 0.0
-                hits.append(
-                    {"related": {field: {"$has": value}}, "lift": lift,
-                     "fs": {"f": f, "fOnCondition": f_on_condition}}
-                )
-        return {"hits": hits}
+        return self.query(
+            {
+                "from": table,
+                "where": {"$on": [target, population_where]},
+                "relate": relate_fields,
+                "select": ["related", "lift", "fs"],
+                "orderBy": "lift",
+            }
+        )
 
     def optimize(self, name: str) -> dict:
         """Rebuild a collection's index after a bulk load.
@@ -300,17 +259,15 @@ class AitoV2Client:
         nested `from` (e.g. `{"customer_id": ...}` for multi-tenancy), exactly
         as in v1.
 
-        v2 returns each hit's `related`/`condition` as a stringified,
-        non-JSON proposition with flat stats (`lift`, `f`, `n`). We normalize
-        `related`/`condition` back to the v1 `{field: {"$has": v}}` dict shape
-        (via `parse_pattern_proposition`) and keep `lift`, so downstream code
-        that expects the v1 response works untouched. Support counts are
-        recomputed exactly by the caller (they don't rely on `$patterns`' fs).
+        v2 returns each hit's `related` / `condition` as a structured
+        proposition (`{"$and": [{field: value}, …]}`), which `parse_conjunction`
+        already understands, so no post-processing is needed. Support counts are
+        recomputed exactly by the caller (they don't rely on `$patterns`' stats).
         """
         from_clause: Any = (
             {"from": table, "where": where_filter} if where_filter else table
         )
-        raw = self.query(
+        return self.query(
             {
                 "from": from_clause,
                 "where": target,
@@ -319,17 +276,8 @@ class AitoV2Client:
                         "$related": {"relate": candidate_fields, "k": k, "to": target}
                     }
                 },
+                "select": ["related", "condition", "lift"],
                 "orderBy": "lift",
                 "limit": limit,
             }
         )
-        hits = []
-        for hit in raw.get("hits", []):
-            hits.append(
-                {
-                    "related": parse_pattern_proposition(hit.get("related", "")),
-                    "condition": parse_pattern_proposition(hit.get("condition", "")),
-                    "lift": hit.get("lift", 0.0),
-                }
-            )
-        return {"hits": hits}
