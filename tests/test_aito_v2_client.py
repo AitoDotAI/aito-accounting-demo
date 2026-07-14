@@ -72,3 +72,37 @@ class TestQueryBodies:
         client = _CapturingClient()
         client.search("invoices", {"customer_id": "C"}, limit=0)
         assert client.body == {"from": "invoices", "where": {"customer_id": "C"}, "limit": 0}
+
+
+class _CannedQueryClient(AitoV2Client):
+    """Returns a fixed `query` response, to test predict/relate post-processing."""
+
+    def __init__(self, response):
+        self._base_url = "https://h/db/x"
+        self._env = None
+        self._response = response
+        self.body = None
+
+    def query(self, body):
+        self.body = body
+        return self._response
+
+
+class TestPredictDropIn:
+    def test_aliases_value_to_feature_and_requests_why(self):
+        client = _CannedQueryClient({"hits": [{"$p": 0.9, "$value": "4400", "$why": {}}]})
+        out = client.predict("invoices", {"vendor": "X"}, "gl_code")
+        # v2's `$value` is exposed as `feature` for v1-shaped consumers.
+        assert out["hits"][0]["feature"] == "4400"
+        assert client.body["predict"] == "gl_code"
+        assert any(isinstance(s, dict) and "$why" in s for s in client.body["select"])
+
+
+class TestRelateDropIn:
+    def test_wraps_related_value_in_has(self):
+        client = _CannedQueryClient(
+            {"hits": [{"related": {"gl_code": "4400"}, "fs": {"fOnCondition": 3, "fCondition": 3}}]}
+        )
+        out = client.relate("invoices", {"vendor": "X"}, "gl_code")
+        # v2 returns {field: value}; callers expect the v1 {field: {$has: value}}.
+        assert out["hits"][0]["related"] == {"gl_code": {"$has": "4400"}}

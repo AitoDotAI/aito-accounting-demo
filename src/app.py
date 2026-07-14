@@ -31,17 +31,18 @@ from src.rate_limit import check_rate_limit
 config = load_config()
 aito = AitoClient(config)
 
-# Rule mining can optionally run against a v2 environment (collections),
-# which discovers a richer, stronger ruleset than the v1 legacy tables
-# (see ADR 0017). Set AITO_RULES_ENV=env.v2-demo to point just the
-# `/api/rules/*` endpoints at v2; the rest of the app stays on v1.
-# `AitoV2Client` is a drop-in for the v1 client's rule-mining interface.
-_rules_env = os.environ.get("AITO_RULES_ENV", "").strip()
-if _rules_env:
+# Optionally run the predictive endpoints against a v2 environment
+# (collections): rule mining, smart form-fill, and invoice processing.
+# Set AITO_V2_ENV=env.v2-demo to route them at v2; the rest of the app
+# (match / evaluate / help — not yet mapped to v2) stays on v1.
+# `AitoV2Client` is a drop-in for the v1 client's predict/rule-mining
+# interface, so the services are passed it unchanged. See ADR 0017.
+_v2_env = os.environ.get("AITO_V2_ENV", "").strip()
+if _v2_env:
     from src.aito_v2_client import AitoV2Client
-    rules_client = AitoV2Client(config.aito_api_url, config.aito_api_key, env=_rules_env)
+    v2_client = AitoV2Client(config.aito_api_url, config.aito_api_key, env=_v2_env)
 else:
-    rules_client = aito
+    v2_client = aito
 
 # Initialize two-layer cache: in-memory L1 + Aito-persistent L2
 cache.init(aito)
@@ -481,37 +482,37 @@ def invoices_pending(customer_id: str = Query(...), page: int = 1, per_page: int
     present (hosted demo), falls back to a live Aito compute otherwise
     (dev workflow).
     """
-    pre = precomputed.load(customer_id, "invoices_pending")
+    pre = None if _v2_env else precomputed.load(customer_id, "invoices_pending")
     if pre is not None:
         data = pre
     else:
-        cache_key = f"invoices:{customer_id}"
+        cache_key = f"invoices:{'v2:' if _v2_env else ''}{customer_id}"
         data = cache.get(cache_key)
         if data is None:
             with cache.compute_lock(cache_key):
                 data = cache.get(cache_key)
                 if data is None:
                     try:
-                        result = aito.search("invoices", {"customer_id": customer_id}, limit=per_page)
+                        result = v2_client.search("invoices", {"customer_id": customer_id}, limit=per_page)
                         sample_invoices = result.get("hits", [])
                     except AitoError:
                         return {"invoices": [], "metrics": {}, "error": "Could not fetch invoices"}
 
-                    rules_key = f"mined_rules:{customer_id}"
+                    rules_key = f"mined_rules:{'v2:' if _v2_env else ''}{customer_id}"
                     rules = cache.get(rules_key)
                     if rules is None:
                         with cache.compute_lock(rules_key):
                             rules = cache.get(rules_key)
                             if rules is None:
                                 from src.quality_service import mine_rules_for_customer
-                                rules = mine_rules_for_customer(aito, customer_id)
+                                rules = mine_rules_for_customer(v2_client, customer_id)
                                 cache.set(rules_key, rules, ttl=1800)
 
                     from concurrent.futures import ThreadPoolExecutor
                     from src.invoice_service import predict_invoice
                     with ThreadPoolExecutor(max_workers=8) as pool:
                         predictions = list(pool.map(
-                            lambda inv: predict_invoice(aito, {**inv, "customer_id": customer_id}, rules=rules),
+                            lambda inv: predict_invoice(v2_client, {**inv, "customer_id": customer_id}, rules=rules),
                             sample_invoices,
                         ))
                     metrics = compute_metrics(predictions)
@@ -601,11 +602,11 @@ def rules_drilldown(
         # All exceptions (where the predicted output differs), then a
         # sample of agreeing rows. Exact totals come from count-only
         # searches so the modal shows the same ratio as the rule headline.
-        disagree = rules_client.search(
+        disagree = v2_client.search(
             "invoices", {**clause_where, target_field: {"$not": target_value}}, limit=50
         )
-        agree = rules_client.search("invoices", {**clause_where, target_field: target_value}, limit=25)
-        total = int(rules_client.search("invoices", clause_where, limit=0).get("total", 0))
+        agree = v2_client.search("invoices", {**clause_where, target_field: target_value}, limit=25)
+        total = int(v2_client.search("invoices", clause_where, limit=0).get("total", 0))
         match_total = int(agree.get("total", 0))
     except AitoError as exc:
         return {"invoices": [], "error": str(exc)}
@@ -646,7 +647,7 @@ def rules_diagnose(
         return {"error": "clauses must be a non-empty JSON list"}
 
     from src.rulemining_service import diagnose_rule
-    return diagnose_rule(rules_client, customer_id, parsed, target_field, target_value)
+    return diagnose_rule(v2_client, customer_id, parsed, target_field, target_value)
 
 
 @app.get("/api/rules/candidates")
@@ -654,15 +655,15 @@ def rules_candidates(customer_id: str = Query(...)):
     """Mine rule candidates for a customer."""
     # On v2 we mine live — the shipped precompute bootstrap is v1-derived,
     # so serving it would hide the richer v2 ruleset. On v1, prefer it.
-    if not _rules_env:
+    if not _v2_env:
         pre = precomputed.load(customer_id, "rules_candidates")
         if pre is not None:
             return pre
-    cache_key = f"rules:{'v2:' if _rules_env else ''}{customer_id}"
+    cache_key = f"rules:{'v2:' if _v2_env else ''}{customer_id}"
     cached = cache.get(cache_key)
     if cached:
         return cached
-    result = mine_rules(rules_client, customer_id=customer_id)
+    result = mine_rules(v2_client, customer_id=customer_id)
     cache.set(cache_key, result, ttl=300)
     return result
 
@@ -985,7 +986,7 @@ def formfill_template(customer_id: str = Query(...), vendor: str = Query(...)):
     invoice. [Apply]' — one click fills all fields.
     """
     from src.formfill_service import predict_template
-    template = predict_template(aito, customer_id, vendor)
+    template = predict_template(v2_client, customer_id, vendor)
     return template or {"error": "not enough history"}
 
 
@@ -1000,13 +1001,13 @@ def formfill_templates(customer_id: str = Query(...), limit: int = 6):
     """
     from src.formfill_service import predict_template
     from collections import Counter
-    cache_key = f"formfill_templates:{customer_id}:{limit}"
+    cache_key = f"formfill_templates:{'v2:' if _v2_env else ''}{customer_id}:{limit}"
     cached = cache.get(cache_key)
     if cached:
         return cached
 
     try:
-        sample = aito.search("invoices", {"customer_id": customer_id}, limit=200)
+        sample = v2_client.search("invoices", {"customer_id": customer_id}, limit=200)
     except AitoError:
         return {"templates": []}
 
@@ -1015,7 +1016,7 @@ def formfill_templates(customer_id: str = Query(...), limit: int = 6):
 
     templates = []
     for vendor in top:
-        t = predict_template(aito, customer_id, vendor)
+        t = predict_template(v2_client, customer_id, vendor)
         if t:
             templates.append(t)
         if len(templates) >= limit:
@@ -1037,11 +1038,11 @@ def formfill_predict(body: dict):
     if not where:
         return {"error": "at least one field is required"}
 
-    cache_key = "formfill:" + json.dumps(where, sort_keys=True)
+    cache_key = f"formfill:{'v2:' if _v2_env else ''}" + json.dumps(where, sort_keys=True)
     cached = cache.get(cache_key)
     if cached:
         return cached
-    result = predict_fields(aito, where)
+    result = predict_fields(v2_client, where)
     cache.set(cache_key, result, ttl=300)
     return result
 

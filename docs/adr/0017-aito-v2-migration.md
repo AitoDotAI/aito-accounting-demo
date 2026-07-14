@@ -1,7 +1,18 @@
 # 0017. Migrate to the Aito v2 API (unified query + collections + envs)
 
 **Date:** 2026-07-12
-**Status:** proposed
+**Status:** accepted
+
+> **Update 2026-07-14.** The predictive scope is implemented and running on
+> `env.v2-demo` behind `AITO_V2_ENV`: smart form-fill, invoice processing
+> (predict + `$why` + rule matching), vendor templates, and rule mining
+> (discovery + drilldown + diagnostics). `AitoV2Client` is a drop-in for the v1
+> client's `predict` / `relate` / `relate_patterns` / `relate_features` /
+> `search` interface, so the services are passed it unchanged. The core update
+> (rev `b97566fd`) resolved the predict segment-sensitivity and `$on` issues that
+> had blocked this; see `docs/notes/aito-v2-core-issues.md`. Still on v1 (out of
+> scope): `_match` (payment matching), `_evaluate` (quality dashboard), help
+> recommend.
 
 ## Context
 

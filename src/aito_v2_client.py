@@ -221,26 +221,49 @@ class AitoV2Client:
         """
         return self.query({"from": table, "where": where, "limit": limit})
 
-    def predict(
-        self,
-        table: str,
-        where: dict,
-        predict_field: str,
-        *,
-        explain: bool = False,
-        limit: int = 5,
-    ) -> dict:
-        """Run a prediction via the unified `_query`.
+    # Highlight tags for `$why` on Text fields — the frontend paints the
+    # matched tokens (same request the v1 client makes).
+    _WHY_SELECT = {"$why": {"highlight": {"posPreTag": "<mark>", "posPostTag": "</mark>"}}}
 
-        In v2 the predicted value comes back in ``$value`` (v1 used
-        ``feature``). With ``explain=True`` the hit also carries ``$why``,
-        which in v2 is a nested factor tree rather than v1's flat list.
+    def predict(self, table: str, where: dict, predict_field: str, limit: int = 50) -> dict:
+        """Run a prediction, shaped as a v1 `_predict` response (drop-in).
+
+        Signature and response match the v1 client: v2 returns the predicted
+        value in ``$value``, which we alias to ``feature`` so callers written
+        against v1 (and `_extract_alternatives`) work unchanged. ``$why`` is
+        the same nested factor tree v1 returns — already parsed by
+        `invoice_service._extract_why_factors` — including highlight spans.
+
+        `limit` bounds the returned candidate values (default returns only ~10,
+        so we lift it to cover a target field's full value set).
         """
-        select = ["$p", "$value"] + (["$why"] if explain else [])
-        return self.query(
+        response = self.query(
             {"from": table, "where": where, "predict": predict_field,
-             "select": select, "limit": limit}
+             "select": ["$p", "$value", self._WHY_SELECT], "limit": limit}
         )
+        for hit in response.get("hits", []):
+            hit.setdefault("feature", hit.get("$value"))
+        return response
+
+    def relate(self, table: str, where: dict, relate_field: str) -> dict:
+        """Single-field `_relate` — drop-in for the v1 client.
+
+        v2 returns each hit's `related` as `{field: value}`; we wrap the value
+        as `{field: {"$has": value}}` to match the v1 shape callers read
+        directly. `fs` (with `fOnCondition` / `fCondition`) is already returned.
+        """
+        response = self.query(
+            {"from": table, "where": where, "relate": [relate_field],
+             "select": ["related", "condition", "lift", "fs"], "orderBy": "lift"}
+        )
+        for hit in response.get("hits", []):
+            related = hit.get("related")
+            if isinstance(related, dict):
+                hit["related"] = {
+                    field: value if isinstance(value, dict) else {"$has": value}
+                    for field, value in related.items()
+                }
+        return response
 
     def relate_patterns(
         self,

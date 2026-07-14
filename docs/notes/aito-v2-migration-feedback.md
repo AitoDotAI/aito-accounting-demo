@@ -453,3 +453,11 @@ alone. An `llms.txt` for v2, or server-rendered examples, would fix this —
   wrappers again. `mine_rules`/`diagnose_rule` parity holds (41 rules/34 strong;
   identical suggestion). Remaining: V2-3 (403 vs 404 on malformed env path).
   Predict-side migration is now UNBLOCKED.
+- **2026-07-14** — Predict-side wired to v2 (the last migration piece). `predict`
+  is a v1 drop-in (aliases `$value`→`feature`, requests `$why`+highlight — the v2
+  `$why` tree is the same shape `_extract_why_factors` already parses); added a
+  `relate` drop-in (wraps `{field:value}`→`{field:{$has:value}}`) so the
+  quality-service per-vendor mining works. `AITO_V2_ENV=env.v2-demo` now routes
+  form-fill, invoice processing, templates, and rule mining at v2 (match/evaluate/
+  help stay v1). Verified end-to-end via TestClient (all 200; invoice gl 0.89 with
+  `$why` + rules; 41-rule ruleset). 103 tests pass. ADR 0017 → accepted.
