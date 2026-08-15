@@ -25,10 +25,11 @@ class TestEnvAddressing:
         )
 
     def test_env_is_addressed_as_a_path_segment(self):
-        # The migration's main gotcha: an env is `/env/<full-name>/`, not a
-        # dotted name in place of the db.
-        assert _client("env.v2-demo")._url("/_query") == (
-            "https://shared.aito.ai/db/aito-accounting-demo/env/env.v2-demo/api/v2/_query"
+        # The migration's main gotcha: an env is `/env/<name>/`, not a
+        # dotted name in place of the db. Note the name carries no `env.`
+        # prefix — that prefix is reserved and rejected at request time.
+        assert _client("v2-demo")._url("/_query") == (
+            "https://shared.aito.ai/db/aito-accounting-demo/env/v2-demo/api/v2/_query"
         )
 
 
@@ -106,3 +107,59 @@ class TestRelateDropIn:
         out = client.relate("invoices", {"vendor": "X"}, "gl_code")
         # v2 returns {field: value}; callers expect the v1 {field: {$has: value}}.
         assert out["hits"][0]["related"] == {"gl_code": {"$has": "4400"}}
+
+
+class _CannedRequestClient(AitoV2Client):
+    """Returns a fixed `_request` response, to test `evaluate` normalization."""
+
+    def __init__(self, response):
+        self._base_url = "https://h/db/x"
+        self._env = None
+        self._response = response
+        self.path = None
+
+    def _request(self, method, path, json=None, timeout=120.0):
+        self.path = path
+        return self._response
+
+
+class TestEvaluateDropIn:
+    """v2 keeps `_evaluate` as its own endpoint, but reshapes the response.
+
+    The quality dashboard reads v1's flat metrics and `cases[].top.feature`,
+    so `evaluate()` unwraps the envelope and re-aliases the value.
+    """
+
+    def _client(self):
+        return _CannedRequestClient({
+            "kind": "evaluation",
+            "data": {
+                "accuracy": 0.57,
+                "baseAccuracy": 0.17,
+                "cases": [
+                    {"accurate": True,
+                     "top": {"$value": "4400", "$p": 0.98},
+                     "correct": {"$value": "4400", "$p": 0.98, "rank": 0}},
+                ],
+            },
+        })
+
+    def test_unwraps_the_evaluation_envelope(self):
+        client = self._client()
+        out = client.evaluate({"testSource": {}, "evaluate": {}})
+        # v1 returns metrics at the top level; v2 nests them under `data`.
+        assert out["accuracy"] == 0.57
+        assert out["baseAccuracy"] == 0.17
+
+    def test_aliases_case_value_to_feature(self):
+        client = self._client()
+        out = client.evaluate({"testSource": {}, "evaluate": {}})
+        case = out["cases"][0]
+        assert case["top"]["feature"] == "4400"
+        assert case["correct"]["feature"] == "4400"
+
+    def test_posts_to_the_evaluate_endpoint_not_query(self):
+        client = self._client()
+        client.evaluate({"testSource": {}, "evaluate": {}})
+        # `_evaluate` is not a Query2 key — the grammar rejects one.
+        assert client.path == "/_evaluate"

@@ -9,14 +9,22 @@ expected vs actual, and why it matters. IDs (`V2-n`) are stable references.
 > are fixed, 1 clarified, 1 minor open.** Both P0s are resolved. See the Status
 > column and the per-issue **Status** lines. Remaining: **V2-3** (403 vs 404 on a
 > malformed env path) and **V2-10** (docs, unverified from here).
+>
+> **Round 2, 2026-08-15 (rev `7d5c48a9`)** — migrating the last three verbs
+> surfaced **five new issues, two of them P0**: `_match` cannot rank
+> (**V2-12**) and `recommend` silently drops tenant-scoping filters
+> (**V2-13**). Both block a feature outright. See the round-2 section below.
 
 **Reproduction environment**
 - Instance / db: `https://shared.aito.ai/db/aito-accounting-demo`
-- Env (branched from master): `env.v2-demo` → base URL
-  `https://shared.aito.ai/db/aito-accounting-demo/env/env.v2-demo/api/v2`
+- Env (branched from master): `v2-demo` → base URL
+  `https://shared.aito.ai/db/aito-accounting-demo/env/v2-demo/api/v2`
+  (was `env.v2-demo` until the `env.` prefix became reserved — see **V2-11**).
 - Auth: the master API key (env auth is database-scoped; no env-scoped key).
-- Deploy under test: `/version` → built `2026-07-11`, gitRevision
+- Deploy under test (round 1): `/version` → built `2026-07-11`, gitRevision
   `9ea7740407204f4347ceeebc2dc7cc54ab06f02e`.
+- Deploy under test (round 2): built `2026-08-15T08:46Z`, gitRevision
+  `7d5c48a98c03cf090504163779919109db23d17e`.
 - Data: 8 collections, 220 894 rows; `invoices` = 128 000 rows, 255 customers.
 
 **Priority summary**
@@ -220,6 +228,159 @@ reverse-engineered from error messages.
 
 ---
 
-*Compiled 2026-07-13 during the v2 migration (branch `feat/0017-aito-v2-migration`).
-Ongoing log: `docs/notes/aito-v2-migration-feedback.md`; `$on` deep-dive:
+# Round 2 — found 2026-08-15 (rev `7d5c48a9`)
+
+Found while migrating the **remaining** verbs (`_match`, `_evaluate`,
+`_recommend`) — the ones ADR 0017 had deferred because no `_query` key exists
+for them. Answer: `_match` and `_evaluate` survive as their own v2 endpoints.
+`_evaluate` migrated cleanly; the other two are blocked by the issues below.
+
+| ID | Sev | Area | One-liner |
+|----|-----|------|-----------|
+| V2-11 | P1 | envs | `env.` prefix became reserved — a silent rename that broke every stored env path |
+| V2-12 | **P0** | `_match` | `_match` returns raw `$f`, never `$p`/`$why`, and cannot rank unseen input |
+| V2-13 | **P0** | `recommend` | disjunctive filters on linked fields are **silently dropped** → cross-tenant leak |
+| V2-14 | P1 | schema | union branch rejects a `$text`-sourced projection at create time |
+| V2-15 | P3 | schema | internal `__cache` collection listed in `GET /schema`, then 500s on query |
+
+## V2-11 — [P1] `env.` became a reserved prefix; existing envs silently renamed
+
+We created `env.v2-demo` (mirroring the built-in `env.master`) and stored that
+name in app config, a `./do` command, an ADR, and tests. After the update every
+call fails:
+
+```
+GET …/env/env.v2-demo/api/v2/schema
+→ 400 "Env name 'env.v2-demo' is reserved (names may not start with '_', 'env.' or 'release.')"
+```
+
+`GET /_envs` now reports the env as **`v2-demo`** — the data survived, the name
+was rewritten under us. Two problems:
+
+1. **No migration path or warning.** A name the API itself accepted at creation
+   became invalid; every stored URL broke at once. If names are being
+   renamed, the old form should keep resolving (or 301), not 400.
+2. **The listing is self-inconsistent.** Master still reports as `env.master`,
+   i.e. with the very prefix that is now forbidden for everyone else:
+   ```json
+   {"envs": [{"isMaster": true, "name": "env.master"}, {"isMaster": false, "name": "v2-demo"}]}
+   ```
+   So the one example a developer copies is the one they may not imitate.
+   Either report master as `master`, or keep the prefix legal.
+
+## V2-12 — [P0] `_match` returns raw counts, cannot rank, and ignores `select`
+
+`_match` is the operator behind payment matching (bank transaction → open
+invoice), one of the demo's four headline features. In v2 it is unusable.
+
+**Repro** (`bank_transactions` 67 665 rows, linked `invoice_id` → `invoices`):
+
+```jsonc
+POST …/api/v2/_match
+{ "from": "bank_transactions",
+  "where": {"description": "KULJETUSLIIKE ROSENBERG-BOMAN OY VIITE 999999999 / 01.01.26",
+            "amount": 10734.5},
+  "match": "invoice_id", "limit": 5 }
+```
+
+**Actual** — every candidate scores 0 and the result degenerates to ID order:
+
+```json
+[{"$f": 0, "$value": "CUST-0000-INV-000001"},
+ {"$f": 0, "$value": "CUST-0000-INV-000002"},
+ {"$f": 0, "$value": "CUST-0000-INV-000003"}]
+```
+
+**Expected** — v1 returns a graded `$p` per candidate plus `$why`.
+
+Three distinct defects:
+
+1. **No probability.** Hits carry `$f` (a raw co-occurrence count), never `$p`.
+   A count is not a confidence; the UI shows a match percentage.
+2. **No generalization.** `$f` is non-zero *only* when the exact context was
+   already seen. Feed a payment that is in the training data and the true
+   invoice ranks first with `$f: 1`; feed a genuinely novel one — the actual
+   use case — and **every** candidate ties at 0. That is a memorization
+   lookup, not a probabilistic match.
+3. **`select` is silently ignored.** `"select": ["$p", "$value", "$why"]`
+   returns `$f`/`$value` anyway — no error, no `$p`, no `$why`. Requesting a
+   field that isn't produced should fail loudly, not be dropped. (`_query`
+   errors correctly on unknown fields; `_match` does not.)
+
+**Impact:** payment matching cannot migrate. It stays on v1.
+
+## V2-13 — [P0] `recommend` silently drops disjunctive filters on linked fields → cross-tenant leak
+
+The demo's help ranking is multi-tenant: a customer may see global articles
+(`customer_id = "*"`) plus their own internal ones, never another tenant's.
+That is one clause:
+
+```jsonc
+"where": {"customer_id": "CUST-0000",
+          "article_id.customer_id": {"$or": ["*", "CUST-0000"]}}
+```
+
+**Actual:** the linked-field clause is **discarded without error** and the
+candidate pool stays unfiltered — returning other tenants' `internal` articles:
+
+| `where` on `article_id.customer_id` | total | top hits |
+|---|---|---|
+| *(omitted)* | 120 | `CUST-0003-INT-04`, `CUST-0013-INT-01` |
+| `"*"` (plain equality) | **20** | `APP-03`, `APP-05` ✅ honored |
+| `"CUST-0003"` (plain equality) | **5** | `CUST-0003-INT-*` ✅ honored |
+| `{"$or": ["*", "CUST-0000"]}` | **120** | `CUST-0003-INT-04` ❌ **dropped** |
+| `{"$or": [{...:"*"}, {...:"CUST-0000"}]}` | **120** | `CUST-0003-INT-04` ❌ dropped |
+| `{"$in": ["*", "CUST-0000"]}` | **120** | `CUST-0003-INT-04` ❌ dropped |
+
+So **plain equality on a linked field is honored, every disjunctive form is
+not** — and no form of `$or`/`$in` we tried works. There is no workaround.
+
+Critically, the *same* clause works on plain `_query` against the same
+collection (`total` 11 815 of 14 580, correctly filtered), so this is specific
+to `recommend`, not to linked fields or to `$or` generally.
+
+**Why it's P0:** this is a silent authorization failure. An app that correctly
+expresses tenant scoping gets another tenant's private content back, with a
+200 and no indication the filter was ignored. Anyone porting a multi-tenant
+`_recommend` to v2 inherits the leak invisibly. Even if disjunctions on linked
+fields are genuinely unsupported, the query must be **rejected**, never
+silently broadened.
+
+**Impact:** help ranking cannot migrate. It stays on v1.
+
+## V2-14 — [P1] union branch rejects a `$text`-sourced projection at create time
+
+Hit on a *different* codebase (an internal CRM tool building a unified search
+index over docs/contacts/deals), so it reproduces beyond this demo:
+
+```
+PUT /api/v2/schema/search_items
+→ 400 {"code": "schema.create_failed",
+       "message": "union branch 'from':'contacts' projects 'title' from $text
+                   source column 'search_title', which does not exist in 'contacts'"}
+```
+
+The branch projects a `$text` search column that the union expects each member
+to supply. Either `$text`-derived columns should be visible to union
+projection, or the error should name the required column shape — as written it
+says what is missing without saying what would satisfy it. Blocks that tool's
+search entirely (it rebuilds the index on demand, so the feature is down).
+
+## V2-15 — [P3] internal `__cache` collection is listed, then 500s
+
+`GET /schema` includes an entry the caller cannot use:
+
+```json
+"__cache": {"type": "unavailable", ...}
+```
+
+Querying it (a natural thing to do when iterating the schema listing) returns
+**500**, not a 4xx. Either hide internal collections from the listing or make
+them return a clean 4xx — as-is, "iterate the schema and count rows" crashes.
+
+---
+
+*Compiled 2026-07-13 during the v2 migration (branch `feat/0017-aito-v2-migration`);
+round 2 added 2026-08-15. Ongoing log:
+`docs/notes/aito-v2-migration-feedback.md`; `$on` deep-dive:
 `docs/notes/aito-v2-on-operator-report.md`.*

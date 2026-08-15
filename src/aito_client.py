@@ -453,6 +453,17 @@ class AitoClient:
         }
         return self._request("POST", "/_match", json=query)
 
+    def evaluate(self, body: dict, timeout: float | None = 600.0) -> dict:
+        """Run a `_evaluate` cross-validation and return its metrics.
+
+        `body` is the full evaluation request (`testSource` + `evaluate`
+        + optional `select`). Exists so callers don't reach for the
+        private `_request`, and so the v1 and v2 clients expose the same
+        `evaluate()` entry point — `AitoV2Client.evaluate` normalizes v2's
+        envelope to this shape.
+        """
+        return self._request("POST", "/_evaluate", json=body, timeout=timeout)
+
     def search(self, table: str, where: dict, limit: int = 10) -> dict:
         """Run a _search query to retrieve matching rows.
 

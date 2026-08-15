@@ -32,17 +32,23 @@ config = load_config()
 aito = AitoClient(config)
 
 # Optionally run the predictive endpoints against a v2 environment
-# (collections): rule mining, smart form-fill, and invoice processing.
-# Set AITO_V2_ENV=env.v2-demo to route them at v2; the rest of the app
-# (match / evaluate / help — not yet mapped to v2) stays on v1.
-# `AitoV2Client` is a drop-in for the v1 client's predict/rule-mining
-# interface, so the services are passed it unchanged. See ADR 0017.
+# (collections): rule mining, smart form-fill, invoice processing,
+# help ranking, and the quality dashboard. Set AITO_V2_ENV=v2-demo to
+# route them at v2; payment matching stays on v1 because v2's `_match`
+# cannot rank unseen payments (see ADR 0017 / core issue V2-12).
+# `AitoV2Client` is a drop-in for the v1 client's interface, so the
+# services are passed it unchanged. See ADR 0017.
 _v2_env = os.environ.get("AITO_V2_ENV", "").strip()
 if _v2_env:
     from src.aito_v2_client import AitoV2Client
     v2_client = AitoV2Client(config.aito_api_url, config.aito_api_key, env=_v2_env)
 else:
     v2_client = aito
+
+# Cache-key prefix that keeps v1 and v2 results in separate slots, so
+# flipping AITO_V2_ENV can never serve a v1 answer for a v2 query (or
+# the reverse) out of a warm cache.
+_V2 = "v2:" if _v2_env else ""
 
 # Initialize two-layer cache: in-memory L1 + Aito-persistent L2
 cache.init(aito)
@@ -486,7 +492,7 @@ def invoices_pending(customer_id: str = Query(...), page: int = 1, per_page: int
     if pre is not None:
         data = pre
     else:
-        cache_key = f"invoices:{'v2:' if _v2_env else ''}{customer_id}"
+        cache_key = f"invoices:{_V2}{customer_id}"
         data = cache.get(cache_key)
         if data is None:
             with cache.compute_lock(cache_key):
@@ -498,7 +504,7 @@ def invoices_pending(customer_id: str = Query(...), page: int = 1, per_page: int
                     except AitoError:
                         return {"invoices": [], "metrics": {}, "error": "Could not fetch invoices"}
 
-                    rules_key = f"mined_rules:{'v2:' if _v2_env else ''}{customer_id}"
+                    rules_key = f"mined_rules:{_V2}{customer_id}"
                     rules = cache.get(rules_key)
                     if rules is None:
                         with cache.compute_lock(rules_key):
@@ -659,7 +665,7 @@ def rules_candidates(customer_id: str = Query(...)):
         pre = precomputed.load(customer_id, "rules_candidates")
         if pre is not None:
             return pre
-    cache_key = f"rules:{'v2:' if _v2_env else ''}{customer_id}"
+    cache_key = f"rules:{_V2}{customer_id}"
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -686,14 +692,14 @@ def anomalies_scan(customer_id: str = Query(...)):
 @app.get("/api/quality/overview")
 def quality_overview(customer_id: str = Query(...)):
     """Quality metrics for a customer."""
-    pre = precomputed.load(customer_id, "quality_overview")
+    pre = None if _v2_env else precomputed.load(customer_id, "quality_overview")
     if pre is not None:
         return pre
-    cache_key = f"quality:{customer_id}"
+    cache_key = f"quality:{_V2}{customer_id}"
     cached = cache.get(cache_key)
     if cached:
         return cached
-    result = get_quality_overview(aito, customer_id=customer_id)
+    result = get_quality_overview(v2_client, customer_id=customer_id)
     cache.set(cache_key, result, ttl=300)
     return result
 
@@ -816,12 +822,12 @@ def quality_audit(customer_id: str = Query(...), limit: int = 25):
 @app.get("/api/quality/evaluations")
 def quality_evaluations(customer_id: str = Query(...)):
     """Run Aito _evaluate on every prediction task (parallel)."""
-    cache_key = f"evaluations:{customer_id}"
+    cache_key = f"evaluations:{_V2}{customer_id}"
     cached = cache.get(cache_key)
     if cached:
         return cached
     from src.quality_service import compute_evaluations_matrix
-    result = compute_evaluations_matrix(aito, customer_id=customer_id)
+    result = compute_evaluations_matrix(v2_client, customer_id=customer_id)
     cache.set(cache_key, result, ttl=600)
     return result
 
@@ -854,7 +860,7 @@ def quality_evaluate(
     Cached 10 min per (customer, domain, predict, inputs, limit).
     """
     fields = sorted([f.strip() for f in input_fields.split(",") if f.strip()])
-    cache_key = f"eval:{customer_id}:{domain}:{predict}:{','.join(fields)}:{limit}"
+    cache_key = f"eval:{_V2}{customer_id}:{domain}:{predict}:{','.join(fields)}:{limit}"
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -863,7 +869,7 @@ def quality_evaluate(
         if cached:
             return cached
         from src.evaluation_service import run_evaluation
-        result = run_evaluation(aito, customer_id, domain, predict, fields, limit=limit)
+        result = run_evaluation(v2_client, customer_id, domain, predict, fields, limit=limit)
         if "error" not in result:
             cache.set(cache_key, result, ttl=600)
         return result
@@ -877,16 +883,16 @@ def quality_predictions(customer_id: str = Query(...)):
     test set, then replays the static rules engine on the same set to
     show the rules-only baseline.
     """
-    pre = precomputed.load(customer_id, "prediction_accuracy")
+    pre = None if _v2_env else precomputed.load(customer_id, "prediction_accuracy")
     if pre is not None:
         return pre
-    cache_key = f"predictions:{customer_id}"
+    cache_key = f"predictions:{_V2}{customer_id}"
     cached = cache.get(cache_key)
     if cached:
         return cached
 
     from src.quality_service import compute_prediction_quality
-    result = compute_prediction_quality(aito, customer_id=customer_id)
+    result = compute_prediction_quality(v2_client, customer_id=customer_id)
     cache.set(cache_key, result, ttl=600)
     return result
 
@@ -1001,7 +1007,7 @@ def formfill_templates(customer_id: str = Query(...), limit: int = 6):
     """
     from src.formfill_service import predict_template
     from collections import Counter
-    cache_key = f"formfill_templates:{'v2:' if _v2_env else ''}{customer_id}:{limit}"
+    cache_key = f"formfill_templates:{_V2}{customer_id}:{limit}"
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -1038,7 +1044,7 @@ def formfill_predict(body: dict):
     if not where:
         return {"error": "at least one field is required"}
 
-    cache_key = f"formfill:{'v2:' if _v2_env else ''}" + json.dumps(where, sort_keys=True)
+    cache_key = f"formfill:{_V2}" + json.dumps(where, sort_keys=True)
     cached = cache.get(cache_key)
     if cached:
         return cached

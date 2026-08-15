@@ -159,7 +159,7 @@ def run_evaluation(
     }
 
     try:
-        result = client._request("POST", "/_evaluate", json=query)
+        result = client.evaluate(query)
     except AitoError as exc:
         return {"error": str(exc), "query": query}
 

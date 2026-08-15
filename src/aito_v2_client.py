@@ -25,7 +25,7 @@ from typing import Any
 
 import httpx
 
-from src.aito_client import AitoError
+from src.aito_client import AitoError, _semaphore_for
 
 
 class AitoV2Error(AitoError):
@@ -79,15 +79,24 @@ class AitoV2Client:
 
         Retries once on a transient 5xx or connection error with a short
         backoff. Raises AitoV2Error on any non-2xx status.
+
+        Shares the v1 client's process-wide concurrency semaphores. A v2
+        environment lives on the *same* Aito instance as master, so the
+        caps have to be global to the process, not per-client — otherwise
+        a v2 build doubles the in-flight load on the shared server the
+        live v1 demo is also using. `/_evaluate` lands on its own size-1
+        semaphore for the same reason it does in v1: it is the
+        memory-heavy path.
         """
         import time as _time
 
         last_exc: AitoV2Error | None = None
         for attempt in range(2):  # original + 1 retry
             try:
-                response = self._client.request(
-                    method, self._url(path), json=json, timeout=timeout
-                )
+                with _semaphore_for(path):
+                    response = self._client.request(
+                        method, self._url(path), json=json, timeout=timeout
+                    )
             except httpx.HTTPError as exc:
                 last_exc = AitoV2Error(f"Aito v2 request failed: {method} {path}: {exc}")
                 if attempt == 0:
@@ -244,6 +253,38 @@ class AitoV2Client:
         for hit in response.get("hits", []):
             hit.setdefault("feature", hit.get("$value"))
         return response
+
+    def evaluate(self, body: dict, timeout: float | None = 600.0) -> dict:
+        """Run cross-validation, shaped as a v1 `_evaluate` response (drop-in).
+
+        v2 keeps `_evaluate` as its own endpoint — it is *not* a `_query`
+        key (the Query2 grammar rejects one). The request body is the v1
+        body unchanged (`testSource` + `evaluate` + optional `select`).
+
+        Two response differences are normalized here so the quality
+        dashboard and the per-case diff table read it unchanged:
+
+        1. v2 wraps the metrics in an envelope, ``{"kind": "evaluation",
+           "data": {...}}``; v1 returns them at the top level.
+        2. Inside `cases[]`, the predicted value moved from `feature` to
+           `$value` (the same rename `predict` got).
+
+        v2's metric set is a superset of v1's — every key the app reads
+        (`accuracy`, `baseAccuracy`, `geomMeanP`, `testSamples`,
+        `trainSamples`, `accuracyGain`, `meanRank`) is present, alongside
+        new ones (`logLoss`, `brierScore`, `ece`, `mrr`).
+
+        The default timeout is 10 min: a 30-row evaluation over 128 k
+        training rows takes ~60 s, and the dashboard runs larger samples.
+        """
+        response = self._request("POST", "/_evaluate", json=body, timeout=timeout)
+        metrics = response.get("data", response)
+        for case in metrics.get("cases", []):
+            for slot in ("top", "correct"):
+                entry = case.get(slot)
+                if isinstance(entry, dict):
+                    entry.setdefault("feature", entry.get("$value"))
+        return metrics
 
     def relate(self, table: str, where: dict, relate_field: str) -> dict:
         """Single-field `_relate` — drop-in for the v1 client.

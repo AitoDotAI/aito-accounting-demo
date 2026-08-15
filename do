@@ -127,11 +127,12 @@ cmd_generate_data() {
 }
 
 # Build the dataset as Aito v2 collections in an environment. Defaults to
-# env.v2-demo; pass --reset to drop existing tables first, or e.g.
+# v2-demo; pass --reset to drop existing tables first, or e.g.
 # `--only invoices --customer CUST-0000` for a fast slice. See ADR 0017.
+# Note: env names may not start with `env.` — that prefix is reserved.
 cmd_v2_build() {
   cd "$SCRIPT_DIR"
-  uv run python -m src.data_loader_v2 --env "${AITO_V2_ENV:-env.v2-demo}" "$@"
+  uv run python -m src.data_loader_v2 --env "${AITO_V2_ENV:-v2-demo}" "$@"
 }
 
 cmd_precompute() {

@@ -461,3 +461,40 @@ alone. An `llms.txt` for v2, or server-rendered examples, would fix this —
   form-fill, invoice processing, templates, and rule mining at v2 (match/evaluate/
   help stay v1). Verified end-to-end via TestClient (all 200; invoice gl 0.89 with
   `$why` + rules; 41-rule ruleset). 103 tests pass. ADR 0017 → accepted.
+- **2026-08-15** — Migrated the three verbs ADR 0017 had deferred, on rev
+  `7d5c48a9`. The deferral premise was wrong in an interesting way: `_match` and
+  `_evaluate` are **not** Query2 keys (the grammar rejects both — the error
+  helpfully enumerates it, now including `fromWhere`, `fromLimit`,
+  `relatePatterns`, `fromJoin`, `fromUnion`), but they survive as their **own v2
+  endpoints**. `recommend` *is* a Query2 key and also answers at `/_recommend`.
+  So "no `_query` key" never meant "no v2 form" — worth stating in the docs.
+  Outcome: 1 migrated, 2 blocked.
+  - ✅ **`_evaluate` migrated.** Request body unchanged from v1; response differs
+    twice — metrics wrapped in `{"kind":"evaluation","data":{…}}`, and
+    `cases[].top/correct` use `$value` instead of `feature` (same rename
+    `predict` got). `AitoV2Client.evaluate()` normalizes both, so the quality
+    dashboard and the per-case diff table read it unchanged. v2's metric set is a
+    **superset**: `logLoss`, `brierScore`, `ece`, `mrr`, `logLossSkill`,
+    `informationGain` on top of everything v1 returned. Live on v2: GL 66% (base
+    17.2), approver 80% (base 5.2), bank-txn 100%, help-click 73%.
+  - ❌ **`_match` blocked (V2-12).** Returns raw `$f` counts, never `$p`/`$why`,
+    silently ignores `select`, and — decisively — cannot rank unseen input: on a
+    novel payment every candidate ties at `$f: 0` and the result falls back to ID
+    order. It only scores contexts already in the data, which is the one case
+    payment matching doesn't need.
+  - ❌ **help `recommend` blocked (V2-13).** Plain equality on a linked field is
+    honored, but every *disjunctive* form (`{"$or":[a,b]}` value shorthand,
+    proposition-level `$or`, `$in`) is **silently discarded** — the eligibility
+    clause `article_id.customer_id: {"$or": ["*", cid]}` drops and other tenants'
+    `internal` articles come back with a 200. The same clause filters correctly
+    on plain `_query`, so it's specific to `recommend`. No workaround exists;
+    per prime directive #2 we did not paper over an authorization failure.
+  - Also: the **`env.` prefix became reserved**, silently renaming `env.v2-demo`
+    → `v2-demo` and 400-ing every stored path (V2-11); `__cache` is listed in
+    `GET /schema` but 500s on query (V2-15); and a `$text` union projection is
+    rejected at collection-create in a separate internal tool (V2-14).
+  - Client hardening found along the way: `AitoV2Client` had **no concurrency
+    cap**, while v1 caps in-flight calls at 4 and serializes `_evaluate` on a
+    size-1 semaphore. A v2 env lives on the *same* instance as master, so the v2
+    client now shares v1's process-wide semaphores — otherwise enabling v2 would
+    have doubled load on the shared server the live demo runs on.
