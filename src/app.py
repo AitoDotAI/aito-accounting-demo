@@ -50,6 +50,23 @@ else:
 # the reverse) out of a warm cache.
 _V2 = "v2:" if _v2_env else ""
 
+
+def _ttl(seconds: int) -> int:
+    """Cache TTL, stretched on v2.
+
+    The short TTLs below are tuned for v1, where a miss is cheap because
+    the precomputed bootstrap backs every heavy view. v2 deliberately
+    bypasses that bootstrap (it is v1-derived), so a miss recomputes
+    live — 16 s for the quality overview up to ~275 s for payment
+    matching. A 300 s TTL is then shorter than the work it protects:
+    the view expires at about the moment it finishes recomputing, and
+    the demo can never stay warm.
+
+    Demo data is static, so on v2 we hold entries for an hour. This
+    changes nothing on v1, where the value is returned unchanged.
+    """
+    return max(seconds, 3600) if _v2_env else seconds
+
 # Initialize two-layer cache: in-memory L1 + Aito-persistent L2
 cache.init(aito)
 
@@ -123,7 +140,7 @@ def _warm_top_customers():
             try:
                 # Mine per-customer rules once and cache for downstream use
                 mined = mine_rules_for_customer(v2_client, cid)
-                cache.set(f"mined_rules:{_V2}{cid}", mined, ttl=1800)
+                cache.set(f"mined_rules:{_V2}{cid}", mined, ttl=_ttl(1800))
 
                 # Fast: invoices + quality (always)
                 result = v2_client.search("invoices", {"customer_id": cid}, limit=20)
@@ -402,6 +419,8 @@ def health():
         "demo_mode": DEMO_MODE,
         "rate_limit_per_minute": MAX_REQUESTS,
     }
+    # Deliberately NOT stretched by _ttl(): this is a liveness probe that
+    # reports aito_connected, so a stale "connected" would mask an outage.
     cache.set("health", result, ttl=60)
     return result
 
@@ -512,7 +531,7 @@ def invoices_pending(customer_id: str = Query(...), page: int = 1, per_page: int
                             if rules is None:
                                 from src.quality_service import mine_rules_for_customer
                                 rules = mine_rules_for_customer(v2_client, customer_id)
-                                cache.set(rules_key, rules, ttl=1800)
+                                cache.set(rules_key, rules, ttl=_ttl(1800))
 
                     from concurrent.futures import ThreadPoolExecutor
                     from src.invoice_service import predict_invoice
@@ -523,7 +542,7 @@ def invoices_pending(customer_id: str = Query(...), page: int = 1, per_page: int
                         ))
                     metrics = compute_metrics(predictions)
                     data = {"invoices": [p.to_dict() for p in predictions], "metrics": metrics}
-                    cache.set(cache_key, data, ttl=300)
+                    cache.set(cache_key, data, ttl=_ttl(300))
 
     invoices = data.get("invoices", [])
     total = len(invoices)
@@ -548,7 +567,7 @@ def matching_pairs(customer_id: str = Query(...)):
     if cached:
         return cached
     result = match_all(v2_client, customer_id=customer_id)
-    cache.set(cache_key, result, ttl=300)
+    cache.set(cache_key, result, ttl=_ttl(300))
     return result
 
 
@@ -670,7 +689,7 @@ def rules_candidates(customer_id: str = Query(...)):
     if cached:
         return cached
     result = mine_rules(v2_client, customer_id=customer_id)
-    cache.set(cache_key, result, ttl=300)
+    cache.set(cache_key, result, ttl=_ttl(300))
     return result
 
 
@@ -685,7 +704,7 @@ def anomalies_scan(customer_id: str = Query(...)):
     if cached:
         return cached
     result = scan_all(v2_client, customer_id=customer_id)
-    cache.set(cache_key, result, ttl=300)
+    cache.set(cache_key, result, ttl=_ttl(300))
     return result
 
 
@@ -700,7 +719,7 @@ def quality_overview(customer_id: str = Query(...)):
     if cached:
         return cached
     result = get_quality_overview(v2_client, customer_id=customer_id)
-    cache.set(cache_key, result, ttl=300)
+    cache.set(cache_key, result, ttl=_ttl(300))
     return result
 
 
@@ -815,7 +834,7 @@ def quality_audit(customer_id: str = Query(...), limit: int = 25):
         "by_field": by_field,
         "totals": totals,
     }
-    cache.set(cache_key, result, ttl=120)
+    cache.set(cache_key, result, ttl=_ttl(120))
     return result
 
 
@@ -828,7 +847,7 @@ def quality_evaluations(customer_id: str = Query(...)):
         return cached
     from src.quality_service import compute_evaluations_matrix
     result = compute_evaluations_matrix(v2_client, customer_id=customer_id)
-    cache.set(cache_key, result, ttl=600)
+    cache.set(cache_key, result, ttl=_ttl(600))
     return result
 
 
@@ -871,7 +890,7 @@ def quality_evaluate(
         from src.evaluation_service import run_evaluation
         result = run_evaluation(v2_client, customer_id, domain, predict, fields, limit=limit)
         if "error" not in result:
-            cache.set(cache_key, result, ttl=600)
+            cache.set(cache_key, result, ttl=_ttl(600))
         return result
 
 
@@ -893,7 +912,7 @@ def quality_predictions(customer_id: str = Query(...)):
 
     from src.quality_service import compute_prediction_quality
     result = compute_prediction_quality(v2_client, customer_id=customer_id)
-    cache.set(cache_key, result, ttl=600)
+    cache.set(cache_key, result, ttl=_ttl(600))
     return result
 
 
@@ -949,7 +968,7 @@ def quality_rules_drift(customer_id: str = Query(...)):
         "rules": get_rule_drift_series(v2_client, customer_id),
         "weekly_overrides": get_weekly_override_counts(v2_client, customer_id),
     }
-    cache.set(cache_key, result, ttl=600)
+    cache.set(cache_key, result, ttl=_ttl(600))
     return result
 
 
@@ -966,7 +985,7 @@ def quality_rules(customer_id: str = Query(...)):
 
     from src.quality_service import compute_rule_performance
     result = compute_rule_performance(v2_client, customer_id=customer_id)
-    cache.set(cache_key, result, ttl=600)
+    cache.set(cache_key, result, ttl=_ttl(600))
     return result
 
 
@@ -1029,7 +1048,7 @@ def formfill_templates(customer_id: str = Query(...), limit: int = 6):
             break
 
     result = {"templates": templates}
-    cache.set(cache_key, result, ttl=600)
+    cache.set(cache_key, result, ttl=_ttl(600))
     return result
 
 
@@ -1049,7 +1068,7 @@ def formfill_predict(body: dict):
     if cached:
         return cached
     result = predict_fields(v2_client, where)
-    cache.set(cache_key, result, ttl=300)
+    cache.set(cache_key, result, ttl=_ttl(300))
     return result
 
 
@@ -1135,7 +1154,7 @@ def help_search(
     # Help articles are stable; warmth across a working day matters
     # more than freshness. Bumped 10 min -> 1 hour so the cache
     # survives between drawer interactions.
-    cache.set(cache_key, result, ttl=3600)
+    cache.set(cache_key, result, ttl=_ttl(3600))
     return result
 
 
@@ -1194,7 +1213,7 @@ def help_related(
         return cached
     from src.help_service import related_articles
     result = {"articles": related_articles(aito, article_id, customer_id, limit=limit)}
-    cache.set(cache_key, result, ttl=3600)
+    cache.set(cache_key, result, ttl=_ttl(3600))
     return result
 
 
@@ -1310,7 +1329,7 @@ def help_stats(customer_id: str = Query(...)):
         return cached
     from src.help_service import customer_help_stats
     result = customer_help_stats(aito, customer_id)
-    cache.set(cache_key, result, ttl=300)
+    cache.set(cache_key, result, ttl=_ttl(300))
     return result
 
 
