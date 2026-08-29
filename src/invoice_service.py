@@ -189,19 +189,31 @@ def _walk_why_grouped(node: dict, out: list[dict]) -> None:
 
 
 def _collect_props(prop: dict, out: list[dict]) -> None:
-    if "$and" in prop:
-        for sub in prop["$and"]:
-            _collect_props(sub, out)
-        return
+    """Flatten a $why proposition into {field, value} pairs.
+
+    Handles both API generations. v1 wraps every value in an operator
+    (`{vendor: {$has: "Kesko"}}`) and groups conjunctions under `$and`;
+    v2 returns the bare value (`{vendor: "Kesko"}`) and groups under
+    `$group`. Both are accepted, so one explanation UI serves both --
+    without this, every v2 factor collects nothing and the popup
+    silently degrades to the base rate alone.
+    """
+    for grouping in ("$and", "$group"):
+        if grouping in prop:
+            for sub in prop[grouping]:
+                _collect_props(sub, out)
+            return
     for field_name, cond in prop.items():
-        if not isinstance(cond, dict):
-            continue
-        # $has = exact value match (categorical fields)
-        if "$has" in cond:
-            out.append({"field": field_name, "value": str(cond["$has"])})
-        # $match = text token match (Text fields)
-        elif "$match" in cond:
-            out.append({"field": field_name, "value": str(cond["$match"])})
+        if isinstance(cond, dict):
+            # $has = exact value match (categorical fields)
+            if "$has" in cond:
+                out.append({"field": field_name, "value": str(cond["$has"])})
+            # $match = text token match (Text fields)
+            elif "$match" in cond:
+                out.append({"field": field_name, "value": str(cond["$match"])})
+        elif cond is not None:
+            # v2: the proposition carries the value directly.
+            out.append({"field": field_name, "value": str(cond)})
 
 
 @dataclass
