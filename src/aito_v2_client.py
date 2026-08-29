@@ -25,7 +25,12 @@ from typing import Any
 
 import httpx
 
-from src.aito_client import AitoError, _semaphore_for
+from src.aito_client import (
+    AitoError,
+    _path_is_user_facing,
+    _semaphore_for,
+    aito_call_log,
+)
 
 
 class AitoV2Error(AitoError):
@@ -92,6 +97,7 @@ class AitoV2Client:
 
         last_exc: AitoV2Error | None = None
         for attempt in range(2):  # original + 1 retry
+            t0 = _time.monotonic()
             try:
                 with _semaphore_for(path):
                     response = self._client.request(
@@ -107,6 +113,20 @@ class AitoV2Client:
             if response.status_code >= 500 and attempt == 0:
                 _time.sleep(0.2)
                 continue
+
+            # Feed the same request-scoped accumulator the v1 client
+            # feeds, so the topbar latency badge keeps working when the
+            # app is pointed at v2. Prefer Aito's server-side timing
+            # header over wall-clock, for the reason given in the v1
+            # client: wall-clock includes RTT, TLS, and semaphore wait.
+            log = aito_call_log.get()
+            if log is not None and _path_is_user_facing(path):
+                header_ms = response.headers.get("x-aitoai-response-time")
+                try:
+                    ms = float(header_ms) if header_ms else (_time.monotonic() - t0) * 1000.0
+                except ValueError:
+                    ms = (_time.monotonic() - t0) * 1000.0
+                log.append((path, ms))
 
             if response.status_code >= 400:
                 raise AitoV2Error(

@@ -122,25 +122,25 @@ def _warm_top_customers():
             cid = cust["customer_id"]
             try:
                 # Mine per-customer rules once and cache for downstream use
-                mined = mine_rules_for_customer(aito, cid)
-                cache.set(f"mined_rules:{cid}", mined, ttl=1800)
+                mined = mine_rules_for_customer(v2_client, cid)
+                cache.set(f"mined_rules:{_V2}{cid}", mined, ttl=1800)
 
                 # Fast: invoices + quality (always)
-                result = aito.search("invoices", {"customer_id": cid}, limit=20)
+                result = v2_client.search("invoices", {"customer_id": cid}, limit=20)
                 with ThreadPoolExecutor(max_workers=8) as pool:
                     preds = list(pool.map(
-                        lambda inv: predict_invoice(aito, {**inv, "customer_id": cid}, rules=mined),
+                        lambda inv: predict_invoice(v2_client, {**inv, "customer_id": cid}, rules=mined),
                         result.get("hits", []),
                     ))
                 data = {"invoices": [p.to_dict() for p in preds], "metrics": compute_metrics(preds)}
-                cache.set(f"invoices:{cid}", data)
-                cache.set(f"quality:{cid}", get_quality_overview(aito, customer_id=cid))
+                cache.set(f"invoices:{_V2}{cid}", data)
+                cache.set(f"quality:{_V2}{cid}", get_quality_overview(v2_client, customer_id=cid))
 
                 # Deep: matching + anomalies + rules (only for top customers)
                 if deep:
-                    cache.set(f"matching:{cid}", match_all(aito, customer_id=cid))
-                    cache.set(f"anomalies:{cid}", scan_all(aito, customer_id=cid))
-                    cache.set(f"rules:{cid}", mine_rules(aito, customer_id=cid))
+                    cache.set(f"matching:{_V2}{cid}", match_all(v2_client, customer_id=cid))
+                    cache.set(f"anomalies:{_V2}{cid}", scan_all(v2_client, customer_id=cid))
+                    cache.set(f"rules:{_V2}{cid}", mine_rules(v2_client, customer_id=cid))
                     print(f"  {cid}: cached (deep)")
                 else:
                     print(f"  {cid}: cached (fast)")
@@ -348,7 +348,7 @@ def validate_customer(customer_id: str) -> None:
 def list_customers():
     """List all customers with their sizes."""
     try:
-        result = aito.search("customers", {}, limit=300)
+        result = v2_client.search("customers", {}, limit=300)
         customers = result.get("hits", [])
         # Sort by invoice_count descending
         customers.sort(key=lambda c: c.get("invoice_count", 0), reverse=True)
@@ -420,7 +420,7 @@ def invoices_by_vendor(
     """
     from src.date_window import shift_iso
     try:
-        result = aito.search(
+        result = v2_client.search(
             "invoices",
             {"customer_id": customer_id, "vendor": vendor},
             limit=limit,
@@ -453,7 +453,7 @@ def invoices_raw(customer_id: str = Query(...), per_page: int = 20):
     """
     from src.date_window import shift_iso
     try:
-        result = aito.search("invoices", {"customer_id": customer_id}, limit=per_page)
+        result = v2_client.search("invoices", {"customer_id": customer_id}, limit=per_page)
     except AitoError as exc:
         return {"invoices": [], "error": str(exc)}
 
@@ -540,14 +540,14 @@ def invoices_pending(customer_id: str = Query(...), page: int = 1, per_page: int
 @app.get("/api/matching/pairs")
 def matching_pairs(customer_id: str = Query(...)):
     """Match bank transactions to invoices for a customer."""
-    pre = precomputed.load(customer_id, "matching_pairs")
+    pre = None if _v2_env else precomputed.load(customer_id, "matching_pairs")
     if pre is not None:
         return pre
-    cache_key = f"matching:{customer_id}"
+    cache_key = f"matching:{_V2}{customer_id}"
     cached = cache.get(cache_key)
     if cached:
         return cached
-    result = match_all(aito, customer_id=customer_id)
+    result = match_all(v2_client, customer_id=customer_id)
     cache.set(cache_key, result, ttl=300)
     return result
 
@@ -677,14 +677,14 @@ def rules_candidates(customer_id: str = Query(...)):
 @app.get("/api/anomalies/scan")
 def anomalies_scan(customer_id: str = Query(...)):
     """Scan invoices for anomalies for a customer."""
-    pre = precomputed.load(customer_id, "anomalies_scan")
+    pre = None if _v2_env else precomputed.load(customer_id, "anomalies_scan")
     if pre is not None:
         return pre
-    cache_key = f"anomalies:{customer_id}"
+    cache_key = f"anomalies:{_V2}{customer_id}"
     cached = cache.get(cache_key)
     if cached:
         return cached
-    result = scan_all(aito, customer_id=customer_id)
+    result = scan_all(v2_client, customer_id=customer_id)
     cache.set(cache_key, result, ttl=300)
     return result
 
@@ -719,13 +719,13 @@ def quality_audit(customer_id: str = Query(...), limit: int = 25):
     "accepted" row. A real production deployment would populate
     prediction_log on every formfill/submit.
     """
-    cache_key = f"audit:{customer_id}:{limit}"
+    cache_key = f"audit:{_V2}{customer_id}:{limit}"
     cached = cache.get(cache_key)
     if cached:
         return cached
     try:
         # Pull recent rows for this customer
-        recent = aito.search(
+        recent = v2_client.search(
             "prediction_log",
             {"customer_id": customer_id},
             limit=200,
@@ -744,8 +744,8 @@ def quality_audit(customer_id: str = Query(...), limit: int = 25):
         # invoices (accepted). Same shape, same fields, just with
         # synthesized=true so the UI can disclose the source.
         try:
-            overrides = aito.search("overrides", {"customer_id": customer_id}, limit=80).get("hits", [])
-            sample = aito.search(
+            overrides = v2_client.search("overrides", {"customer_id": customer_id}, limit=80).get("hits", [])
+            sample = v2_client.search(
                 "invoices",
                 {"customer_id": customer_id, "routed": True, "routed_by": "aito"},
                 limit=40,
@@ -906,7 +906,7 @@ def quality_rules_snapshot(customer_id: str = Query(...)):
     a control-period close) to build a queryable history.
     """
     from src.quality_service import snapshot_rules_to_revisions
-    n = snapshot_rules_to_revisions(aito, customer_id)
+    n = snapshot_rules_to_revisions(v2_client, customer_id)
     return {"snapshotted": n, "customer_id": customer_id}
 
 
@@ -917,7 +917,7 @@ def quality_rules_history(customer_id: str = Query(...), as_of: int | None = Non
     Drives the future "Compare to date" picker in Quality > Rules.
     """
     from src.quality_service import get_rule_history
-    return {"rules": get_rule_history(aito, customer_id, as_of=as_of)}
+    return {"rules": get_rule_history(v2_client, customer_id, as_of=as_of)}
 
 
 @app.post("/api/quality/rules/backfill")
@@ -929,7 +929,7 @@ def quality_rules_backfill(customer_id: str = Query(...)):
     drift charts immediately.
     """
     from src.quality_service import backfill_rule_drift
-    n = backfill_rule_drift(aito, customer_id)
+    n = backfill_rule_drift(v2_client, customer_id)
     return {"backfilled": n, "customer_id": customer_id}
 
 
@@ -940,14 +940,14 @@ def quality_rules_drift(customer_id: str = Query(...)):
     Drives the Quality > Rules drift sparklines and the override-trend
     chart that answers "what does this look like at 90 days?"
     """
-    cache_key = f"drift:{customer_id}"
+    cache_key = f"drift:{_V2}{customer_id}"
     cached = cache.get(cache_key)
     if cached:
         return cached
     from src.quality_service import get_rule_drift_series, get_weekly_override_counts
     result = {
-        "rules": get_rule_drift_series(aito, customer_id),
-        "weekly_overrides": get_weekly_override_counts(aito, customer_id),
+        "rules": get_rule_drift_series(v2_client, customer_id),
+        "weekly_overrides": get_weekly_override_counts(v2_client, customer_id),
     }
     cache.set(cache_key, result, ttl=600)
     return result
@@ -956,16 +956,16 @@ def quality_rules_drift(customer_id: str = Query(...)):
 @app.get("/api/quality/rules")
 def quality_rules(customer_id: str = Query(...)):
     """Rule performance — replay each static rule against actual GL codes."""
-    pre = precomputed.load(customer_id, "rule_performance")
+    pre = None if _v2_env else precomputed.load(customer_id, "rule_performance")
     if pre is not None:
         return pre
-    cache_key = f"rules_perf:{customer_id}"
+    cache_key = f"rules_perf:{_V2}{customer_id}"
     cached = cache.get(cache_key)
     if cached:
         return cached
 
     from src.quality_service import compute_rule_performance
-    result = compute_rule_performance(aito, customer_id=customer_id)
+    result = compute_rule_performance(v2_client, customer_id=customer_id)
     cache.set(cache_key, result, ttl=600)
     return result
 
@@ -976,7 +976,7 @@ def quality_rules(customer_id: str = Query(...)):
 def formfill_vendors(customer_id: str = Query(...)):
     """Return vendors used by this customer."""
     try:
-        result = aito.search("invoices", {"customer_id": customer_id}, limit=100)
+        result = v2_client.search("invoices", {"customer_id": customer_id}, limit=100)
         vendors = sorted({hit["vendor"] for hit in result.get("hits", [])})
         return {"vendors": vendors}
     except AitoError as exc:
@@ -1093,7 +1093,7 @@ def formfill_submit(body: dict):
 
     def _persist_log() -> None:
         try:
-            aito._request("POST", "/data/prediction_log/batch", json=rows)
+            v2_client._request("POST", "/data/prediction_log/batch", json=rows)
         except AitoError as exc:
             print(f"prediction_log write failed: {exc}")
 
@@ -1268,7 +1268,7 @@ def multitenancy_landing(vendor_limit: int = 8, tenants_per_vendor: int = 4):
             for t in v["tenants"][:tenants_per_vendor]:
                 key = f"{v['vendor']}|{t['customer_id']}"
                 futures.append((key, pool.submit(
-                    predict_template, aito, t["customer_id"], v["vendor"]
+                    predict_template, v2_client, t["customer_id"], v["vendor"]
                 )))
         for key, fut in futures:
             try:
@@ -1317,7 +1317,7 @@ def help_stats(customer_id: str = Query(...)):
 @app.get("/api/schema")
 def schema():
     try:
-        return aito.get_schema()
+        return v2_client.get_schema()
     except AitoError as exc:
         return {"error": str(exc)}
 
