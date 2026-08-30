@@ -22,6 +22,7 @@ Commands:
 
   Development:
     dev               Start the backend API server (port 8200)
+    dev-v2            Same, but served against the Aito v2 API (env v2-demo)
     frontend-dev      Start Next.js dev server (port 3000)
     frontend-build    Build Next.js static export
     demo              Open the demo in browser
@@ -133,6 +134,15 @@ cmd_generate_data() {
 cmd_v2_build() {
   cd "$SCRIPT_DIR"
   uv run python -m src.data_loader_v2 --env "${AITO_V2_ENV:-v2-demo}" "$@"
+}
+
+# Serve the demo against the Aito v2 API (env `v2-demo` by default).
+# The v1 path is untouched: `./do dev` runs exactly as before.
+cmd_dev_v2() {
+  export AITO_V2_ENV="${AITO_V2_ENV:-v2-demo}"
+  echo "Serving against Aito v2 — env '$AITO_V2_ENV'"
+  echo "  (help stays on v1; first load of a heavy view computes live)"
+  cmd_dev
 }
 
 cmd_precompute() {
@@ -336,6 +346,7 @@ case "${1:-help}" in
   precompute)      cmd_precompute "${@:2}" ;;
   screenshots)     cmd_screenshots "${@:2}" ;;
   test)            cmd_test ;;
+  dev-v2)          cmd_dev_v2 ;;
   fetch-companies) cmd_fetch_companies ;;
   optimize)        cmd_optimize ;;
   warm-cache)      cmd_warm_cache "${@:2}" ;;

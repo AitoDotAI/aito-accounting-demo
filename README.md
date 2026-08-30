@@ -288,6 +288,27 @@ uv sync
 # Open http://localhost:8200
 ```
 
+### Running against the Aito v2 API
+
+The demo also runs on Aito's **v2 API** (unified `_query`, collections, and
+first-class environments) in a branched environment, alongside the v1 build:
+
+```bash
+./do v2-build          # build the dataset as v2 collections in env `v2-demo`
+./do dev-v2            # serve the demo against v2
+```
+
+Unset `AITO_V2_ENV` (or just `./do dev`) for the v1 path — it is unchanged, and
+no v2 code runs unless the variable is set. Every predictive feature runs on v2
+except the help drawer, which stays on v1 pending a core fix. See
+[ADR 0017](docs/adr/0017-aito-v2-migration.md) for the migration, the
+[cheatsheet's v2 section](docs/aito-cheatsheet.md) for what changes between the
+APIs, and [the UI verification report](docs/verification/aito-v2-ui.md) for what
+was checked.
+
+First load of a heavy view on v2 computes live (v2 bypasses the v1-derived
+precompute), so expect 15 s–4 min per view once; after that it is cached.
+
 The Next.js frontend is served from FastAPI on `localhost:8200` —
 single port, no CORS issues.
 

@@ -1,6 +1,11 @@
 # v2 UI verification — `AITO_V2_ENV=v2-demo`
 
-**Date:** 2026-08-29 · **Core rev:** `3de8f4f7` (built 2026-08-27)
+**Date:** 2026-08-29 (D5 added 2026-08-30) · **Core rev:** `3de8f4f7` (built 2026-08-27)
+
+> All findings here were measured against the **deployed** `shared.aito.ai`,
+> which was on `3de8f4f7` throughout. That build is not current — core fixes
+> landing in main are not visible from here, so nothing below should be read as
+> "core has not fixed this", only as "the deployed build behaves this way".
 **Branch:** `feat/0017-aito-v2-migration` · **Method:** app served from
 `frontend/out`, driven in Chrome; every view loaded and its rendered text
 captured. v1 comparison run on the same build with `AITO_V2_ENV` unset.
@@ -18,7 +23,7 @@ fixed during the pass; one blocker and one performance gap remain.
 | Payment Matching | ⚠️ | 8 matched / 12 unmatched — identical to v1; explanation weak (see D3) |
 | Anomaly Detection | ✅ | 1 anomaly over 15 scanned, with reason + recommended action |
 | Quality · System Overview | ✅ | 82% automation, 19% rules, 63% Aito, 9% human — identical to v1 |
-| Quality · Prediction Quality | ✅ | **97% accuracy vs 17.2% baseline**, mean rank 1.13, 50-case table |
+| Quality · Prediction Quality | ✅ | **97% accuracy**, 50-case table. Baseline/gain/meanRank render but are not v1-comparable — see D5 |
 | Quality · Evaluations Matrix | ✅ | GL 98%, approver 94%, bank-txn 100%, help-click 73% |
 | Multi-tenancy landing | ✅ | Renders; shared-vendor cards populated |
 | Help | — | Still v1 by design — blocked on core **V2-13** |
@@ -86,6 +91,31 @@ bug before the v1 comparison showed it was purely cold-start.
 (`./do precompute` against the v2 env, written to a v2-keyed store), or the
 cutover should be paired with warming. This is the largest remaining item and
 is demo-side work, not a core issue.
+
+**D5 — `_evaluate`'s baseline and rank are not comparable to v1.**
+Accuracy itself is sound and comparable (v1 0.96 vs v2 0.98 on an identical
+50-row evaluation). Three sibling metrics are not:
+
+| metric | v1 | v2 |
+|---|---|---|
+| accuracy | 0.96 | 0.98 |
+| baseAccuracy | 0.44 | 0.1723 |
+| accuracyGain | 0.52 | 0.8077 |
+| meanRank | 0.16 | 1.02 |
+
+`baseAccuracy` diverges because v2 computes the majority-class baseline over the
+**entire collection**, ignoring the `customer_id` scope in the evaluate `where`.
+Counted directly: CUST-0000's majority GL is 4400 at 7 486/16 000 = 0.468, which
+is what v1 tracks; the global majority is 22 063/128 000 = 0.1724, which is
+exactly v2's number. So on v2 the displayed *gain* is inflated — +80.8pp where
+the honest figure is +52pp — and the error grows with tenant count. `meanRank`
+is 0-based on v1 and 1-based on v2, so v2's 1.13 and v1's 0.16 are equivalent
+despite the UI labelling the column "lower = better".
+
+The Quality views surface `baseAccuracy`, `accuracyGain` and `meanRank`
+directly, so **on v2 those three cells should not be read as v1-comparable**
+until the core issue is resolved. Filed on `td-20260816070052009786` with the
+full root cause. Accuracy, geomMeanP and the per-case table are unaffected.
 
 **Blocked — Help.** Still on v1. Core **V2-13**: v2's `recommend` silently drops
 disjunctive filters on linked fields, so the tenant-eligibility clause is
