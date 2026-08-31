@@ -6,15 +6,24 @@ data/precomputed/{customer_id}/{name}.json. The API serves these
 files directly — no runtime Aito calls except for interactive Form
 Fill.
 
+Runs against either API generation. `--v2` computes through the v2
+client instead, and everything it writes is namespaced (Aito keys get a
+`v2:` prefix, files land under data/precomputed/v2/) because a
+projection is only valid for the generation that produced it — serving
+a v1-derived number from a v2 deployment is a wrong answer that looks
+completely well-formed. See src/precompute_store.py.
+
 Usage:
     ./do load-data                                              # upload to Aito first
     python data/precompute_predictions.py                       # all customers
     python data/precompute_predictions.py --customers CUST-0000 # just one
     python data/precompute_predictions.py --limit 5             # first 5 customers
+    python data/precompute_predictions.py --v2                  # against AITO_V2_ENV
 """
 
 import argparse
 import json
+import os
 import random
 import sys
 import time
@@ -39,7 +48,6 @@ from src.quality_service import (  # noqa: E402
 random.seed(42)
 
 DATA_DIR = Path(__file__).parent
-PRECOMPUTED_DIR = DATA_DIR / "precomputed"
 
 
 def load_fixture(name: str) -> list[dict]:
@@ -56,14 +64,18 @@ def save(customer_id: str, name: str, data: dict) -> int:
     - Aito store: source of truth for running containers; refreshes
       on every precompute run without rebuilding the docker image.
     """
-    out_dir = PRECOMPUTED_DIR / customer_id
-    out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / f"{name}.json"
+    from src import precompute_store
+
+    key = precompute_store.per_customer_key(customer_id, name)
+    # Ask the store where its bootstrap file goes rather than building
+    # the path here — under --v2 it is a different subtree, and two
+    # places computing it independently is how they drift apart.
+    path = precompute_store.bootstrap_path(key)
+    path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
         json.dump(data, f, ensure_ascii=False)
     try:
-        from src import precompute_store
-        precompute_store.put(precompute_store.per_customer_key(customer_id, name), data)
+        precompute_store.put(key, data)
     except Exception as e:
         print(f"  {customer_id}/{name}: aito-store push skipped: {e}")
     return path.stat().st_size
@@ -294,13 +306,17 @@ def precompute_help_related(
         for cid, art, rel in pool.map(fetch, jobs):
             out.setdefault(cid, {})[art] = rel
 
-    PRECOMPUTED_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = PRECOMPUTED_DIR / "help_related.json"
+    from src import precompute_store
+
+    # No re-init here: main() already wired the store to the v1 client,
+    # and re-initializing with `client` would rebind it to the v2 client
+    # under --v2 — pointing precompute_entries writes at an env that
+    # doesn't hold that table.
+    out_path = precompute_store.bootstrap_path("help_related")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as f:
         json.dump(out, f, ensure_ascii=False)
     try:
-        from src import precompute_store
-        precompute_store.init(client)
         precompute_store.put("help_related", out)
     except Exception as e:
         print(f"  help_related: aito-store push skipped: {e}")
@@ -340,16 +356,18 @@ def precompute_landing(client: AitoClient, vendor_limit: int = 8, tenants_per_ve
             if tpl is not None:
                 templates[key] = tpl
 
+    from src import precompute_store
+
     payload = {"vendors": vendors, "templates": templates}
-    PRECOMPUTED_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = PRECOMPUTED_DIR / "landing.json"
+    out_path = precompute_store.bootstrap_path("landing")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as f:
         json.dump(payload, f, ensure_ascii=False)
     # Also push to the Aito-backed precompute store so deployed
     # containers pick up the new payload without a docker rebuild.
+    # (Store init happens once in main() — see the note in
+    # precompute_help_related for why it must not be repeated here.)
     try:
-        from src import precompute_store
-        precompute_store.init(client)
         precompute_store.put("landing", payload)
     except Exception as e:
         print(f"  landing: aito-store push skipped: {e}")
@@ -384,17 +402,45 @@ def main() -> None:
              "the headline tenant (CUST-0000). Pass an empty string to skip "
              "for everyone, or `all` to opt back into the slow behaviour.",
     )
+    parser.add_argument(
+        "--v2", action="store_true",
+        help="Compute through the Aito v2 API in $AITO_V2_ENV instead of v1. "
+             "Outputs are namespaced (v2: keys, data/precomputed/v2/), so this "
+             "never overwrites the v1 bootstrap files checked into git.",
+    )
     args = parser.parse_args()
 
     config = load_config()
-    client = AitoClient(config)
+    # The store always talks v1: `precompute_entries` is an ordinary
+    # table on master, not part of a v2 env branch. Only the *query*
+    # client changes with --v2. See src/precompute_store.py.
+    store_client = AitoClient(config)
+    if args.v2:
+        env = os.environ.get("AITO_V2_ENV", "").strip()
+        if not env:
+            print("--v2 needs AITO_V2_ENV set (e.g. AITO_V2_ENV=v2-demo). "
+                  "Build one with: ./do v2-build", file=sys.stderr)
+            sys.exit(2)
+        from src.aito_v2_client import AitoV2Client
+        client = AitoV2Client(config.aito_api_url, config.aito_api_key, env=env)
+        print(f"Computing against Aito v2 — env '{env}'")
+    else:
+        client = store_client
 
     # Initialize the Aito-backed precompute store once. Every
     # precompute_one_customer / precompute_landing / precompute_help_related
     # call below will push outputs into precompute_entries via save() /
     # precompute_store.put().
     from src import precompute_store
-    precompute_store.init(client)
+    precompute_store.init(store_client)
+
+    # The store reads AITO_V2_ENV at import to pick its key namespace, so
+    # a --v2 run with the variable unset would compute v2 answers and file
+    # them under the v1 keys. Refuse rather than corrupt the v1 store.
+    if args.v2 and precompute_store.namespace() != "v2:":
+        print("--v2 requires AITO_V2_ENV to be set in the environment before "
+              "import, so the precompute store namespaces its keys.", file=sys.stderr)
+        sys.exit(2)
 
     # Connectivity probe — degraded but not down is OK; the
     # per-customer retry loop below will absorb transient failures.
@@ -429,7 +475,16 @@ def main() -> None:
     for inv in all_invoices:
         by_customer.setdefault(inv["customer_id"], []).append(inv)
 
-    PRECOMPUTED_DIR.mkdir(exist_ok=True)
+    # The output root depends on the namespace, so ask the store for it:
+    # a hard-coded data/precomputed would, under --v2, point at the v1
+    # tree and make `--skip-existing` skip customers whose v2 precompute
+    # has never been written.
+    def customer_dir(customer_id: str):
+        return precompute_store.bootstrap_path(
+            precompute_store.per_customer_key(customer_id, "invoices_pending")).parent
+
+    output_root = customer_dir("_probe").parent
+    output_root.mkdir(parents=True, exist_ok=True)
     expected_files = {
         "invoices_pending.json", "matching_pairs.json", "rules_candidates.json",
         "anomalies_scan.json", "quality_overview.json",
@@ -440,9 +495,12 @@ def main() -> None:
         before = len(customers)
         customers = [
             c for c in customers
-            if not (PRECOMPUTED_DIR / c["customer_id"]).is_dir()
-            or set((PRECOMPUTED_DIR / c["customer_id"]).iterdir()) and
-               not expected_files.issubset({p.name for p in (PRECOMPUTED_DIR / c["customer_id"]).iterdir()})
+            # An existing-but-incomplete directory is reprocessed, and so
+            # is an empty one — the previous form treated an empty dir as
+            # done and skipped it.
+            if not customer_dir(c["customer_id"]).is_dir()
+            or not expected_files.issubset(
+                {p.name for p in customer_dir(c["customer_id"]).iterdir()})
         ]
         print(f"Skip existing: {before - len(customers)} done, {len(customers)} remaining")
 
@@ -560,7 +618,7 @@ def main() -> None:
         f"\nDone. {total_bytes / 1024:.0f} KB across {completed} customers "
         f"in {total_elapsed:.0f}s ({total_elapsed / max(1, completed):.1f}s/customer)."
     )
-    print(f"Output: {PRECOMPUTED_DIR}/")
+    print(f"Output: {output_root}/")
 
 
 if __name__ == "__main__":

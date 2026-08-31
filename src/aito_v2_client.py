@@ -235,6 +235,19 @@ class AitoV2Client:
 
     # --- Queries -------------------------------------------------------
 
+    def check_connectivity(self) -> bool:
+        """Return True if the env is reachable and authenticated.
+
+        Mirrors the v1 client's probe — a tiny query rather than
+        `/schema`, because `/schema` on a degraded instance can hang for
+        the full client timeout while a one-row read still answers.
+        """
+        try:
+            self.query({"from": "customers", "limit": 1})
+            return True
+        except AitoError:
+            return False
+
     def query(self, body: dict) -> dict:
         """Run a raw Query2 body against `POST /_query`.
 

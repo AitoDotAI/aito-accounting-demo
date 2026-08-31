@@ -33,6 +33,7 @@ Writes only happen from `./do precompute`. Endpoints never write.
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from pathlib import Path
@@ -53,6 +54,22 @@ PRECOMPUTE_SCHEMA = {
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _FALLBACK_DIR = _PROJECT_ROOT / "data" / "precomputed"
 
+# Precompute derived from the v2 API lives in its own namespace, because
+# a projection is only valid for the API generation that produced it.
+# Without this, a v2 deployment reads v1-derived JSON and shows numbers
+# that no v2 query would return — silently, since the payload is
+# well-formed either way. The prefix mirrors the `_V2` cache-key prefix
+# in app.py, for the same reason.
+#
+# Read at import time from the same variable that selects the v2 client,
+# so `./do precompute --v2` writes where `./do dev-v2` reads.
+_NAMESPACE = "v2:" if os.environ.get("AITO_V2_ENV", "").strip() else ""
+
+
+def namespace() -> str:
+    """The active precompute namespace (`""` on v1, `"v2:"` on v2)."""
+    return _NAMESPACE
+
 _aito: AitoClient | None = None
 _l1: dict[str, Any] = {}
 _l1_mutex = threading.Lock()
@@ -64,17 +81,34 @@ def per_customer_key(customer_id: str, name: str) -> str:
     return f"cust:{customer_id}:{name}"
 
 
+def bootstrap_path(name: str) -> Path:
+    """Where the bootstrap JSON for `name` lives, in the active namespace.
+
+    `./do precompute` writes here as well as to Aito, so it has to agree
+    with where `get()` later looks. One function knows the layout.
+    """
+    return _fallback_path(_NAMESPACE + name)
+
+
 def _fallback_path(name: str) -> Path:
     """Map a precompute key to its bootstrap JSON path on disk.
 
     Per-customer keys (`cust:CUST-0000:invoices_pending`) live in
     `data/precomputed/CUST-0000/invoices_pending.json`. Cross-tenant
     keys (`landing`) live in `data/precomputed/landing.json`.
+
+    v2-namespaced keys get their own subtree (`data/precomputed/v2/...`)
+    so a v2 precompute run cannot overwrite the v1 bootstrap files that
+    are checked into git.
     """
+    root = _FALLBACK_DIR
+    if name.startswith("v2:"):
+        root = _FALLBACK_DIR / "v2"
+        name = name[len("v2:"):]
     if name.startswith("cust:"):
         _, cid, sub = name.split(":", 2)
-        return _FALLBACK_DIR / cid / f"{sub}.json"
-    return _FALLBACK_DIR / f"{name}.json"
+        return root / cid / f"{sub}.json"
+    return root / f"{name}.json"
 
 
 def init(client: AitoClient) -> None:
@@ -101,6 +135,7 @@ def put(name: str, data: Any) -> None:
     """
     if _aito is None:
         raise RuntimeError("precompute_store.init() not called")
+    name = _NAMESPACE + name
     payload = json.dumps(data, ensure_ascii=False)
     # No native upsert primitive yet (Aito core has it merged to
     # main; ships next deploy). Until then: delete then insert.
@@ -131,6 +166,8 @@ def get(name: str) -> Any | None:
     None means "we couldn't find it anywhere" — the caller decides
     what to do (live compute, return empty, surface error).
     """
+    name = _NAMESPACE + name
+
     # L1
     cached = _l1.get(name)
     if cached is not None:
@@ -171,4 +208,4 @@ def invalidate(name: str | None = None) -> None:
         if name is None:
             _l1.clear()
         else:
-            _l1.pop(name, None)
+            _l1.pop(_NAMESPACE + name, None)

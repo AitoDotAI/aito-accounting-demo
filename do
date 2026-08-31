@@ -19,6 +19,7 @@ Commands:
     optimize          Optimize Aito tables for faster queries
     warm-cache        Pre-warm API cache for top customers
     precompute        Pre-compute predictions for demo views
+    precompute-v2     Same, computed through the v2 API (env v2-demo)
 
   Development:
     dev               Start the backend API server (port 8200)
@@ -29,6 +30,8 @@ Commands:
 
   Testing:
     test              Run unit tests (pytest)
+    aito-check        Assert every Aito query pattern against live data (--v2)
+    verify-demo       Walk the demo path against a running server
     book              Run book tests (Aito examination notebooks)
     book-update       Update book test snapshots
     book-capture      Capture fresh snapshots from live Aito
@@ -41,7 +44,7 @@ Commands:
   Other:
     screenshots       Capture screenshots of all views (--mobile / -m for iPhone)
     fmt               Format code
-    check             Run all checks (test + fmt)
+    check             Pre-merge gate (test + fmt + aito-check)
 
 EOF
 }
@@ -150,6 +153,16 @@ cmd_precompute() {
   echo "Pre-computing predictions for all customers..."
   echo "  (~3min/customer sequentially; pass --workers 4 for ~4x speedup)"
   uv run python data/precompute_predictions.py "$@"
+}
+
+# Same pass, computed through the v2 API. Exports AITO_V2_ENV before the
+# script imports, because the precompute store reads it at import time to
+# choose its key namespace — set it late and v2 answers land under v1 keys.
+cmd_precompute_v2() {
+  export AITO_V2_ENV="${AITO_V2_ENV:-v2-demo}"
+  echo "Pre-computing against Aito v2 — env '$AITO_V2_ENV'"
+  echo "  (writes v2:-prefixed keys and data/precomputed/v2/; v1 output untouched)"
+  cmd_precompute --v2 "$@"
 }
 
 cmd_test() {
@@ -328,9 +341,28 @@ cmd_book_capture() {
   uv run booktest -v -u -s book/ "$@"
 }
 
+# Assert the live Aito responses still match what the app assumes.
+# Needs network and credentials; `--v2` checks the v2 env instead of v1.
+cmd_aito_check() {
+  cd "$SCRIPT_DIR"
+  uv run python -u scripts/aito_check.py "$@"
+}
+
+# End-to-end check of the demo path against an already-running server.
+# Kept separate from `check` because it needs `./do dev` in another shell.
+cmd_verify_demo() {
+  cd "$SCRIPT_DIR"
+  uv run python -u scripts/verify_demo.py "$@"
+}
+
+# The pre-merge gate. `verify-demo` is deliberately NOT here: it needs a
+# running server, so requiring it would make the gate unrunnable from a
+# clean checkout. Run it separately before merging anything that touches
+# an endpoint.
 cmd_check() {
   cmd_test
   cmd_fmt
+  cmd_aito_check
 }
 
 case "${1:-help}" in
@@ -344,8 +376,11 @@ case "${1:-help}" in
   generate-data)   cmd_generate_data "${@:2}" ;;
   v2-build)        cmd_v2_build "${@:2}" ;;
   precompute)      cmd_precompute "${@:2}" ;;
+  precompute-v2)   cmd_precompute_v2 "${@:2}" ;;
   screenshots)     cmd_screenshots "${@:2}" ;;
   test)            cmd_test ;;
+  aito-check)      cmd_aito_check "${@:2}" ;;
+  verify-demo)     cmd_verify_demo "${@:2}" ;;
   dev-v2)          cmd_dev_v2 ;;
   fetch-companies) cmd_fetch_companies ;;
   optimize)        cmd_optimize ;;

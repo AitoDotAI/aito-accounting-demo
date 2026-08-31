@@ -32,10 +32,10 @@ config = load_config()
 aito = AitoClient(config)
 
 # Optionally run the predictive endpoints against a v2 environment
-# (collections): rule mining, smart form-fill, invoice processing,
-# help ranking, and the quality dashboard. Set AITO_V2_ENV=v2-demo to
-# route them at v2; payment matching stays on v1 because v2's `_match`
-# cannot rank unseen payments (see ADR 0017 / core issue V2-12).
+# (collections): invoice processing, smart form-fill, rule mining,
+# payment matching, anomaly detection and the quality dashboard. Set
+# AITO_V2_ENV=v2-demo to route them at v2. Only the help endpoints and
+# the two health probes still call v1 directly.
 # `AitoV2Client` is a drop-in for the v1 client's interface, so the
 # services are passed it unchanged. See ADR 0017.
 _v2_env = os.environ.get("AITO_V2_ENV", "").strip()
@@ -74,6 +74,12 @@ cache.init(aito)
 # in an Aito table; the running container reads from there on first
 # hit, falling back to the shipped bootstrap JSON when Aito is
 # briefly unreachable. See src/precompute_store.py.
+#
+# Always the v1 client, even under AITO_V2_ENV: `precompute_entries`
+# is a plain table on master, not part of the v2 env branch, so both
+# generations read and write the same table. What keeps them apart is
+# the key namespace, not the connection — `./do precompute --v2`
+# writes `v2:`-prefixed keys that only a v2 process reads.
 from src import precompute_store  # noqa: E402
 precompute_store.init(aito)
 
@@ -507,7 +513,7 @@ def invoices_pending(customer_id: str = Query(...), page: int = 1, per_page: int
     present (hosted demo), falls back to a live Aito compute otherwise
     (dev workflow).
     """
-    pre = None if _v2_env else precomputed.load(customer_id, "invoices_pending")
+    pre = precomputed.load(customer_id, "invoices_pending")
     if pre is not None:
         data = pre
     else:
@@ -559,7 +565,7 @@ def invoices_pending(customer_id: str = Query(...), page: int = 1, per_page: int
 @app.get("/api/matching/pairs")
 def matching_pairs(customer_id: str = Query(...)):
     """Match bank transactions to invoices for a customer."""
-    pre = None if _v2_env else precomputed.load(customer_id, "matching_pairs")
+    pre = precomputed.load(customer_id, "matching_pairs")
     if pre is not None:
         return pre
     cache_key = f"matching:{_V2}{customer_id}"
@@ -678,12 +684,9 @@ def rules_diagnose(
 @app.get("/api/rules/candidates")
 def rules_candidates(customer_id: str = Query(...)):
     """Mine rule candidates for a customer."""
-    # On v2 we mine live — the shipped precompute bootstrap is v1-derived,
-    # so serving it would hide the richer v2 ruleset. On v1, prefer it.
-    if not _v2_env:
-        pre = precomputed.load(customer_id, "rules_candidates")
-        if pre is not None:
-            return pre
+    pre = precomputed.load(customer_id, "rules_candidates")
+    if pre is not None:
+        return pre
     cache_key = f"rules:{_V2}{customer_id}"
     cached = cache.get(cache_key)
     if cached:
@@ -696,7 +699,7 @@ def rules_candidates(customer_id: str = Query(...)):
 @app.get("/api/anomalies/scan")
 def anomalies_scan(customer_id: str = Query(...)):
     """Scan invoices for anomalies for a customer."""
-    pre = None if _v2_env else precomputed.load(customer_id, "anomalies_scan")
+    pre = precomputed.load(customer_id, "anomalies_scan")
     if pre is not None:
         return pre
     cache_key = f"anomalies:{_V2}{customer_id}"
@@ -711,7 +714,7 @@ def anomalies_scan(customer_id: str = Query(...)):
 @app.get("/api/quality/overview")
 def quality_overview(customer_id: str = Query(...)):
     """Quality metrics for a customer."""
-    pre = None if _v2_env else precomputed.load(customer_id, "quality_overview")
+    pre = precomputed.load(customer_id, "quality_overview")
     if pre is not None:
         return pre
     cache_key = f"quality:{_V2}{customer_id}"
@@ -902,7 +905,7 @@ def quality_predictions(customer_id: str = Query(...)):
     test set, then replays the static rules engine on the same set to
     show the rules-only baseline.
     """
-    pre = None if _v2_env else precomputed.load(customer_id, "prediction_accuracy")
+    pre = precomputed.load(customer_id, "prediction_accuracy")
     if pre is not None:
         return pre
     cache_key = f"predictions:{_V2}{customer_id}"
@@ -975,7 +978,7 @@ def quality_rules_drift(customer_id: str = Query(...)):
 @app.get("/api/quality/rules")
 def quality_rules(customer_id: str = Query(...)):
     """Rule performance — replay each static rule against actual GL codes."""
-    pre = None if _v2_env else precomputed.load(customer_id, "rule_performance")
+    pre = precomputed.load(customer_id, "rule_performance")
     if pre is not None:
         return pre
     cache_key = f"rules_perf:{_V2}{customer_id}"
