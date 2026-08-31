@@ -119,40 +119,69 @@ def check_matching_pairs(body: dict) -> str:
 
 
 def check_anomalies(body: dict) -> str:
-    """Step 5 — anomaly detection. An empty scan is a valid result, so
-    this asserts the scan *ran*, and that any anomaly carries a reason."""
-    scanned = body.get("scanned", body.get("total_scanned"))
+    """Step 5 — anomaly detection.
+
+    Finding zero anomalies is a legitimate result, so this asserts the
+    scan *ran*, and that anything it did flag carries the description
+    and recommendation the card renders.
+    """
+    scanned = body.get("metrics", {}).get("scanned")
     assert scanned, f"anomaly scan reports nothing scanned: {scanned!r}"
-    for anomaly in _hits(body, "anomalies"):
-        assert anomaly.get("reason") or anomaly.get("explanation"), \
-            f"anomaly has no reason to show: {anomaly}"
-    return f"{scanned} scanned, {len(_hits(body, 'anomalies'))} flagged"
+
+    flags = _hits(body, "flags")
+    for flag in flags:
+        assert flag.get("description"), f"flagged invoice has nothing to show: {flag}"
+        assert flag.get("recommendation"), f"flag has no recommended action: {flag}"
+    return f"{scanned} scanned, {len(flags)} flagged"
 
 
 def check_quality_overview(body: dict) -> str:
-    """Step 7 — the quality dashboard's headline percentages."""
-    numeric = {k: v for k, v in body.items() if isinstance(v, (int, float))}
-    assert numeric, f"quality overview has no numbers to show: {sorted(body)}"
-    for key, value in numeric.items():
-        if key.endswith("_pct") or key.endswith("_rate"):
-            assert 0 <= value <= 100, f"{key} out of range: {value}"
-    return f"{len(numeric)} metrics"
+    """Step 7 — the automation split that opens the quality dashboard.
+
+    The four shares are what the donut renders, so they have to be
+    present, in range, and add up to the population they describe.
+    """
+    automation = body.get("automation", {})
+    assert automation, f"quality overview has no automation split: {sorted(body)}"
+
+    total = automation.get("total")
+    assert total, f"automation split covers no invoices: {total!r}"
+    parts = {k: automation.get(k) for k in ("rule", "aito", "human", "none")}
+    for name, count in parts.items():
+        assert isinstance(count, int), f"automation.{name} is not a count: {count!r}"
+    assert sum(parts.values()) == total, \
+        f"automation parts {parts} do not sum to total {total}"
+
+    for key in ("rule_pct", "aito_pct", "human_pct", "automation_rate"):
+        value = automation.get(key)
+        assert value is not None, f"automation.{key} missing"
+        assert 0 <= value <= 100, f"automation.{key} out of range: {value}"
+    return (f"{automation['automation_rate']}% automated "
+            f"({automation['aito_pct']}% Aito, {automation['rule_pct']}% rules)")
 
 
 def check_quality_predictions(body: dict) -> str:
-    """Step 7 — measured accuracy against a baseline it must beat."""
-    kpis = body.get("kpis", body)
-    accuracy = kpis.get("accuracy")
-    baseline = kpis.get("baseAccuracy", kpis.get("base_accuracy"))
-    assert accuracy is not None, f"no accuracy reported: {sorted(kpis)}"
-    assert 0.0 <= float(accuracy) <= 1.0, f"accuracy out of [0,1]: {accuracy}"
-    if baseline is not None:
-        assert 0.0 <= float(baseline) <= 1.0, f"baseAccuracy out of [0,1]: {baseline}"
-        assert float(accuracy) > float(baseline), \
-            f"accuracy {accuracy} does not beat baseline {baseline} — nothing to demo"
-    cases = _hits(body, "cases")
-    assert cases, "no per-case rows — the evidence table would be empty"
-    return f"accuracy {float(accuracy):.2f}, {len(cases)} cases"
+    """Step 7 — measured accuracy against the baseline it must beat.
+
+    This endpoint reports percentages (98.0), not probabilities.
+    Beating the baseline is the whole claim being demonstrated, so an
+    accuracy that doesn't is a failure even though every call succeeded.
+    """
+    accuracy = body.get("overall_accuracy")
+    baseline = body.get("base_accuracy")
+    evaluated = body.get("total_evaluated")
+
+    assert accuracy is not None, f"no accuracy reported: {sorted(body)}"
+    assert evaluated, f"nothing was evaluated: {evaluated!r}"
+    for name, value in (("overall_accuracy", accuracy), ("base_accuracy", baseline)):
+        assert value is not None, f"{name} missing"
+        assert 0 <= value <= 100, f"{name} is not a percentage: {value}"
+    assert accuracy > baseline, \
+        f"accuracy {accuracy}% does not beat the baseline {baseline}% — nothing to demo"
+
+    assert _hits(body, "confidence_table"), "no confidence breakdown to show"
+    assert _hits(body, "accuracy_by_type"), "no per-field accuracy to show"
+    return f"{accuracy}% vs {baseline}% baseline on {evaluated} cases"
 
 
 def check_help_search(body: dict) -> str:
