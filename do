@@ -33,7 +33,8 @@ Commands:
     aito-check        Assert every Aito query pattern against live data (--v2)
     verify-demo       Walk the demo path against a running server
     book              Run book tests (Aito examination notebooks)
-    book-update       Update book test snapshots
+    book-update       Update book test HTTP snapshots (not the baselines)
+    book-accept       Accept current output as the expected baseline (review first!)
     book-capture      Capture fresh snapshots from live Aito
 
   Deployment:
@@ -329,10 +330,26 @@ cmd_book() {
   uv run booktest -v book/ "$@"
 }
 
+# NOTE: `-u` updates the recorded HTTP snapshots, not the expected
+# output. A test whose baseline is missing or stale still reports a diff
+# after this — use `book-accept` for that.
 cmd_book_update() {
   echo "Updating book test snapshots..."
   cd "$SCRIPT_DIR"
   uv run booktest -v -u book/ "$@"
+}
+
+# Accept the current output as the new expected baseline, for the tests
+# that currently differ (`-c` skips the passing ones).
+#
+# READ THE DIFF FIRST. A snapshot baseline records whatever the system
+# did at capture time, defect included — a silently dropped filter
+# returning 200 with extra rows snapshots perfectly cleanly. Review with
+# `./do book` and the files under books/.out/ before running this.
+cmd_book_accept() {
+  echo "Accepting current output as the expected baseline..."
+  cd "$SCRIPT_DIR"
+  uv run booktest -v -c -a book/ "$@"
 }
 
 cmd_book_capture() {
@@ -387,6 +404,7 @@ case "${1:-help}" in
   warm-cache)      cmd_warm_cache "${@:2}" ;;
   book)            cmd_book ;;
   book-update)     cmd_book_update ;;
+  book-accept)     cmd_book_accept "${@:2}" ;;
   book-capture)    cmd_book_capture ;;
   docker-build)    cmd_docker_build ;;
   docker-run)      cmd_docker_run ;;
