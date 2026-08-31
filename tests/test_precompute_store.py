@@ -79,28 +79,42 @@ class TestBootstrapPaths:
 
 
 class TestReadWriteIsolation:
-    """The point of the namespace: one generation cannot read the other's."""
+    """The point of the namespace: one generation cannot read the other's.
 
-    def test_a_v1_write_is_invisible_to_a_v2_read(self, monkeypatch):
+    These pin the L1 layer, so they point the on-disk fallback at an
+    empty directory. Otherwise a real `./do precompute` run on the
+    developer's machine supplies the very file a miss is asserting on,
+    and the test passes or fails depending on local state.
+    """
+
+    @pytest.fixture(autouse=True)
+    def isolate_the_bootstrap_dir(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(precompute_store, "_FALLBACK_DIR", tmp_path)
+
+    def test_a_v1_write_is_invisible_to_a_v2_read(self, monkeypatch, tmp_path):
         v1 = reload_store(monkeypatch, None)
+        monkeypatch.setattr(v1, "_FALLBACK_DIR", tmp_path)
         v1._l1["cust:CUST-0000:quality_overview"] = {"automation_pct": 82}
         assert v1.get(v1.per_customer_key("CUST-0000", "quality_overview")) == {"automation_pct": 82}
 
         # Same key, v2 process. Without a namespace this would return
         # the v1 number and render it as a v2 measurement.
         v2 = reload_store(monkeypatch, "v2-demo")
+        monkeypatch.setattr(v2, "_FALLBACK_DIR", tmp_path)
         v2._l1["cust:CUST-0000:quality_overview"] = {"automation_pct": 82}
         assert v2.get(v2.per_customer_key("CUST-0000", "quality_overview")) is None
 
-    def test_a_v2_write_is_read_back_under_the_v2_namespace(self, monkeypatch):
+    def test_a_v2_write_is_read_back_under_the_v2_namespace(self, monkeypatch, tmp_path):
         store = reload_store(monkeypatch, "v2-demo")
+        monkeypatch.setattr(store, "_FALLBACK_DIR", tmp_path)
         store._l1["v2:cust:CUST-0000:quality_overview"] = {"automation_pct": 79}
         assert store.get(store.per_customer_key("CUST-0000", "quality_overview")) == {
             "automation_pct": 79
         }
 
-    def test_invalidate_targets_the_active_namespace(self, monkeypatch):
+    def test_invalidate_targets_the_active_namespace(self, monkeypatch, tmp_path):
         store = reload_store(monkeypatch, "v2-demo")
+        monkeypatch.setattr(store, "_FALLBACK_DIR", tmp_path)
         store._l1["v2:landing"] = {"vendors": []}
         store._l1["landing"] = {"vendors": ["v1 value"]}
 
