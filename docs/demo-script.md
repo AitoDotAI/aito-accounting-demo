@@ -270,11 +270,13 @@ three exceptions worth knowing before you present:
    | `formfill/templates` | 21 s | 0.0 s |
    | `quality/overview` | 16–53 s | 0.0 s |
 
-   It costs ~8 min per tenant, so precompute the tenants you plan to show
-   (`--customers CUST-0000,CUST-0254`) rather than all 255. **Switching to a
-   tenant you did not precompute will hit a cold path mid-demo — don't.**
-   Check before presenting with `./do verify-demo`, which flags any step slow
-   enough to read as broken.
+It costs ~5–8 min per tenant (measured: 5 tenants in 22 min at
+   `--workers 2`), so precompute the tenants you plan to show rather than all
+   255 — `./do precompute-v2 --limit 5 --skip-existing --workers 2` covers the
+   five largest, which is the demo path plus room to switch. **Switching to a
+   tenant you did not precompute still hits a cold path mid-demo.** Check
+   before presenting with `./do verify-demo`, which flags any step slow enough
+   to read as broken.
 
 2. **Step 6 (Rule Mining) gets better on v2, and it's worth saying so.** v2
    mines a richer ruleset from the same data — **41 candidates / 34 strong /

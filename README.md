@@ -295,7 +295,7 @@ first-class environments) in a branched environment, alongside the v1 build:
 
 ```bash
 ./do v2-build          # build the dataset as v2 collections in env `v2-demo`
-./do precompute-v2     # compute the read views through v2 (~8 min per tenant)
+./do precompute-v2     # compute the read views through v2 (~5-8 min per tenant)
 ./do dev-v2            # serve the demo against v2
 ```
 
