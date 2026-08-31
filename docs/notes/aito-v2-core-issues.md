@@ -14,6 +14,12 @@ expected vs actual, and why it matters. IDs (`V2-n`) are stable references.
 > surfaced **five new issues, two of them P0**: `_match` cannot rank
 > (**V2-12**) and `recommend` silently drops tenant-scoping filters
 > (**V2-13**). Both block a feature outright. See the round-2 section below.
+>
+> **Round 3, 2026-08-31 (rev `38a234a6`)** — first verification against a
+> *current* deploy. **Every issue is now closed**: 12 fixed, 2 reclassified as
+> not-a-bug (documented behaviour), 1 was our own error. Both round-2 P0s are
+> resolved, which **unblocks the help drawer**. Two small new findings, both
+> cosmetic. See the round-3 section at the end.
 
 **Reproduction environment**
 - Instance / db: `https://shared.aito.ai/db/aito-accounting-demo`
@@ -25,6 +31,9 @@ expected vs actual, and why it matters. IDs (`V2-n`) are stable references.
   `9ea7740407204f4347ceeebc2dc7cc54ab06f02e`.
 - Deploy under test (round 2): built `2026-08-15T08:46Z`, gitRevision
   `7d5c48a98c03cf090504163779919109db23d17e`.
+- Deploy under test (round 3): built `2026-08-31T08:17Z`, gitRevision
+  `38a234a6957f74588c2399c397380f15900bbc29` — the first re-check against a
+  deploy that is actually current.
 - Data: 8 collections, 220 894 rows; `invoices` = 128 000 rows, 255 customers.
 
 **Priority summary**
@@ -33,14 +42,14 @@ expected vs actual, and why it matters. IDs (`V2-n`) are stable references.
 |----|-----|------|-----------|-----------------------|
 | V2-1 | **P0** | predict | `predict` is segment-sensitive → flat/unstable posteriors | ✅ **Fixed** — sharp & batch-invariant after optimize |
 | V2-2 | **P0** | relate `$on` | `$on` relate: no `fs`, wrong `lift`, hides exception values | ✅ **Fixed** — all three |
-| V2-3 | P1 | routing | non-matching env path returns 403, not 404 (addressing trap) | ❌ Open — still 403 |
+| V2-3 | P1 | routing | non-matching env path returns 403, not 404 (addressing trap) | ⚪ Round 3: not a bug — documented |
 | V2-4 | P1 | errors | several 500s that should be 4xx (empty body, missing table, oversize) | ✅ **Fixed** — 400 / 404 / 200 |
 | V2-5 | P1 | errors | validation error leaks internal Scala class name | ✅ **Fixed** |
 | V2-6 | P1 | query | unknown headers / query params silently ignored | ✅ **Fixed** — errors helpfully |
 | V2-7 | P1 | predict | `basedOn` featurization has no effect on `predict` | ✅ Clarified — link-field predict; errors helpfully |
 | V2-8 | P2 | relate `$patterns` | `related`/`condition` returned as stringified non-JSON | ✅ **Fixed** — structured dicts |
 | V2-9 | P2 | schema | `GET /schema/{t}` drops `link` / `analyzer` (not round-tripped) | ✅ **Fixed** — round-trips |
-| V2-10 | P3 | docs | v2 docs lack predictive-query examples / operator ref; `/llms.txt` 404 | ⏳ Not re-verified |
+| V2-10 | P3 | docs | v2 docs lack predictive-query examples / operator ref; `/llms.txt` 404 | ✅ Round 3: **Fixed** |
 
 What already works well (please don't regress): unified `_query`; `predict`
 top-1 matches v1; `$patterns` on collections is numerically identical to v1;
@@ -147,6 +156,12 @@ non-existent env-scoped key for a full session. Addressing errors should 404, no
 `/env/` segment) still returns 403, not 404. Minor, but still the one addressing
 trap that remains.
 
+**Status (2026-08-31, rev 38a234a6): ⚪ Not a bug — closing.** The 403 is the auth
+boundary's uniform answer for every unresolvable resource (nonexistent db, garbage
+segment, unrouted path all give it; an unknown path *inside* a resolved db 404s
+correctly), so 404ing here would confirm which databases exist to an unauthorized
+caller. The docs now name the trap explicitly. See round 3.
+
 ## V2-4 — [P1] Several 500s that should be 4xx
 
 - `POST /_envs` with `{}` → **500 "internal server error"** (expected 400 naming
@@ -226,6 +241,11 @@ absent or client-side-only. `/llms.txt` 404s. A developer (or an AI) can't learn
 to write a v2 prediction from the docs alone — most of the grammar above was
 reverse-engineered from error messages.
 
+**Status (2026-08-31, rev 38a234a6): ✅ Fixed.** `/docs/api/v2/` now carries a
+query-operator reference, a query-type guide, `common-errors`, `evaluation`,
+`schema-design` and `environments`, all with request/response examples; `/llms.txt`
+returns 200. See round 3.
+
 ---
 
 # Round 2 — found 2026-08-15 (rev `7d5c48a9`)
@@ -268,6 +288,11 @@ was rewritten under us. Two problems:
    So the one example a developer copies is the one they may not imitate.
    Either report master as `master`, or keep the prefix legal.
 
+**Status (2026-08-31, rev 38a234a6): ✅ Fixed — both halves.** `/env/env.v2-demo/`
+resolves again (200), so stored URLs work; and `GET /_envs` now reports master as
+`master`. `env.`-prefixed *creation* is still refused, which is intended — but the
+docs list only `_` as reserved (see round 3, N3).
+
 ## V2-12 — [P0] `_match` returns raw counts, cannot rank, and ignores `select`
 
 `_match` is the operator behind payment matching (bank transaction → open
@@ -309,6 +334,10 @@ Three distinct defects:
 
 **Impact:** payment matching cannot migrate. It stays on v1.
 
+**Status (2026-08-31, rev 38a234a6): ✅ Fixed — all three defects.** `$p` is
+graded, ranking generalizes to unseen evidence, and `select`/`$why` are honoured.
+See round 3.
+
 ## V2-13 — [P0] `recommend` silently drops disjunctive filters on linked fields → cross-tenant leak
 
 The demo's help ranking is multi-tenant: a customer may see global articles
@@ -348,6 +377,10 @@ silently broadened.
 
 **Impact:** help ranking cannot migrate. It stays on v1.
 
+**Status (2026-08-31, rev 38a234a6): ✅ Fixed.** `$or` and `$in` on a linked field
+both filter correctly (120 → 25); no cross-tenant leak. Help ranking can migrate.
+See round 3.
+
 ## V2-14 — [P1] union branch rejects a `$text`-sourced projection at create time
 
 Hit on a *different* codebase (an internal CRM tool building a unified search
@@ -366,6 +399,10 @@ projection, or the error should name the required column shape — as written it
 says what is missing without saying what would satisfy it. Blocks that tool's
 search entirely (it rebuilds the index on demand, so the feature is down).
 
+**Status (2026-08-31, rev 38a234a6): ⚪ Not a bug — our schema error.** The real
+blocker was a `nullable` `$text` source column; that restriction is lifted and the
+requirement is documented. See round 3.
+
 ## V2-15 — [P3] internal `__cache` collection is listed, then 500s
 
 `GET /schema` includes an entry the caller cannot use:
@@ -378,9 +415,140 @@ Querying it (a natural thing to do when iterating the schema listing) returns
 **500**, not a 4xx. Either hide internal collections from the listing or make
 them return a clean 4xx — as-is, "iterate the schema and count rows" crashes.
 
+**Status (2026-08-31, rev 38a234a6): ✅ Fixed.** `__cache` is no longer listed, and
+querying it returns `404 "__cache not found"`. See round 3.
+
+---
+
+# Round 3 — verified 2026-08-31 against rev `38a234a6`
+
+The first re-check against a **current** deploy (`/version` → built
+`2026-08-31T08:17Z`, gitRevision `38a234a6957f…`; every earlier round-2 finding
+was measured against a stale build and could not distinguish "not fixed" from
+"not deployed"). Each item below was re-run live, and — where the question was
+whether the behaviour is a defect at all — checked against the published v2
+docs, which have themselves grown substantially since round 1.
+
+| ID | Was | Now | Evidence |
+|----|-----|-----|----------|
+| V2-3 | P1 open | ⚪ **Not a bug** — documented | 403 is the auth boundary's uniform answer for *any* unresolvable resource |
+| V2-10 | P3 open | ✅ **Fixed** | operator reference, query-type guide, `common-errors`, `evaluation` all live; `/llms.txt` 200 |
+| V2-11 | P1 | ✅ **Fixed** | old `env.`-prefixed URLs resolve again; `_envs` reports master as `master` |
+| V2-12 | **P0** | ✅ **Fixed** — all three defects | `$p`, generalization, and `select`/`$why` all verified |
+| V2-13 | **P0** | ✅ **Fixed** | `$or`/`$in` on a linked field now filter; no cross-tenant leak |
+| V2-14 | P1 | ⚪ **Not a bug** — was our schema error | the nullable-`Text` restriction is lifted, and the rule is documented |
+| V2-15 | P3 | ✅ **Fixed** | `__cache` hidden from `GET /schema`; querying it 404s, not 500s |
+| V2-16 | P2 | ✅ **Fixed** | `x-aitoai-response-time` present on v2 |
+| *evaluate baseline* | P2 | ✅ **Fixed** | `baseAccuracy` respects the tenant scope; `meanRank` agrees with v1 |
+
+Round-1 fixes all **hold** — no regressions: V2-1 (predict sharp: EEE `4400 @
+0.977`), V2-2 (`$on` returns `fs`, correct `lift`, and the zero-agreement
+exception value), V2-4 (400 / 404), V2-5, V2-6, V2-8 (structured propositions),
+V2-9 (`link`/`analyzer` round-trip).
+
+## The two P0s, in detail
+
+**V2-12 — `_match` now ranks.** The original repro, unchanged, on a payment
+whose reference number appears nowhere in the data:
+
+```json
+{"from": "bank_transactions",
+ "where": {"description": "KULJETUSLIIKE ROSENBERG-BOMAN OY VIITE 999999999 / 01.01.26",
+           "amount": 10734.5},
+ "match": "invoice_id", "limit": 5, "select": ["$p", "$value", "$why"]}
+```
+
+All three defects are gone. Hits carry a graded **`$p`** (top `2.09e-4`, tail
+`3.92e-5`) instead of a flat `$f: 0`. It **generalizes** — the true invoice
+(`CUST-0000-INV-000002`) ranks first from a novel reference number, on `amount`
+lift `14.68` plus description tokens. And `select` is **honoured**: `$why`
+comes back when asked, and an unknown column now fails loud with a 400. The
+docs match the behaviour verbatim — "ranked by calibrated probability …
+generalizing to evidence never seen verbatim … Honours `select` / `$why`".
+
+**V2-13 — the cross-tenant leak is closed.** Same table, same clause:
+
+| `where` on `article_id.customer_id` | before | now |
+|---|---|---|
+| *(omitted)* | 120 | 120 |
+| `"*"` | 20 | 20 |
+| `{"$or": ["*", "CUST-0000"]}` | **120** ❌ | **25** ✅ |
+| `{"$in": ["*", "CUST-0000"]}` | **120** ❌ | **25** ✅ |
+
+25 = the 20 global articles plus CUST-0000's own 5, and the top hits are
+`CUST-0000-INT-*` — no other tenant's `internal` content. The changelog records
+it as "Filters no longer dropped under a tenant scope". **This unblocks the
+help drawer**: the app's existing `help_service.py` query, byte-for-byte
+unchanged, returns correctly-scoped hits on v2 with the linked-field `select`
+(`title` / `body` / `category` / `tags`) resolving as before.
+
+## The two reclassifications
+
+**V2-3 is not a bug.** The complaint was that a malformed env path 403s instead
+of 404ing. Probing the boundary shows the 403 is *uniform*: a nonexistent
+database, a garbage path segment, and a completely unrouted path all return the
+same "not authorized" — while an unknown path **inside** a resolved database
+correctly 404s. That is a deliberate don't-confirm-what-exists policy at the
+auth layer, and 404ing instead would leak database existence to an unauthorized
+caller. The real cost was never the status code but the lost session, and that
+is now fixed where it belongs — in the docs, which spell the trap out:
+
+```
+✅  /db/{db}/env/{name}/api/v2/_query
+❌  /db/{db}/env.{name}/api/v2/_query      (dot — not an env selector)
+```
+
+with "a `403` that reads fine on `master` is almost always an **addressing**
+bug". Close as documented-behaviour.
+
+**V2-14 was our own schema error.** The real blocker behind that report was a
+`$text` union source declared `nullable` — and that restriction is now lifted
+(a view over a nullable `Text` column creates fine). The requirement is also
+documented: "The named source columns must themselves be `Text` … A non-`Text`
+source is rejected — declare the field `Text` in the source schema first."
+Nothing to fix in core.
+
+## The evaluate baseline (was: metrics not v1-comparable)
+
+`baseAccuracy` no longer ignores the `where` scope. On the demo's own query
+(50 test rows, `customer_id = "CUST-0000"`):
+
+| | v1 | v2 before | v2 now |
+|---|---|---|---|
+| `accuracy` | 0.98 | 0.98 | 0.98 |
+| `baseAccuracy` | 0.44 | **0.1723** (global majority class) | **0.4680** |
+| `meanRank` | 0.1 | 1.1 (1-based) | **0.1** |
+
+The inflated `+80.8pp` gain is gone. A residual, harmless convention difference
+remains: v1 takes the base rate over the **50-row test sample** (22/50 = 0.44),
+v2 over the **training population** (7464/15950 = 0.46796). Both are honest;
+they just aren't identical. The demo's own docs claiming these metrics are
+"not v1-comparable" now need updating.
+
+## Two new findings — both cosmetic, neither blocking
+
+- **N1 — `meanRank` docs contradict the behaviour.** `evaluation-v2.md` says
+  "Average position of the correct answer (**1 = always top**)", but the live
+  build returns `meanRank: 0.1` at 98% accuracy — i.e. 0-based, agreeing with
+  v1. The behaviour is the right one; the doc line is stale.
+- **N2 — a union-projection error message got less specific.** A branch
+  projecting a nonexistent `$text` source column now says *"union column
+  'content' has no source in any branch (every branch's projection is
+  absent)"*, which names neither the offending column nor the branch. The
+  older message did: *"union branch 'from':'contacts' projects 'title' from
+  $text source column 'search_title', which does not exist in 'contacts'"*.
+  Worth restoring the specifics.
+- **N3 (trivial) — env naming docs are incomplete.** `environments-v2.md` says
+  "Names starting with `_` are reserved"; the API actually rejects `_`, `env.`
+  **and** `release.` (and says so in its error). Match the doc to the error.
+
+**Method note.** Every probe ran against the `v2-demo` env, and the three
+scratch collections created for the V2-14 repro were deleted afterwards
+(`GET /schema` confirmed clean). Nothing touched master.
+
 ---
 
 *Compiled 2026-07-13 during the v2 migration (branch `feat/0017-aito-v2-migration`);
-round 2 added 2026-08-15. Ongoing log:
+round 2 added 2026-08-15; round 3 verified 2026-08-31. Ongoing log:
 `docs/notes/aito-v2-migration-feedback.md`; `$on` deep-dive:
 `docs/notes/aito-v2-on-operator-report.md`.*

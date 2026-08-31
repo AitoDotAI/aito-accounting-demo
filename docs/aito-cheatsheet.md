@@ -453,18 +453,25 @@ take either client unchanged.
 
 ### v2 gotchas that cost real time
 
-- **`select: ["feature"]` → 400** ("no such field"). Use `$value`.
+- **`select: ["feature"]` used to 400.** As of rev `38a234a6` (2026-08-31)
+  `feature` and `field` are accepted as v1 compat aliases on any ranked-value
+  query, alongside `$value`. Prefer `$value` in new code.
 - **`predict` returns ~10 candidates by default.** Pass `limit` to cover a
   target field's full value set, or alternatives silently go missing.
 - **`relate`/`$patterns` need a *collection*.** A legacy (v1-uploaded) table
   returns **501 "supported on collections only"**.
-- **`_match` is not usable for matching.** It returns `$f` (a raw count), never
-  `$p`/`$why`, silently ignores `select`, and ties every candidate at 0 for any
-  input it hasn't already seen. Payment matching stays on v1 (core issue V2-12).
-- **`recommend` silently drops disjunctive filters on linked fields.** Plain
-  equality (`"article_id.customer_id": "*"`) is honored; `{"$or": [...]}`,
-  proposition-level `$or`, and `$in` are all discarded **with a 200** — so a
-  multi-tenant eligibility clause leaks other tenants' rows. The same clause
-  filters correctly on plain `_query`. Help ranking stays on v1 (V2-13).
+- **`_match` was not usable for matching before rev `38a234a6`** — it returned
+  `$f` (a raw count), never `$p`/`$why`, silently ignored `select`, and tied
+  every candidate at 0 for unseen input (core issue V2-12). **Fixed
+  2026-08-31**: it now returns a graded `$p`, generalizes to evidence never
+  seen verbatim, and honours `select` / `$why`. (This demo's payment matching
+  uses `_predict` on the linked `bank_transactions.invoice_id`, not `_match`.)
+- **`recommend` silently dropped disjunctive filters on linked fields** before
+  rev `38a234a6`: plain equality was honored but `{"$or": [...]}` and `$in`
+  were discarded **with a 200**, leaking other tenants' rows through a
+  multi-tenant eligibility clause (core issue V2-13). **Fixed 2026-08-31** —
+  `$or` and `$in` on a linked field now filter correctly. Worth keeping in mind
+  as a *shape* to test for: a dropped filter fails open, with a 200 and no
+  error, so nothing but a row count catches it.
 - **Bulk load then `optimize`.** `POST /data/{name}/optimize` after a batch
   load; predict is degraded until it runs (`relate` is already correct).

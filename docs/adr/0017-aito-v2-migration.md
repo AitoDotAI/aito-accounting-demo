@@ -32,6 +32,23 @@
 >
 > The env was also renamed `env.v2-demo` → `v2-demo` by the core (the `env.`
 > prefix is now reserved) — core issue **V2-11**.
+>
+> **Update 2026-08-31.** Re-verified against the first *current* deploy (rev
+> `38a234a6`). **Both blockers above are fixed**, so neither "stays on v1"
+> claim holds any longer:
+>
+> - **`_match`** returns a graded `$p`, generalizes to unseen evidence, and
+>   honours `select` / `$why`. (Payment matching had already migrated anyway —
+>   it uses `_predict` on the linked `bank_transactions.invoice_id`, not
+>   `_match`.)
+> - **Help `recommend`** honours `$or` / `$in` on linked fields; the drawer's
+>   own query returns correctly-scoped results on v2. The help endpoints are
+>   still wired to v1 in the code — that is now ordinary work, not a blocker.
+>
+> Also fixed: the `_evaluate` baseline now respects the tenant scope, and
+> `meanRank` agrees with v1, so the quality metrics are v1-comparable again.
+> Old `env.`-prefixed URLs resolve again (**V2-11**). Full round-3 evidence:
+> `docs/notes/aito-v2-core-issues.md`.
 
 ## Context
 
@@ -143,9 +160,10 @@ count query — is unchanged from v1.
 - Load: `POST …/api/v2/data/{name}/batch` with a JSON array of rows.
 
 See `docs/notes/aito-v2-migration-feedback.md` for the full probe log, and
-`docs/notes/aito-v2-core-issues.md` for the open core issues — notably **V2-12**
-(`_match` cannot rank) and **V2-13** (`recommend` drops linked-field
-disjunctions), the two that kept a feature on v1.
+`docs/notes/aito-v2-core-issues.md` for the core issues. The two that kept a
+feature on v1 — **V2-12** (`_match` cannot rank) and **V2-13** (`recommend`
+drops linked-field disjunctions) — were both fixed in core on 2026-08-31; see
+round 3 in that file.
 
 ## Acceptance criteria
 
@@ -173,8 +191,8 @@ of scope for this ADR.
   builds and proves the v2 path; the cutover is a later decision.
 - Migrating `_similarity` and `_aggregate` — still unmapped, and not on the
   demo path. (`_evaluate` was migrated 2026-08-15; `_match` and help
-  `recommend` were attempted and are blocked on core issues V2-12 / V2-13 —
-  see the update at the top.)
+  `recommend` were attempted and were blocked on core issues V2-12 / V2-13,
+  both since fixed — see the 2026-08-31 update at the top.)
 - Any change to fixture *generation* (`generate_fixtures.py`). v2 consumes the
   same fixtures; only the upload target/format changes.
 - Performance tuning (optimize/backfill semantics on collections at 128k+ rows)

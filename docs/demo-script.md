@@ -274,20 +274,24 @@ three exceptions worth knowing before you present:
    refinements v1 missed (e.g. the Bronex rule tightens from 144/186 to 144/145
    once `amount_band = large` is added to the conjunction).
 
-3. **Step 7 (Quality) — read accuracy, not the baseline.** Accuracy is sound and
-   comparable (v1 0.96 vs v2 0.98 on an identical evaluation). But on v2
-   `baseAccuracy`, `accuracyGain` and `meanRank` are **not** v1-comparable: v2
-   computes the baseline over the whole collection rather than the evaluated
-   tenant, which inflates the displayed gain, and its `meanRank` is 1-based
-   where v1's is 0-based. If someone asks about the baseline number on v2, say
-   it's a known core issue rather than defending the figure. Details in
-   [the verification report](verification/aito-v2-ui.md) (D5).
+3. **Step 7 (Quality) — the metrics are comparable again.** This used to carry a
+   warning: v2 computed `baseAccuracy` over the whole collection rather than the
+   evaluated tenant, inflating the displayed gain, and its `meanRank` was
+   1-based where v1's was 0-based. **Both were fixed in core on 2026-08-31**
+   (rev `38a234a6`), re-measured on the demo's own 50-row evaluation: v1 `0.44`
+   vs v2 `0.4680` baseline, `meanRank` `0.1` on both. The small baseline delta
+   is a sampling convention (v1 measures the base rate on the test sample, v2 on
+   the training population) — say that if asked, and quote the numbers as they
+   stand. Details in [the verification report](verification/aito-v2-ui.md) (D5).
 
 ### What is not on v2 yet
 
-**The help drawer (step: Help / "Ask" panel) still runs on v1.** v2's
-`recommend` silently drops disjunctive filters on linked fields, which would
-break the demo's per-tenant article eligibility. It is a known core issue and
-deliberately not worked around. Everything else — invoice processing, form fill,
+**The help drawer (step: Help / "Ask" panel) still runs on v1.** It was blocked
+on a core issue — v2's `recommend` silently dropped disjunctive filters on
+linked fields, which would have broken the demo's per-tenant article
+eligibility. **That was fixed on 2026-08-31** (rev `38a234a6`) and the drawer's
+own query now returns correctly-scoped results on v2, so this is ordinary
+migration work rather than a blocker; the code just hasn't been switched yet.
+Everything else — invoice processing, form fill,
 payment matching, anomaly detection, rule mining, and the quality dashboard —
 runs on v2.

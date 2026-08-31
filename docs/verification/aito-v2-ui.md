@@ -6,6 +6,12 @@
 > which was on `3de8f4f7` throughout. That build is not current — core fixes
 > landing in main are not visible from here, so nothing below should be read as
 > "core has not fixed this", only as "the deployed build behaves this way".
+>
+> **Superseded in part, 2026-08-31 (rev `38a234a6`).** The deploy is now
+> current and every core issue this pass depended on has been re-verified —
+> see `docs/notes/aito-v2-core-issues.md`, round 3. Two items below have
+> changed: **D5 is resolved** and **Help is no longer blocked**. The
+> corrections are inline.
 **Branch:** `feat/0017-aito-v2-migration` · **Method:** app served from
 `frontend/out`, driven in Chrome; every view loaded and its rendered text
 captured. v1 comparison run on the same build with `AITO_V2_ENV` unset.
@@ -26,7 +32,7 @@ fixed during the pass; one blocker and one performance gap remain.
 | Quality · Prediction Quality | ✅ | **97% accuracy**, 50-case table. Baseline/gain/meanRank render but are not v1-comparable — see D5 |
 | Quality · Evaluations Matrix | ✅ | GL 98%, approver 94%, bank-txn 100%, help-click 73% |
 | Multi-tenancy landing | ✅ | Renders; shared-vendor cards populated |
-| Help | — | Still v1 by design — blocked on core **V2-13** |
+| Help | — | Still v1 in this pass — core **V2-13** has since been fixed, so it can migrate |
 
 ## Defects found and fixed in this pass
 
@@ -117,10 +123,26 @@ directly, so **on v2 those three cells should not be read as v1-comparable**
 until the core issue is resolved. Filed on `td-20260816070052009786` with the
 full root cause. Accuracy, geomMeanP and the per-case table are unaffected.
 
+> **D5 is resolved as of rev `38a234a6` (re-measured 2026-08-31).**
+> `baseAccuracy` now respects the `customer_id` scope — the same 50-row
+> evaluation gives v1 `0.44` / v2 `0.4680` (was `0.1723`), so the inflated
+> `+80.8pp` gain is gone. `meanRank` reads `0.1` on **both**. One harmless
+> convention difference is left: v1 takes the base rate over the 50-row test
+> sample (22/50), v2 over the training population (7464/15950). Both are
+> honest, so the three cells are comparable again — read the small
+> `baseAccuracy` delta as a sampling difference, not an error.
+
 **Blocked — Help.** Still on v1. Core **V2-13**: v2's `recommend` silently drops
 disjunctive filters on linked fields, so the tenant-eligibility clause is
 ignored and other tenants' internal articles are returned with a 200.
 Re-verified still broken on rev `3de8f4f7`. Not worked around.
+
+> **Unblocked as of rev `38a234a6` (2026-08-31).** `$or` and `$in` on a linked
+> field now filter correctly. `help_service.py`'s ranking query, sent
+> unchanged, returns 25 correctly-scoped candidates (20 global + CUST-0000's
+> own 5) with the linked-field `select` resolving as before. The drawer is
+> still wired to v1 in the code — migrating it is now ordinary work, not a
+> blocked item.
 
 ## Not verified
 
