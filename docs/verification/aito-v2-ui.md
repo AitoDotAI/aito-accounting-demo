@@ -98,6 +98,25 @@ bug before the v1 comparison showed it was purely cold-start.
 cutover should be paired with warming. This is the largest remaining item and
 is demo-side work, not a core issue.
 
+> **D4 is resolved (2026-08-31).** `./do precompute-v2` runs exactly that pass;
+> the store namespaces v2 output under `v2:` keys and `data/precomputed/v2/`,
+> so it can neither be read by a v1 process nor overwrite the v1 bootstrap
+> files in git. Re-measured on CUST-0000 with `./do verify-demo`:
+>
+> | view | cold | precomputed |
+> |---|---|---|
+> | `matching/pairs` | 254–276 s | 0.0 s |
+> | `quality/predictions` | 123 s | 0.0 s |
+> | `rules/candidates` | 112 s | 0.0 s |
+> | `anomalies/scan` | 37–56 s | 0.0 s |
+> | `formfill/templates` | 21 s | 0.0 s |
+> | `quality/overview` | 16–53 s | 0.0 s |
+>
+> All 11 demo steps pass, and `quality/predictions` reads 98.0% against a
+> 46.8% baseline — the tenant-scoped baseline, so D5's fix shows end to end.
+> The remaining cost is that a pass is ~8 min per tenant, so only the tenants
+> you intend to show are precomputed.
+
 **D5 — `_evaluate`'s baseline and rank are not comparable to v1.**
 Accuracy itself is sound and comparable (v1 0.96 vs v2 0.98 on an identical
 50-row evaluation). Three sibling metrics are not:

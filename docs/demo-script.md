@@ -237,8 +237,9 @@ collections, and first-class environments) in a branched environment, without
 touching the live v1 demo:
 
 ```bash
-./do v2-build     # build the dataset as v2 collections in env `v2-demo` (idempotent)
-./do dev-v2       # serve the demo against v2
+./do v2-build      # build the dataset as v2 collections in env `v2-demo` (idempotent)
+./do precompute-v2 # compute the demo's views through v2 (once; see below)
+./do dev-v2        # serve the demo against v2
 ```
 
 `./do dev` (no `AITO_V2_ENV`) still runs the v1 path unchanged — no v2 code
@@ -250,23 +251,30 @@ executes unless the variable is set. See
 Steps 1–7 above are **identical on v2** and the numbers are comparable, with
 three exceptions worth knowing before you present:
 
-1. **Warm it first.** v2 deliberately bypasses the precomputed bootstrap (that
-   JSON is v1-derived, and serving it would hide v2's real numbers), so the
-   first load of a heavy view computes live — 15 s for the quality overview up
-   to ~4½ min for payment matching. Warm both demo tenants before you start:
+1. **Precompute it first.** v2 will not serve the shipped precomputed
+   bootstrap — that JSON is v1-derived, and serving it would show numbers no v2
+   query produced. So without a v2 precompute, the first load of a heavy view
+   computes live: 15 s for the quality overview, up to ~4½ min for payment
+   matching. `./do precompute-v2` does that pass and writes to its own
+   namespace (`v2:` keys, `data/precomputed/v2/`), leaving the v1 output alone.
 
-   ```bash
-   for CID in CUST-0000 CUST-0254; do
-     for EP in invoices/pending formfill/templates rules/candidates \
-               anomalies/scan quality/overview quality/predictions \
-               quality/evaluations quality/audit matching/pairs; do
-       curl -s -o /dev/null "http://localhost:8200/api/$EP?customer_id=$CID"
-     done
-   done
-   ```
+   Measured on CUST-0000 with `./do verify-demo`, one pass takes each heavy
+   view from 16–276 s to **effectively zero**:
 
-   After that everything serves in milliseconds and stays warm for an hour.
-   Switching to a *third* tenant mid-demo will hit a cold path — don't.
+   | view | cold | precomputed |
+   |---|---|---|
+   | `matching/pairs` | 254–276 s | 0.0 s |
+   | `quality/predictions` | 123 s | 0.0 s |
+   | `rules/candidates` | 112 s | 0.0 s |
+   | `anomalies/scan` | 37–56 s | 0.0 s |
+   | `formfill/templates` | 21 s | 0.0 s |
+   | `quality/overview` | 16–53 s | 0.0 s |
+
+   It costs ~8 min per tenant, so precompute the tenants you plan to show
+   (`--customers CUST-0000,CUST-0254`) rather than all 255. **Switching to a
+   tenant you did not precompute will hit a cold path mid-demo — don't.**
+   Check before presenting with `./do verify-demo`, which flags any step slow
+   enough to read as broken.
 
 2. **Step 6 (Rule Mining) gets better on v2, and it's worth saying so.** v2
    mines a richer ruleset from the same data — **41 candidates / 34 strong /
