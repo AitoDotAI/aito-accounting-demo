@@ -255,6 +255,40 @@ def audit_tenant_isolation(client, customer: str) -> str:
     return "invoices / bank_transactions / overrides correctly scoped"
 
 
+def audit_accuracy(client, customer: str) -> str:
+    """Every predictable field, scored against its own baseline.
+
+    Coherence is not quality: a view can be perfectly self-consistent and
+    still show a model that has learned nothing. A field whose accuracy
+    equals its base rate is a field where the demo is claiming credit for
+    guessing the majority class, and a visitor who opens it in the
+    Quality matrix sees exactly that.
+    """
+    from src.evaluation_service import run_evaluation
+
+    fields = ["gl_code", "approver", "cost_centre", "category", "vat_pct", "payment_method"]
+    flat = []
+    for field in fields:
+        result = run_evaluation(client, customer, "invoices", field,
+                                ["vendor", "amount", "category"], limit=40)
+        if "error" in result:
+            bad("accuracy", f"{field}: evaluation failed — {result['error'][:80]}")
+            continue
+        k = result["kpis"]
+        accuracy = k["accuracy_pct"]
+        baseline = k["base_accuracy_pct"]
+        check("accuracy", accuracy >= baseline - 1,
+              f"{field}: accuracy {accuracy}% is BELOW its base rate {baseline}%")
+        if accuracy - baseline < 1.0:
+            flat.append(f"{field} ({accuracy}% vs {baseline}% base)")
+    if flat:
+        bad("accuracy",
+            "no better than guessing the majority class: " + "; ".join(flat) +
+            " — offered as predict targets in the Quality matrix, so a visitor "
+            "who opens one sees a model that has learned nothing")
+    return f"{len(fields)} fields scored, {len(flat)} with no gain"
+
+
 AUDITS = [
     ("invoice processing", audit_invoice_processing),
     ("rule mining", audit_rule_mining),
@@ -264,6 +298,9 @@ AUDITS = [
     ("tenant isolation", audit_tenant_isolation),
 ]
 
+# Slow (one _evaluate per field), so opt-in.
+SLOW_AUDITS = [("field accuracy", audit_accuracy)]
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
@@ -271,6 +308,9 @@ def main() -> int:
     parser.add_argument("--v2", action="store_true")
     parser.add_argument("--env", default="v2-demo")
     parser.add_argument("--only", help="run only audits whose name contains this")
+    parser.add_argument("--accuracy", action="store_true",
+                        help="also score every predictable field against its baseline "
+                             "(slow: one _evaluate per field)")
     args = parser.parse_args()
 
     config = load_config()
@@ -283,7 +323,7 @@ def main() -> int:
         target = "v1"
 
     print(f"Portfolio coherence audit — {target}, customer {args.customer}\n")
-    for name, fn in AUDITS:
+    for name, fn in AUDITS + (SLOW_AUDITS if args.accuracy else []):
         if args.only and args.only not in name:
             continue
         before = len(FINDINGS)

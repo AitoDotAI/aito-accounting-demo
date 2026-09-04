@@ -33,7 +33,7 @@ Commands:
     aito-check        Assert every Aito query pattern against live data (--v2)
     verify-demo       Walk the demo path against a running server
     eval-matching     Measure payment->invoice matching accuracy vs ground truth
-    audit             Coherence audit across every view (--v2 for an env)
+    audit             Coherence audit across every view (--accuracy, --v2)
     book              Run book tests (Aito examination notebooks)
     book-update       Update book test HTTP snapshots (not the baselines)
     book-accept       Accept current output as the expected baseline (review first!)
