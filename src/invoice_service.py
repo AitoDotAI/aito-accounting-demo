@@ -141,7 +141,17 @@ def _walk_why_grouped(node: dict, out: list[dict]) -> None:
             if isinstance(cond, dict) and "$has" in cond:
                 target_value = str(cond["$has"])
                 break
-        out.append({"type": "base", "base_p": round(base_p, 4), "target_value": target_value})
+        # Do NOT round to a fixed number of decimals. A GL-code base rate
+        # is ~0.46 and survives, but predicting a link target such as
+        # `invoice_id` has a base rate near 1/128000 — round(…, 4) turns
+        # that into exactly 0.0, so the popup showed "0%" and the factor
+        # chain started from a literal zero. Significant figures keep both
+        # readable; the UI decides how to render a very small value.
+        out.append({
+            "type": "base",
+            "base_p": float(f"{base_p:.4g}"),
+            "target_value": target_value,
+        })
     elif t == "relatedPropositionLift":
         lift = float(node.get("value", 0) or 0)
         # Drop noise: lifts close to 1.0 contribute nothing.

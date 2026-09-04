@@ -25,10 +25,20 @@ export interface HoverHighlight {
 export default function WhyCards({
   why,
   confidence,
+  blendNote,
   onHoverFactor,
 }: {
   why: WhyFactor[];
   confidence: number;
+  /**
+   * Set when `confidence` is NOT the product of the factors above —
+   * payment matching blends Aito's probability with an amount-proximity
+   * score, so its final number cannot be reached by multiplying the
+   * $why chain. The footer then shows the chain's own product and this
+   * note explains the extra step, instead of printing an equals sign
+   * between two unrelated quantities (which read as "0% × 0.7 = 58%").
+   */
+  blendNote?: string;
   onHoverFactor?: (h: HoverHighlight) => void;
 }) {
   const base = why.find((f) => f.type === "base");
@@ -38,6 +48,18 @@ export default function WhyCards({
   const baseP = base?.base_p ?? 0;
   const lifts = patterns.map((p) => p.lift ?? 1);
   const hover = onHoverFactor ?? (() => {});
+
+  // The chain's own result. When there is no blend this equals the
+  // model's probability, so the equation is checkable by eye.
+  const chainProduct = lifts.reduce((acc, l) => acc * l, baseP);
+
+  // A link-target base rate is ~1/128000. Printing that as "0%" makes
+  // the whole line read as broken, so show the smallest honest figure.
+  const pct = (v: number) => {
+    if (v > 0 && v < 0.0001) return "<0.01%";
+    if (v > 0 && v < 0.01) return `${(v * 100).toFixed(2)}%`;
+    return `${(v * 100).toFixed(0)}%`;
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -56,7 +78,7 @@ export default function WhyCards({
             </div>
           </div>
           <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
-            {(baseP * 100).toFixed(0)}%
+            {pct(baseP)}
           </div>
         </div>
       )}
@@ -167,12 +189,24 @@ export default function WhyCards({
           fontSize: 12, color: "var(--text2)", gap: 4,
           fontFamily: "'IBM Plex Mono', monospace",
         }}>
-          <span>{(baseP * 100).toFixed(0)}%</span>
+          <span>{pct(baseP)}</span>
           {lifts.map((lift, i) => (
             <span key={i}> × {lift.toFixed(1)}</span>
           ))}
           <span style={{ color: "var(--text3)" }}> = </span>
-          <span style={{ fontWeight: 700, color: "var(--gold-dark)" }}>{(confidence * 100).toFixed(0)}%</span>
+          <span style={{ fontWeight: 700, color: "var(--gold-dark)" }}>
+            {pct(blendNote ? chainProduct : confidence)}
+          </span>
+        </div>
+      )}
+
+      {blendNote && (
+        <div style={{
+          padding: "6px 10px", fontSize: 11, color: "var(--text3)",
+          borderTop: "1px dashed var(--border)", textAlign: "center",
+        }}>
+          {blendNote}{" "}
+          <strong style={{ color: "var(--gold-dark)" }}>{pct(confidence)}</strong>
         </div>
       )}
     </div>
