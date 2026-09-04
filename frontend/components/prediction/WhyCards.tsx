@@ -191,7 +191,9 @@ export default function WhyCards({
         }}>
           <span>{pct(baseP)}</span>
           {lifts.map((lift, i) => (
-            <span key={i}> × {lift.toFixed(1)}</span>
+            // Same reason as pct(): a counter-evidence lift can be 3.4e-06,
+            // and "× 0.0" reads as broken rather than as very small.
+            <span key={i}> × {lift > 0 && lift < 0.05 ? "<0.05" : lift.toFixed(1)}</span>
           ))}
           <span style={{ color: "var(--text3)" }}> = </span>
           <span style={{ fontWeight: 700, color: "var(--gold-dark)" }}>

@@ -33,6 +33,7 @@ Commands:
     aito-check        Assert every Aito query pattern against live data (--v2)
     verify-demo       Walk the demo path against a running server
     eval-matching     Measure payment->invoice matching accuracy vs ground truth
+    audit             Coherence audit across every view (--v2 for an env)
     book              Run book tests (Aito examination notebooks)
     book-update       Update book test HTTP snapshots (not the baselines)
     book-accept       Accept current output as the expected baseline (review first!)
@@ -374,6 +375,14 @@ cmd_eval_matching() {
   uv run python -u scripts/evaluate_matching.py "$@"
 }
 
+# Coherence audit: hunt for results that are WRONG but still return 200 —
+# an explanation shown under a value it does not describe, parts that
+# don't sum to their total, a ratio that contradicts its own counts.
+cmd_audit() {
+  cd "$SCRIPT_DIR"
+  uv run python -u scripts/audit_portfolio.py "$@"
+}
+
 # End-to-end check of the demo path against an already-running server.
 # Kept separate from `check` because it needs `./do dev` in another shell.
 cmd_verify_demo() {
@@ -408,6 +417,7 @@ case "${1:-help}" in
   aito-check)      cmd_aito_check "${@:2}" ;;
   verify-demo)     cmd_verify_demo "${@:2}" ;;
   eval-matching)   cmd_eval_matching "${@:2}" ;;
+  audit)           cmd_audit "${@:2}" ;;
   dev-v2)          cmd_dev_v2 ;;
   fetch-companies) cmd_fetch_companies ;;
   optimize)        cmd_optimize ;;

@@ -24,13 +24,19 @@ export default function LiftHint({ value, prefix = "lift " }: LiftHintProps) {
     tone === "good" ? "var(--gold-dark)" :
     tone === "weak" ? "var(--text3)" :
     "var(--red)";
+  // A strong counter-evidence lift can be 3.4e-06. toFixed(1) prints that
+  // as "0.0", which reads as a broken value rather than a very small one.
+  const shown =
+    value > 0 && value < 0.05 ? "<0.05" :
+    value < 10 ? value.toFixed(1) :
+    Math.round(value).toString();
   const tooltip =
     `Lift = how many times more often this combination occurs than random.\n` +
     `> 20× very strong · 5–20× strong · 1–5× weak · < 1× anti-correlated.\n` +
-    `This is ${value.toFixed(1)}× — ${tone}.`;
+    `This is ${value.toPrecision(3)}× — ${tone}.`;
   return (
     <span title={tooltip} style={{ color, fontWeight: 600, cursor: "help", borderBottom: "1px dotted currentColor" }}>
-      {prefix}{value.toFixed(1)}×
+      {prefix}{shown}×
     </span>
   );
 }

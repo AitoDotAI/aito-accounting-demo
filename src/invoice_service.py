@@ -186,7 +186,14 @@ def _walk_why_grouped(node: dict, out: list[dict]) -> None:
 
         out.append({
             "type": "pattern",
-            "lift": round(lift, 2),
+            # Significant figures, not decimal places — for the same reason
+            # as base_p above. A strong counter-evidence factor can have a
+            # lift of 3.4e-06 ("this evidence makes the value essentially
+            # impossible"); round(_, 2) turns that into 0.0, which renders
+            # as "x 0.0" and zeroes the whole multiplicative chain. The
+            # magnitude is the information here, so keep it and let the UI
+            # decide how to show a very small one.
+            "lift": float(f"{lift:.4g}"),
             "propositions": propositions,
             "highlights": highlights,
         })
