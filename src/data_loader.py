@@ -74,6 +74,13 @@ SCHEMAS = {
             "due_days": {"type": "Int", "nullable": False},
             "description": {"type": "Text", "nullable": False},
             "invoice_date": {"type": "String", "nullable": False},
+            # The reference the vendor printed on this invoice (a Finnish
+            # `viite`, or an ISO 11649 `RF` for foreign creditors). A
+            # payment can only quote a reference that exists here first —
+            # see `invoice_reference` in data/generate_fixtures.py. Text,
+            # not String, so the analyzer tokenizes it the same way the
+            # bank description's copy is tokenized and the two can match.
+            "reference": {"type": "Text", "nullable": False},
             "routed": {"type": "Boolean", "nullable": False},
             "routed_by": {"type": "String", "nullable": False},
         },

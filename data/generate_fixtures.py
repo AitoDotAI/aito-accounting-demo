@@ -291,6 +291,24 @@ def rf_reference(rng: random.Random) -> str:
     return f"RF{check:02d} " + " ".join(digits[i:i+4] for i in range(0, len(digits), 4))
 
 
+def invoice_reference(vendor_country: str, rng: random.Random) -> str:
+    """The reference the VENDOR prints on the invoice it issues.
+
+    In Finnish B2B an invoice essentially always carries one: a domestic
+    creditor issues a `viite` (mod-10), a foreign one an ISO 11649 `RF`
+    reference. The payer then quotes it back when paying.
+
+    The direction matters and used to be inverted here: references were
+    invented on the payment side, so 95% of payments quoted a creditor
+    reference that no invoice had ever carried, and none of the digits
+    appeared anywhere on the target invoice. A payer cannot quote a
+    reference the creditor never issued.
+    """
+    if vendor_country == "FI":
+        return f"VIITE {finnish_reference(rng)}"
+    return rf_reference(rng)
+
+
 def vendor_to_bank_desc(vendor_name: str, rng: random.Random) -> str:
     """Convert a vendor name to a bank-statement-style description.
 
@@ -344,36 +362,35 @@ def format_bank_description(
 
     if bank == "OP Bank":
         # OP: vendor / VIITE / PVM, all-caps, " / " separator, ~70 char cap
-        parts = [vendor_part, ref]
+        parts = [vendor_part] + ([ref] if ref else [])
         if pvm:
             parts.append(f"PVM {pvm}")
         out = " / ".join(parts)
     elif bank == "Nordea":
         # Nordea: vendor with date stamp inline; viite either prefixed
         # "Viite:" or appended; mixed-case-ish but mostly upper
-        if "VIITE" in ref:
-            ref_part = ref.replace("VIITE ", "Viite: ")
-        else:
-            ref_part = ref
-        out = f"{vendor_part} {pvm_long} {ref_part}"
+        ref_part = ref.replace("VIITE ", "Viite: ") if "VIITE" in ref else ref
+        out = f"{vendor_part} {pvm_long} {ref_part}".rstrip()
     elif bank == "Aktia":
         # Aktia exports use tab-like separation with field codes
-        out = f"{vendor_part}\t{pvm}\tref={ref}"
+        out = f"{vendor_part}\t{pvm}\tref={ref}" if ref else f"{vendor_part}\t{pvm}"
     elif bank == "Danske Bank":
         # Danske: leading bank code, then vendor, then pretty short
-        out = f"DB-FIN {vendor_part[:25]} {ref}"
+        out = f"DB-FIN {vendor_part[:25]} {ref}".rstrip()
     elif bank == "S-Pankki":
         # S-Pankki: prefer compact form, often drops viite if RF given
-        if ref.startswith("RF"):
+        if not ref:
+            out = f"{vendor_part} / {pvm}"
+        elif ref.startswith("RF"):
             out = f"{vendor_part} {ref}"
         else:
             out = f"{vendor_part} {ref} / {pvm}"
     elif bank == "Handelsbanken":
         # Handelsbanken: more verbose, includes saaja/maksaja text
-        out = f"{vendor_part}  Saaja  {ref}  {pvm}"
+        out = f"{vendor_part}  Saaja  {ref}  {pvm}" if ref else f"{vendor_part}  Saaja  {pvm}"
     else:
         # Default — generic OP-like
-        out = f"{vendor_part} / {ref} / PVM {pvm}"
+        out = f"{vendor_part} / {ref} / PVM {pvm}" if ref else f"{vendor_part} / PVM {pvm}"
 
     # Bank-specific line-length caps
     cap = 70 if bank in ("Nordea", "Aktia", "Handelsbanken") else 60
@@ -713,6 +730,10 @@ def generate_invoices_for_customer(
             "due_days": vdef["due_days"],
             "description": desc,
             "invoice_date": inv_date,
+            # The vendor's own reference, printed on the invoice. A payer
+            # can only quote a reference the creditor issued, so this has
+            # to exist before any payment can carry it.
+            "reference": invoice_reference(vdef["country"], rng),
             "routed": routed,
             "routed_by": routed_by,
         }
@@ -721,14 +742,15 @@ def generate_invoices_for_customer(
         # Bank transaction for ~60% of routed invoices
         if routed and rng.random() < 0.60:
             vendor_part = vendor_to_bank_desc(vdef["name"], rng)
-            # Reference number style: Finnish viite (75%), RF reference (20%), free-text note (5%)
-            ref_choice = rng.random()
-            if ref_choice < 0.75:
-                ref = f"VIITE {finnish_reference(rng)}"
-            elif ref_choice < 0.95:
-                ref = rf_reference(rng)
-            else:
-                ref = f"LASKU {rng.randint(2024, 2026)}-{rng.randint(1000, 9999)}"
+            # The payer quotes the INVOICE's reference, or quotes nothing.
+            #
+            # This split is the point of the whole matching feature. When
+            # the reference is quoted, reconciliation is a lookup and no
+            # model is needed — and the demo should say so. The ~35% that
+            # arrive without one are what actually occupies an AP clerk,
+            # and are the case Aito is being asked to solve from vendor,
+            # amount and date.
+            ref = invoice["reference"] if rng.random() < 0.65 else ""
 
             bank = rng.choice(BANKS)
             bank_desc = format_bank_description(

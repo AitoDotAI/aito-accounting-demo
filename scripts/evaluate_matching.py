@@ -3,8 +3,8 @@
 
     ./do eval-matching                     # 25 payments, CUST-0000
     ./do eval-matching --n 50 --pool 60    # bigger sample, harder pool
-    ./do eval-matching --no-reference      # strip the Viite/RF number first
-    ./do eval-matching --compare-reference # both, side by side
+    ./do eval-matching --v2 --env v2-ref   # against a v2 environment
+    ./do eval-matching --split-on-reference  # quoted vs unquoted, separately
 
 Every other predictive view in this demo can state its accuracy —
 `_evaluate` measures GL coding and approver routing directly. Payment
@@ -39,9 +39,9 @@ from src.aito_client import AitoClient  # noqa: E402
 from src.config import load_config  # noqa: E402
 from src.matching_service import match_bank_txn_to_invoice  # noqa: E402
 
-# Finnish bank reference formats the generator emits. These digits are
-# noise: an invoice carries no reference field, so nothing in the ledger
-# can ever match them. Stripping them measures how much they cost.
+# Finnish reference formats. The invoice carries the reference the vendor
+# issued; a payment either quotes it or it does not. Stripping it from a
+# payment simulates the payer who paid without one.
 REFERENCE = re.compile(
     r"(VIITE[:\s]+[\d\s]+|Viite:?\s*[\d\s]+|RF\d{2}[\s\d]+|LASKU\s+[\d\-]+)",
     re.IGNORECASE,
@@ -82,18 +82,22 @@ def load_sample(client: AitoClient, customer_id: str, n: int, pool_size: int, se
         "invoices", {"customer_id": customer_id}, limit=pool_size + len(truth_ids)
     ).get("hits", [])
 
+    def as_ledger_row(row: dict) -> dict:
+        # `reference` is kept for reporting only — the matcher is handed
+        # invoice_id / vendor / amount, exactly as the app does.
+        return {
+            "invoice_id": row["invoice_id"], "vendor": row["vendor"],
+            "amount": row["amount"], "reference": row.get("reference", ""),
+        }
+
     pool: dict[str, dict] = {}
     for row in targets + decoys:
-        pool.setdefault(row["invoice_id"], {
-            "invoice_id": row["invoice_id"], "vendor": row["vendor"], "amount": row["amount"],
-        })
+        pool.setdefault(row["invoice_id"], as_ledger_row(row))
         if len(pool) >= pool_size + len(truth_ids):
             break
     # Guarantee every truth survived the cap.
     for row in targets:
-        pool.setdefault(row["invoice_id"], {
-            "invoice_id": row["invoice_id"], "vendor": row["vendor"], "amount": row["amount"],
-        })
+        pool.setdefault(row["invoice_id"], as_ledger_row(row))
     return payments, list(pool.values())
 
 
@@ -183,9 +187,20 @@ def main() -> int:
                         help="strip the Viite/RF number from the payment description")
     parser.add_argument("--compare-reference", action="store_true",
                         help="measure with AND without the reference number")
+    parser.add_argument("--split-on-reference", action="store_true",
+                        help="report quoted-reference and no-reference payments separately — "
+                             "the split that says where a model is actually needed")
+    parser.add_argument("--v2", action="store_true", help="evaluate against a v2 environment")
+    parser.add_argument("--env", default="v2-demo", help="v2 environment name")
     args = parser.parse_args()
 
-    client = AitoClient(load_config())
+    config = load_config()
+    if args.v2:
+        from src.aito_v2_client import AitoV2Client
+        client = AitoV2Client(config.aito_api_url, config.aito_api_key, env=args.env)
+        print(f"(v2 environment '{args.env}')")
+    else:
+        client = AitoClient(config)
     payments, pool = load_sample(client, args.customer, args.n, args.pool, args.seed)
     print(f"Payment -> invoice matching, {args.customer}: "
           f"{len(payments)} payments against {len(pool)} open invoices")
@@ -198,6 +213,26 @@ def main() -> int:
         return 0
 
     rows = evaluate(client, payments, pool, strip=args.no_reference, workers=args.workers)
+
+    if args.split_on_reference:
+        # Which payments actually quoted their invoice's reference. This
+        # is the split worth reporting: a quoted reference reconciles by
+        # lookup, and the demo should not claim credit for it.
+        by_id = {inv["invoice_id"]: inv for inv in pool}
+        def quoted(row):
+            ref = (by_id.get(row["truth"], {}).get("reference") or "")
+            core = re.sub(r"\D", "", ref)
+            return bool(core) and core in re.sub(r"\D", "", row["description"])
+        with_ref = [r for r in rows if quoted(r)]
+        without = [r for r in rows if not quoted(r)]
+        if with_ref:
+            report("payments that QUOTED the invoice reference", with_ref, len(pool), args.detail)
+        if without:
+            report("payments with NO reference — the case that needs a model",
+                   without, len(pool), args.detail)
+        report("all payments", rows, len(pool), args.detail)
+        return 0
+
     label = "reference stripped" if args.no_reference else "as generated"
     report(label, rows, len(pool), args.detail)
     return 0

@@ -105,6 +105,51 @@ score 100%.
 `bank_transactions.invoice_id` and reports accuracy, coverage, precision
 on asserted matches, and the failing cases.
 
+### 6. The reference must originate on the invoice
+
+Measured on the old fixtures: **95% of payments quoted a reference, 0%
+of invoices carried one** (there was no such column). None of the quoted
+digits appeared anywhere on the target invoice. The generator's own
+docstring calls `RF` a *"creditor reference"* — the creditor is the
+vendor, who issues the invoice — so the code knew the semantics and
+inverted them.
+
+A payer can only quote a reference the creditor issued. The dependency
+runs one way, and an invoice with no reference means a payment with no
+reference, necessarily.
+
+So `invoices` gains a `reference` column, populated for every invoice: a
+`viite` for domestic creditors, an ISO 11649 `RF` for foreign ones. A
+payment then **quotes its own invoice's reference ~65% of the time**;
+the rest arrive with vendor and date only.
+
+That split is the feature's whole point, and it lets the demo say
+something true rather than impressive: a quoted reference reconciles by
+lookup and needs no model — and we say so — while the ~35% that arrive
+without one are what actually occupies an AP clerk.
+
+`reference` is typed `Text`, not `String`, so the analyzer tokenizes it
+the same way the bank description's copy is tokenized and the two can
+meet.
+
+**Measured, 30 payments against a 60-invoice ledger:**
+
+| | accuracy | coverage |
+|---|---|---|
+| old fixtures (reference matched nothing) | 75.0% | 80% |
+| new fixtures — payments quoting a reference | **95.5%** | 100% |
+| new fixtures — payments with **no** reference | **87.5%** | 100% |
+| new fixtures — all payments | **93.3%** | 100% |
+
+The no-reference bucket is the one that matters, and n=8 there, so treat
+87.5% as indicative rather than settled.
+
+An earlier draft of this ADR claimed removing the reference would make
+matching unsolvable, on the grounds that only 2% of payments are unique
+on vendor + amount. That omitted the date: on vendor + amount + invoice
+date, **95% are unique**, and 69% of payments already carry the invoice's
+date. The date is the disambiguator, not the reference.
+
 ## Aito usage
 
 Unchanged: `_predict` on `bank_transactions.invoice_id`, which traverses
@@ -138,12 +183,10 @@ unpaid invoices counted as failures.
 
 ## Out of scope
 
-- **Removing the reference number from generated payments.** The `Viite`
-  / `RF` digits match nothing: invoices carry no reference field, so the
-  reference is noise that cannot help and can only dilute the text
-  signal. Changing it means regenerating fixtures and reloading the
-  production database, so it is proposed separately with measurements
-  from `./do eval-matching --compare-reference`.
+- **Reloading production with the new fixtures.** The change is measured
+  in the copy-on-write env `v2-refmatch`; prod still runs the old data,
+  so the demo shows the old numbers until someone reloads deliberately.
+  A reload also invalidates every precompute.
 - Re-tuning the 0.30 / 0.15 status thresholds or the 0.4/0.6 blend
   weights. Both deserve the accuracy measurement first.
 - The predict-alternatives tenant leak (`td-20260901082623647538`),
