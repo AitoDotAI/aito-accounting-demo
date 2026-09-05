@@ -69,7 +69,10 @@ SCHEMAS = {
             "cost_centre": {"type": "String", "nullable": False},
             "approver": {"type": "String", "nullable": False},
             "processor": {"type": "String", "nullable": False, "link": "employees.employee_id"},
-            "vat_pct": {"type": "Int", "nullable": False},
+            # A tax CODE, not a quantity: "0" / "14" / "24" / "25.5", a
+            # `predict` target alongside gl_code. Int could not hold the
+            # 25.5% standard rate Finland moved to on 2024-09-01.
+            "vat_pct": {"type": "String", "nullable": False},
             "payment_method": {"type": "String", "nullable": False},
             "due_days": {"type": "Int", "nullable": False},
             "description": {"type": "Text", "nullable": False},

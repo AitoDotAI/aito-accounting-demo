@@ -264,9 +264,13 @@ def audit_accuracy(client, customer: str) -> str:
     guessing the majority class, and a visitor who opens it in the
     Quality matrix sees exactly that.
     """
-    from src.evaluation_service import run_evaluation
+    from src.evaluation_service import DOMAINS, run_evaluation
 
-    fields = ["gl_code", "approver", "cost_centre", "category", "vat_pct", "payment_method"]
+    # Read the targets the Quality matrix actually offers, rather than a
+    # copy of them: a field dropped from the catalog should drop out of
+    # this check too, and a field added should be scored without anyone
+    # remembering to edit it here.
+    fields = [t["field"] for t in DOMAINS["invoices"]["predict_targets"]]
     flat = []
     for field in fields:
         result = run_evaluation(client, customer, "invoices", field,

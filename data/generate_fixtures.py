@@ -74,10 +74,77 @@ def amount_band(amount: float) -> str:
     return "medium"
 
 
+# ── VAT ───────────────────────────────────────────────────────────
+# Finland raised the standard VAT rate from 24% to 25.5% on 2024-09-01,
+# which falls inside this dataset's window (2024-05 .. 2026-04). Modelling
+# the change is what makes `vat_pct` worth predicting at all: the correct
+# rate depends on the INVOICE DATE, so a model has to pick up a regulatory
+# change that nobody encoded as a rule. Held flat at 24%, the field was a
+# constant — 98.7% one value — and prediction scored exactly its own base
+# rate, which reads as "the model learned nothing".
+VAT_STANDARD_BEFORE = "24"
+VAT_STANDARD_FROM = "25.5"
+VAT_RATE_CHANGE_DATE = date(2024, 9, 1)
+# Foodstuffs and restaurant services sit in the reduced band, unchanged by
+# the 2024 rise. Insurance is exempt, not zero-rated, but 0 is how it
+# lands on the invoice line.
+VAT_REDUCED_CATEGORIES = {"food_bev"}
+VAT_REDUCED = "14"
+VAT_EXEMPT_CATEGORIES = {"insurance"}
+
+
+def vat_pct_for(category: str, invoice_date_iso: str) -> str:
+    """The VAT rate on an invoice line, by category and issue date.
+
+    A string, because this is a tax CODE and not a quantity: it takes a
+    handful of discrete values, it is a `predict` target alongside
+    gl_code and approver, and 25.5 does not fit the Int the column used
+    to be. Nothing arithmetic is done with it.
+    """
+    if category in VAT_EXEMPT_CATEGORIES:
+        return "0"
+    if category in VAT_REDUCED_CATEGORIES:
+        return VAT_REDUCED
+    issued = date.fromisoformat(invoice_date_iso)
+    return VAT_STANDARD_FROM if issued >= VAT_RATE_CHANGE_DATE else VAT_STANDARD_BEFORE
+
+
 COST_CENTRES = {
     "Finance": "CC-100", "Operations": "CC-200", "Sales": "CC-300",
     "IT": "CC-400", "HR": "CC-500", "Procurement": "CC-600",
 }
+
+# Which department OWNS the spend, by what was bought. A cost centre is a
+# property of the expense, not of whoever keyed it: a telecom bill lands
+# on IT's cost centre no matter which clerk processed it.
+#
+# It used to be COST_CENTRES[processor.department] — the AP clerk's own
+# department. Since invoices are only processed by Finance and
+# Procurement staff, that produced exactly two cost centres out of six,
+# split ~50/50, and INDEPENDENT of the invoice: every category divided
+# evenly between them. Predicting it from vendor/amount/category was
+# therefore predicting noise, and scored *below* the base rate.
+CATEGORY_DEPARTMENT = {
+    "telecom": "IT", "it_equipment": "IT", "software": "IT", "cloud": "IT",
+    "supplies": "Procurement", "office": "Procurement",
+    "logistics": "Operations", "facilities": "Operations", "maintenance": "Operations",
+    "food_bev": "HR",
+    "insurance": "Finance",
+    "consulting": "Sales",
+}
+# Not every invoice hits its category's usual owner — a laptop bought for
+# the sales team is cross-charged to Sales. Keeping a minority of those
+# makes the field learnable rather than a lookup, the same shape as
+# gl_code (~95% from category, with the capitalization exception).
+COST_CENTRE_CROSS_CHARGE_RATE = 0.12
+
+
+def cost_centre_for(category: str, rng: random.Random) -> str:
+    """The cost centre an invoice is booked to, from what was bought."""
+    department = CATEGORY_DEPARTMENT.get(category, "Operations")
+    if rng.random() < COST_CENTRE_CROSS_CHARGE_RATE:
+        department = rng.choice(DEPARTMENTS)
+    return COST_CENTRES[department]
 
 PAYMENT_METHODS = ["SEPA Credit Transfer", "SEPA Credit Transfer", "SEPA Credit Transfer", "Credit Card", "Wire Transfer"]
 
@@ -610,7 +677,12 @@ def assign_vendors_to_customer(customer: dict, entities: list[dict], rng: random
             "gl_code": gl_code,
             "amount_mean": rng.uniform(200, 20000),
             "amount_std_ratio": rng.uniform(0.2, 0.6),
-            "vat_pct": 24 if cat != "insurance" else 0,
+            # No vat_pct here: the rate depends on the invoice's own date,
+            # not on the vendor. See vat_pct_for().
+            #
+            # Payment method IS vendor-level — it is set up once with the
+            # vendor's bank details and does not change per invoice.
+            "payment_method": rng.choice(PAYMENT_METHODS),
             "due_days": rng.choice([14, 14, 30, 30, 30, 45]),
         })
 
@@ -722,11 +794,15 @@ def generate_invoices_for_customer(
             "amount": amount,
             "amount_band": band,
             "gl_code": gl_code,
-            "cost_centre": COST_CENTRES.get(processor["department"], "CC-100"),
+            "cost_centre": cost_centre_for(vdef["category"], rng),
             "approver": approver["name"],
             "processor": processor["employee_id"],
-            "vat_pct": vdef["vat_pct"],
-            "payment_method": rng.choice(PAYMENT_METHODS),
+            "vat_pct": vat_pct_for(vdef["category"], inv_date),
+            # Master data, not a per-invoice choice: a vendor is set up once
+            # with bank details and a payment method, and every invoice from
+            # them is paid the same way. Randomising it per invoice had the
+            # same vendor paid by card, SEPA and wire across 1,800 invoices.
+            "payment_method": vdef["payment_method"],
             "due_days": vdef["due_days"],
             "description": desc,
             "invoice_date": inv_date,

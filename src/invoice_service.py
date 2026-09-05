@@ -247,7 +247,7 @@ class InvoicePrediction:
     confidence: float
     invoice_date: str | None = None
     due_days: int | None = None
-    vat_pct: int | None = None
+    vat_pct: str | None = None
     vendor_country: str | None = None
     category: str | None = None
     description: str | None = None

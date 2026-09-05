@@ -28,7 +28,13 @@ DOMAINS: dict[str, dict] = {
             {"field": "cost_centre", "label": "Cost centre"},
             {"field": "category", "label": "Category"},
             {"field": "vat_pct", "label": "VAT rate"},
-            {"field": "payment_method", "label": "Payment method"},
+            # `payment_method` is deliberately NOT a target. In an AP system
+            # it is vendor master data — set up once with the vendor's bank
+            # details, identical on every invoice from them — so it is a
+            # lookup, not an inference. Offering it made the Quality matrix
+            # show a field where accuracy equalled the base rate exactly,
+            # which reads as "the model learned nothing" rather than "there
+            # is nothing here to learn". See ADR 0019.
         ],
         "input_fields": [
             {"field": "vendor", "label": "Vendor", "default": True},
@@ -38,6 +44,14 @@ DOMAINS: dict[str, dict] = {
             {"field": "vat_pct", "label": "VAT %", "default": False},
             {"field": "payment_method", "label": "Payment method", "default": False},
             {"field": "description", "label": "Description", "default": False},
+            # Worth offering because `vat_pct` genuinely depends on it:
+            # Finland's standard rate changed on 2024-09-01, mid-dataset.
+            # Selecting it lifts VAT accuracy 82.5% -> 87.5% (measured).
+            # It does not lift it further because a raw ISO date is
+            # high-cardinality evidence — the same reason `amount_band`
+            # exists alongside `amount`. A derived period band would make
+            # the threshold fully learnable; see ADR 0019.
+            {"field": "invoice_date", "label": "Invoice date", "default": False},
         ],
         "display_columns": [
             {"field": "invoice_id", "label": "ID", "mono": True},

@@ -66,7 +66,7 @@ interface TemplateResponse {
     gl_label: string | null;
     approver: string | null;
     cost_centre: string | null;
-    vat_pct: number | null;
+    vat_pct: string | null;
     payment_method: string | null;
     due_days: number | null;
     category: string | null;
