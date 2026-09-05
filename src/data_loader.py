@@ -69,11 +69,21 @@ SCHEMAS = {
             "cost_centre": {"type": "String", "nullable": False},
             "approver": {"type": "String", "nullable": False},
             "processor": {"type": "String", "nullable": False, "link": "employees.employee_id"},
-            "vat_pct": {"type": "Int", "nullable": False},
+            # A tax CODE, not a quantity: "0" / "14" / "24" / "25.5", a
+            # `predict` target alongside gl_code. Int could not hold the
+            # 25.5% standard rate Finland moved to on 2024-09-01.
+            "vat_pct": {"type": "String", "nullable": False},
             "payment_method": {"type": "String", "nullable": False},
             "due_days": {"type": "Int", "nullable": False},
             "description": {"type": "Text", "nullable": False},
             "invoice_date": {"type": "String", "nullable": False},
+            # The reference the vendor printed on this invoice (a Finnish
+            # `viite`, or an ISO 11649 `RF` for foreign creditors). A
+            # payment can only quote a reference that exists here first —
+            # see `invoice_reference` in data/generate_fixtures.py. Text,
+            # not String, so the analyzer tokenizes it the same way the
+            # bank description's copy is tokenized and the two can match.
+            "reference": {"type": "Text", "nullable": False},
             "routed": {"type": "Boolean", "nullable": False},
             "routed_by": {"type": "String", "nullable": False},
         },

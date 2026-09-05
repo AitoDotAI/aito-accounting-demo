@@ -288,6 +288,32 @@ uv sync
 # Open http://localhost:8200
 ```
 
+### Running against the Aito v2 API
+
+The demo also runs on Aito's **v2 API** (unified `_query`, collections, and
+first-class environments) in a branched environment, alongside the v1 build:
+
+```bash
+./do v2-build          # build the dataset as v2 collections in env `v2-demo`
+./do precompute-v2     # compute the read views through v2 (~5-8 min per tenant)
+./do dev-v2            # serve the demo against v2
+```
+
+Unset `AITO_V2_ENV` (or just `./do dev`) for the v1 path — it is unchanged, and
+no v2 code runs unless the variable is set. Every predictive feature runs on v2
+except the help drawer, which is still wired to v1. See
+[ADR 0017](docs/adr/0017-aito-v2-migration.md) for the migration, the
+[cheatsheet's v2 section](docs/aito-cheatsheet.md) for what changes between the
+APIs, and [the UI verification report](docs/verification/aito-v2-ui.md) for what
+was checked.
+
+`precompute-v2` is worth the wait: v2 will not serve the shipped precompute
+(it is v1-derived, so the numbers would not be v2's), and without a v2 pass the
+first load of a heavy view computes live — 15 s to 4½ min. It writes to its own
+namespace, so the v1 output is untouched. Precompute the tenants you plan to
+show rather than all 255, and confirm with `./do verify-demo`, which flags any
+step slow enough to look broken.
+
 The Next.js frontend is served from FastAPI on `localhost:8200` —
 single port, no CORS issues.
 
@@ -402,8 +428,11 @@ Development:
   ./do demo                Open the demo in browser
 
 Testing:
-  ./do test                Unit tests (pytest, 85 tests)
+  ./do test                Unit tests (pytest, 116 tests)
+  ./do aito-check          Assert every Aito query against live data (--v2)
+  ./do verify-demo         Walk the demo path against a running server
   ./do book                Booktest snapshots (live Aito)
+  ./do check               Pre-merge gate: test + fmt + aito-check
 
 Deployment:
   ./do docker-build        Build the deployable image

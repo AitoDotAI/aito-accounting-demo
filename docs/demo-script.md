@@ -110,10 +110,17 @@ Click the **Data flow** toggle in the topbar.
 
 Click **Payment Matching**.
 
-- Two-column layout: open invoices ↔ bank transactions, connected
-  by confidence-scored matches.
-- The first matched row's **why panel auto-expands** — shows the
-  factors Aito used: vendor name token lift, amount proximity.
+- **Read it left to right: incoming payment → assigned invoice.** That
+  is the direction of the decision — a payment arrives and has to be
+  matched to one invoice in the open ledger. An invoice with no payment
+  is simply unpaid, so only *payments* can show as unmatched.
+- The first matched row's **why panel auto-expands** — the factors Aito
+  used: description token lifts and amount proximity. A row matched by
+  vendor rather than by Aito's own top candidate says so, naming the
+  invoice Aito ranked, instead of borrowing that invoice's explanation.
+- The final confidence blends Aito's probability with an amount score,
+  so the panel states that step rather than printing an equals sign
+  between two unrelated numbers.
 - Bank descriptions are realistic Finnish: `KESKO HELSINKI / VIITE
   661031599 / PVM 18.08.24` with check-digit-correct Viite numbers.
 
@@ -124,6 +131,10 @@ Click **Payment Matching**.
 > association with the bank description and amount, and returns the
 > full invoice row. No separate matching service, no Levenshtein
 > heuristic — it's just `_predict`."
+
+**If asked how good it is:** `./do eval-matching` scores the matcher
+against ground truth rather than counting pairs produced. The view's
+"match rate" only ever counted the latter.
 
 ### 6 — Rule Mining + drill-down [~45 sec]
 
@@ -227,3 +238,81 @@ deliberately ship with empty mined-rules and rule-performance —
 the persona is "just signed up, no patterns yet." The Quality
 view shows the cold-start vs warm-customer accuracy difference
 directly.
+
+---
+
+## Appendix — running this demo on the Aito v2 API
+
+The same walkthrough runs against Aito's **v2 API** (unified `_query`,
+collections, and first-class environments) in a branched environment, without
+touching the live v1 demo:
+
+```bash
+./do v2-build      # build the dataset as v2 collections in env `v2-demo` (idempotent)
+./do precompute-v2 # compute the demo's views through v2 (once; see below)
+./do dev-v2        # serve the demo against v2
+```
+
+`./do dev` (no `AITO_V2_ENV`) still runs the v1 path unchanged — no v2 code
+executes unless the variable is set. See
+[ADR 0017](adr/0017-aito-v2-migration.md).
+
+### What changes in the demo
+
+Steps 1–7 above are **identical on v2** and the numbers are comparable, with
+three exceptions worth knowing before you present:
+
+1. **Precompute it first.** v2 will not serve the shipped precomputed
+   bootstrap — that JSON is v1-derived, and serving it would show numbers no v2
+   query produced. So without a v2 precompute, the first load of a heavy view
+   computes live: 15 s for the quality overview, up to ~4½ min for payment
+   matching. `./do precompute-v2` does that pass and writes to its own
+   namespace (`v2:` keys, `data/precomputed/v2/`), leaving the v1 output alone.
+
+   Measured on CUST-0000 with `./do verify-demo`, one pass takes each heavy
+   view from 16–276 s to **effectively zero**:
+
+   | view | cold | precomputed |
+   |---|---|---|
+   | `matching/pairs` | 254–276 s | 0.0 s |
+   | `quality/predictions` | 123 s | 0.0 s |
+   | `rules/candidates` | 112 s | 0.0 s |
+   | `anomalies/scan` | 37–56 s | 0.0 s |
+   | `formfill/templates` | 21 s | 0.0 s |
+   | `quality/overview` | 16–53 s | 0.0 s |
+
+It costs ~5–8 min per tenant (measured: 5 tenants in 22 min at
+   `--workers 2`), so precompute the tenants you plan to show rather than all
+   255 — `./do precompute-v2 --limit 5 --skip-existing --workers 2` covers the
+   five largest, which is the demo path plus room to switch. **Switching to a
+   tenant you did not precompute still hits a cold path mid-demo.** Check
+   before presenting with `./do verify-demo`, which flags any step slow enough
+   to read as broken.
+
+2. **Step 6 (Rule Mining) gets better on v2, and it's worth saying so.** v2
+   mines a richer ruleset from the same data — **41 candidates / 34 strong /
+   +77.2% coverage**, against v1's 14 / 9 / 44.3%. Same headline rules, plus
+   refinements v1 missed (e.g. the Bronex rule tightens from 144/186 to 144/145
+   once `amount_band = large` is added to the conjunction).
+
+3. **Step 7 (Quality) — the metrics are comparable again.** This used to carry a
+   warning: v2 computed `baseAccuracy` over the whole collection rather than the
+   evaluated tenant, inflating the displayed gain, and its `meanRank` was
+   1-based where v1's was 0-based. **Both were fixed in core on 2026-08-31**
+   (rev `38a234a6`), re-measured on the demo's own 50-row evaluation: v1 `0.44`
+   vs v2 `0.4680` baseline, `meanRank` `0.1` on both. The small baseline delta
+   is a sampling convention (v1 measures the base rate on the test sample, v2 on
+   the training population) — say that if asked, and quote the numbers as they
+   stand. Details in [the verification report](verification/aito-v2-ui.md) (D5).
+
+### What is not on v2 yet
+
+**The help drawer (step: Help / "Ask" panel) still runs on v1.** It was blocked
+on a core issue — v2's `recommend` silently dropped disjunctive filters on
+linked fields, which would have broken the demo's per-tenant article
+eligibility. **That was fixed on 2026-08-31** (rev `38a234a6`) and the drawer's
+own query now returns correctly-scoped results on v2, so this is ordinary
+migration work rather than a blocker; the code just hasn't been switched yet.
+Everything else — invoice processing, form fill,
+payment matching, anomaly detection, rule mining, and the quality dashboard —
+runs on v2.

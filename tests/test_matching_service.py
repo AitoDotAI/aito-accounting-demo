@@ -11,6 +11,7 @@ from src.aito_client import AitoClient
 from src.config import Config
 from src.matching_service import (
     _amount_match_score,
+    _build_explanation,
     match_bank_txn_to_invoice,
     MatchPair,
 )
@@ -145,3 +146,106 @@ class TestMatchPair:
         assert d["confidence"] == 0.95
         assert d["status"] == "matched"
         assert "explanation" in d
+
+
+# ── Regressions from the 2026-09-04 live demo (ADR 0018) ────────────
+#
+# All three returned a 200 with a plausible-looking panel, so only an
+# assertion on the CONTENT of the explanation catches them.
+
+
+class FakePredictClient:
+    """Returns a canned `_predict` response without any HTTP."""
+
+    def __init__(self, hits):
+        self._hits = hits
+
+    def _request(self, method, path, json=None, timeout=120.0):
+        return {"hits": self._hits}
+
+
+def _why_for(invoice_id: str, lift: float = 8.0) -> dict:
+    """A $why tree shaped like the one Aito returns for a predicted link."""
+    return {
+        "type": "product",
+        "factors": [
+            {"type": "baseP", "value": 7.8e-06,
+             "proposition": {"invoice_id": {"$has": invoice_id}}},
+            {"type": "relatedPropositionLift", "value": lift,
+             "proposition": {"description": {"$has": "ACME"}}},
+        ],
+    }
+
+
+_TXN = {
+    "txn_id": "CUST-0000-TXN-000001",
+    "description": "ACME OY VIITE 12345",
+    "amount": 1000.0,
+    "bank": "Nordea",
+    "customer_id": "CUST-0000",
+}
+
+
+class TestExplanationBelongsToTheMatchedInvoice:
+    """The defect that reached a live demo: another invoice's explanation.
+
+    When Aito ranks an invoice that is not in the open ledger, the matcher
+    substitutes a same-vendor invoice whose amount fits. It used to keep
+    Aito's `$why` from the invoice it ranked, so the panel showed a base
+    rate for an id that appeared nowhere on screen and labelled the
+    payment's own description as counter-evidence.
+    """
+
+    def test_direct_match_keeps_aitos_explanation(self):
+        client = FakePredictClient([
+            {"invoice_id": "INV-1", "vendor": "ACME Oy", "amount": 1000.0,
+             "$p": 0.9, "$why": _why_for("INV-1")},
+        ])
+        pair = match_bank_txn_to_invoice(
+            client, _TXN, [{"invoice_id": "INV-1", "vendor": "ACME Oy", "amount": 1000.0}])
+
+        assert pair.invoice_id == "INV-1"
+        base = next(f for f in pair.explanation if f["type"] == "base")
+        assert base["target_value"] == "INV-1", "explanation must describe the matched invoice"
+
+    def test_substituted_match_does_not_borrow_the_other_invoices_why(self):
+        # Aito ranks INV-9 (absent from the ledger); we pair INV-2, same
+        # vendor, whose amount fits the payment.
+        client = FakePredictClient([
+            {"invoice_id": "INV-9", "vendor": "ACME Oy", "amount": 250.0,
+             "$p": 0.4, "$why": _why_for("INV-9")},
+        ])
+        pair = match_bank_txn_to_invoice(
+            client, _TXN, [{"invoice_id": "INV-2", "vendor": "ACME Oy", "amount": 1000.0}])
+
+        assert pair.invoice_id == "INV-2"
+        targets = [f.get("target_value") for f in pair.explanation if f["type"] == "base"]
+        assert "INV-9" not in targets, \
+            "the substituted match must not present INV-9's explanation as its own"
+
+    def test_substituted_match_says_it_was_substituted(self):
+        client = FakePredictClient([
+            {"invoice_id": "INV-9", "vendor": "ACME Oy", "amount": 250.0,
+             "$p": 0.4, "$why": _why_for("INV-9")},
+        ])
+        pair = match_bank_txn_to_invoice(
+            client, _TXN, [{"invoice_id": "INV-2", "vendor": "ACME Oy", "amount": 1000.0}])
+
+        rendered = " ".join(
+            p["value"] for f in pair.explanation for p in f.get("propositions", []))
+        assert "INV-9" in rendered and "same vendor" in rendered, \
+            "the panel should say the pairing came from the vendor, naming what Aito ranked"
+
+
+class TestBaseRateSurvivesExtraction:
+    def test_a_tiny_base_rate_is_not_flattened_to_zero(self):
+        """A link-target base rate is ~1/128000 and was rounded to 0.0.
+
+        That is what made the popup read "0% x 0.7 = 58%": the factor
+        chain started from a literal zero.
+        """
+        explanation = _build_explanation(
+            _TXN, {"invoice_id": "INV-1", "vendor": "ACME Oy", "amount": 1000.0},
+            0.9, _why_for("INV-1"))
+        base = next(f for f in explanation if f["type"] == "base")
+        assert base["base_p"] > 0

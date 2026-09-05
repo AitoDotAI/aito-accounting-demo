@@ -141,7 +141,7 @@ def compute_prediction_quality(client: AitoClient, customer_id: str | None = Non
 
     # 1. Aito _evaluate — sample 50 invoices for speed
     try:
-        eval_result = client._request("POST", "/_evaluate", json={
+        eval_result = client.evaluate({
             "testSource": {"from": "invoices", "where": where_filter, "limit": 50},
             "evaluate": {
                 "from": "invoices",
@@ -544,7 +544,7 @@ def compute_evaluations_matrix(client: AitoClient, customer_id: str) -> dict:
 
     def evaluate_one(t: dict) -> dict:
         try:
-            r = client._request("POST", "/_evaluate", json={
+            r = client.evaluate({
                 "testSource": t["test_source"],
                 "evaluate": {
                     "from": t["from_table"],

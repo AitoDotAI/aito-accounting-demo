@@ -56,6 +56,9 @@ def _semaphore_for(path: str) -> threading.Semaphore:
 # not background admin like cache writes or audit logs.
 _LATENCY_REPORTED_PREFIXES = (
     "/_search", "/_predict", "/_relate", "/_recommend", "/_match", "/_evaluate",
+    # v2 routes nearly every query through the unified endpoint; without
+    # it the topbar badge reads zero for the whole demo on v2.
+    "/_query",
 )
 
 
@@ -452,6 +455,17 @@ class AitoClient:
             "limit": limit,
         }
         return self._request("POST", "/_match", json=query)
+
+    def evaluate(self, body: dict, timeout: float | None = 600.0) -> dict:
+        """Run a `_evaluate` cross-validation and return its metrics.
+
+        `body` is the full evaluation request (`testSource` + `evaluate`
+        + optional `select`). Exists so callers don't reach for the
+        private `_request`, and so the v1 and v2 clients expose the same
+        `evaluate()` entry point — `AitoV2Client.evaluate` normalizes v2's
+        envelope to this shape.
+        """
+        return self._request("POST", "/_evaluate", json=body, timeout=timeout)
 
     def search(self, table: str, where: dict, limit: int = 10) -> dict:
         """Run a _search query to retrieve matching rows.

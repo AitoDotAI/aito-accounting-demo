@@ -15,20 +15,28 @@ Commands:
     generate-data     Generate fixture data (--small / --medium / default 1M)
     load-data         Upload fixture data to Aito (and optimize tables)
     reset-data        Drop all tables and reload from fixtures
+    v2-build          Build the dataset as v2 collections in an env (Aito v2 API)
     optimize          Optimize Aito tables for faster queries
     warm-cache        Pre-warm API cache for top customers
     precompute        Pre-compute predictions for demo views
+    precompute-v2     Same, computed through the v2 API (env v2-demo)
 
   Development:
     dev               Start the backend API server (port 8200)
+    dev-v2            Same, but served against the Aito v2 API (env v2-demo)
     frontend-dev      Start Next.js dev server (port 3000)
     frontend-build    Build Next.js static export
     demo              Open the demo in browser
 
   Testing:
     test              Run unit tests (pytest)
+    aito-check        Assert every Aito query pattern against live data (--v2)
+    verify-demo       Walk the demo path against a running server
+    eval-matching     Measure payment->invoice matching accuracy vs ground truth
+    audit             Coherence audit across every view (--accuracy, --v2)
     book              Run book tests (Aito examination notebooks)
-    book-update       Update book test snapshots
+    book-update       Update book test HTTP snapshots (not the baselines)
+    book-accept       Accept current output as the expected baseline (review first!)
     book-capture      Capture fresh snapshots from live Aito
 
   Deployment:
@@ -39,7 +47,7 @@ Commands:
   Other:
     screenshots       Capture screenshots of all views (--mobile / -m for iPhone)
     fmt               Format code
-    check             Run all checks (test + fmt)
+    check             Pre-merge gate (test + fmt + aito-check)
 
 EOF
 }
@@ -125,11 +133,39 @@ cmd_generate_data() {
   uv run python data/generate_fixtures.py "$@"
 }
 
+# Build the dataset as Aito v2 collections in an environment. Defaults to
+# v2-demo; pass --reset to drop existing tables first, or e.g.
+# `--only invoices --customer CUST-0000` for a fast slice. See ADR 0017.
+# Note: env names may not start with `env.` — that prefix is reserved.
+cmd_v2_build() {
+  cd "$SCRIPT_DIR"
+  uv run python -m src.data_loader_v2 --env "${AITO_V2_ENV:-v2-demo}" "$@"
+}
+
+# Serve the demo against the Aito v2 API (env `v2-demo` by default).
+# The v1 path is untouched: `./do dev` runs exactly as before.
+cmd_dev_v2() {
+  export AITO_V2_ENV="${AITO_V2_ENV:-v2-demo}"
+  echo "Serving against Aito v2 — env '$AITO_V2_ENV'"
+  echo "  (help stays on v1; first load of a heavy view computes live)"
+  cmd_dev
+}
+
 cmd_precompute() {
   cd "$SCRIPT_DIR"
   echo "Pre-computing predictions for all customers..."
   echo "  (~3min/customer sequentially; pass --workers 4 for ~4x speedup)"
   uv run python data/precompute_predictions.py "$@"
+}
+
+# Same pass, computed through the v2 API. Exports AITO_V2_ENV before the
+# script imports, because the precompute store reads it at import time to
+# choose its key namespace — set it late and v2 answers land under v1 keys.
+cmd_precompute_v2() {
+  export AITO_V2_ENV="${AITO_V2_ENV:-v2-demo}"
+  echo "Pre-computing against Aito v2 — env '$AITO_V2_ENV'"
+  echo "  (writes v2:-prefixed keys and data/precomputed/v2/; v1 output untouched)"
+  cmd_precompute --v2 "$@"
 }
 
 cmd_test() {
@@ -296,10 +332,26 @@ cmd_book() {
   uv run booktest -v book/ "$@"
 }
 
+# NOTE: `-u` updates the recorded HTTP snapshots, not the expected
+# output. A test whose baseline is missing or stale still reports a diff
+# after this — use `book-accept` for that.
 cmd_book_update() {
   echo "Updating book test snapshots..."
   cd "$SCRIPT_DIR"
   uv run booktest -v -u book/ "$@"
+}
+
+# Accept the current output as the new expected baseline, for the tests
+# that currently differ (`-c` skips the passing ones).
+#
+# READ THE DIFF FIRST. A snapshot baseline records whatever the system
+# did at capture time, defect included — a silently dropped filter
+# returning 200 with extra rows snapshots perfectly cleanly. Review with
+# `./do book` and the files under books/.out/ before running this.
+cmd_book_accept() {
+  echo "Accepting current output as the expected baseline..."
+  cd "$SCRIPT_DIR"
+  uv run booktest -v -c -a book/ "$@"
 }
 
 cmd_book_capture() {
@@ -308,9 +360,44 @@ cmd_book_capture() {
   uv run booktest -v -u -s book/ "$@"
 }
 
+# Assert the live Aito responses still match what the app assumes.
+# Needs network and credentials; `--v2` checks the v2 env instead of v1.
+cmd_aito_check() {
+  cd "$SCRIPT_DIR"
+  uv run python -u scripts/aito_check.py "$@"
+}
+
+# Measure payment->invoice matching accuracy against ground truth
+# (bank_transactions.invoice_id). The matching view's "match rate" only
+# counts pairs produced, never whether they are right.
+cmd_eval_matching() {
+  cd "$SCRIPT_DIR"
+  uv run python -u scripts/evaluate_matching.py "$@"
+}
+
+# Coherence audit: hunt for results that are WRONG but still return 200 —
+# an explanation shown under a value it does not describe, parts that
+# don't sum to their total, a ratio that contradicts its own counts.
+cmd_audit() {
+  cd "$SCRIPT_DIR"
+  uv run python -u scripts/audit_portfolio.py "$@"
+}
+
+# End-to-end check of the demo path against an already-running server.
+# Kept separate from `check` because it needs `./do dev` in another shell.
+cmd_verify_demo() {
+  cd "$SCRIPT_DIR"
+  uv run python -u scripts/verify_demo.py "$@"
+}
+
+# The pre-merge gate. `verify-demo` is deliberately NOT here: it needs a
+# running server, so requiring it would make the gate unrunnable from a
+# clean checkout. Run it separately before merging anything that touches
+# an endpoint.
 cmd_check() {
   cmd_test
   cmd_fmt
+  cmd_aito_check
 }
 
 case "${1:-help}" in
@@ -322,14 +409,22 @@ case "${1:-help}" in
   load-data)       cmd_load_data ;;
   reset-data)      cmd_reset_data ;;
   generate-data)   cmd_generate_data "${@:2}" ;;
+  v2-build)        cmd_v2_build "${@:2}" ;;
   precompute)      cmd_precompute "${@:2}" ;;
+  precompute-v2)   cmd_precompute_v2 "${@:2}" ;;
   screenshots)     cmd_screenshots "${@:2}" ;;
   test)            cmd_test ;;
+  aito-check)      cmd_aito_check "${@:2}" ;;
+  verify-demo)     cmd_verify_demo "${@:2}" ;;
+  eval-matching)   cmd_eval_matching "${@:2}" ;;
+  audit)           cmd_audit "${@:2}" ;;
+  dev-v2)          cmd_dev_v2 ;;
   fetch-companies) cmd_fetch_companies ;;
   optimize)        cmd_optimize ;;
   warm-cache)      cmd_warm_cache "${@:2}" ;;
   book)            cmd_book ;;
   book-update)     cmd_book_update ;;
+  book-accept)     cmd_book_accept "${@:2}" ;;
   book-capture)    cmd_book_capture ;;
   docker-build)    cmd_docker_build ;;
   docker-run)      cmd_docker_run ;;

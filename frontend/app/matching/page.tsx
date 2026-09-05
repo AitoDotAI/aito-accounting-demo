@@ -61,7 +61,7 @@ interface MatchPair {
 
 interface MatchResponse {
   pairs: MatchPair[];
-  metrics: { matched: number; suggested: number; unmatched: number; total: number; avg_confidence: number; match_rate: number };
+  metrics: { matched: number; suggested: number; unmatched: number; total: number; ledger_size?: number; avg_confidence: number; match_rate: number };
 }
 
 function connectorBadge(pair: MatchPair) {
@@ -99,7 +99,7 @@ export default function MatchingPage() {
         setData(d); setLive(true);
         // Auto-expand the first matched row so users discover the "why" feature
         const firstMatched = d.pairs.find((p) => p.status === "matched" && p.explanation && p.explanation.length > 0);
-        if (firstMatched) setExpanded(firstMatched.invoice_id);
+        if (firstMatched) setExpanded(firstMatched.bank_txn_id);
       })
       .catch((e) => setError(e));
   }, [customerId]);
@@ -113,7 +113,7 @@ export default function MatchingPage() {
         <TopBar
           breadcrumb="Payables"
           title="Payment Matching"
-          subtitle={m ? `${m.total} invoices \u00B7 ${m.matched} matched \u00B7 ${m.suggested} suggested \u00B7 ${m.unmatched} unmatched` : error ? "Backend not reachable" : "Loading..."}
+          subtitle={m ? `${m.total} payments \u00B7 ${m.matched} matched \u00B7 ${m.suggested} suggested \u00B7 ${m.unmatched} unmatched \u00B7 ledger of ${m.ledger_size ?? "?"}` : error ? "Backend not reachable" : "Loading..."}
           live={live}
         />
         <div className="content">
@@ -124,13 +124,13 @@ export default function MatchingPage() {
             <div className="metric"><div className="metric-label">Unmatched</div><div className="metric-value">{m?.unmatched ?? "--"}</div></div>
           </div>
           <div className="card">
-            <div className="card-header"><span className="card-title">Invoice &#x2194; Bank transaction matching</span><span className="card-hint">Click a match to see why &middot; Aito _predict invoice_id via schema link</span></div>
+            <div className="card-header"><span className="card-title">Incoming payment &#x2192; Open invoice</span><span className="card-hint">Click a match to see why &middot; Aito _predict invoice_id via schema link</span></div>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr>
-                  <th style={{ padding: "10px 20px", fontSize: "10.5px", fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", background: "var(--surface2)", borderBottom: "1px solid var(--border2)", textAlign: "left" }}>Open invoices</th>
+                  <th style={{ padding: "10px 20px", fontSize: "10.5px", fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", background: "var(--surface2)", borderBottom: "1px solid var(--border2)", textAlign: "left" }}>Incoming payment (bank)</th>
                   <th style={{ width: 80, background: "var(--surface2)", borderBottom: "1px solid var(--border2)", borderLeft: "1px solid var(--border2)", borderRight: "1px solid var(--border2)" }} />
-                  <th style={{ padding: "10px 20px", fontSize: "10.5px", fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", background: "var(--surface2)", borderBottom: "1px solid var(--border2)", textAlign: "left" }}>Bank transactions</th>
+                  <th style={{ padding: "10px 20px", fontSize: "10.5px", fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", background: "var(--surface2)", borderBottom: "1px solid var(--border2)", textAlign: "left" }}>Assigned open invoice</th>
                 </tr>
               </thead>
               <tbody>
@@ -151,26 +151,30 @@ export default function MatchingPage() {
                 ))}
                 {(data?.pairs ?? []).map((p) => {
                   const rowClass = p.status === "matched" ? "matched" : p.status === "suggested" ? "suggested" : "";
-                  const isExpanded = expanded === p.invoice_id;
+                  const rowKey = p.bank_txn_id ?? p.invoice_id;
+                  const isExpanded = expanded === rowKey;
                   const hasExplanation = p.explanation && p.explanation.length > 0;
                   return (
-                    <React.Fragment key={p.invoice_id}>
+                    <React.Fragment key={rowKey}>
                     <tr
-                      onClick={() => hasExplanation && setExpanded(isExpanded ? null : p.invoice_id)}
+                      onClick={() => hasExplanation && setExpanded(isExpanded ? null : rowKey)}
                       style={{ cursor: hasExplanation ? "pointer" : "default" }}
                     >
+                      {/* Payment on the left: it is the thing arriving, and
+                          the thing being assigned. Reading order is the
+                          direction of the decision. */}
                       <td className={`match-item ${rowClass}`} style={{ verticalAlign: "middle" }}>
-                        <div className="match-name">{p.invoice_vendor} &middot; {p.invoice_id}</div>
-                        <div className="match-detail">{fmtAmount(p.invoice_amount)}</div>
+                        <div className="match-name">{p.bank_description}</div>
+                        <div className="match-detail">{fmtAmount(p.bank_amount!)} &middot; {p.bank_name}</div>
                       </td>
                       <td style={{ textAlign: "center", verticalAlign: "middle", borderLeft: "1px solid var(--border2)", borderRight: "1px solid var(--border2)", borderBottom: "1px solid var(--border2)" }}>
                         {connectorBadge(p)}
                       </td>
                       <td className={`match-item ${rowClass}`} style={{ verticalAlign: "middle" }}>
-                        {p.bank_txn_id ? (
-                          <><div className="match-name">{p.bank_description}</div><div className="match-detail">{fmtAmount(p.bank_amount!)} &middot; {p.bank_name}</div></>
+                        {p.invoice_id ? (
+                          <><div className="match-name">{p.invoice_vendor} &middot; {p.invoice_id}</div><div className="match-detail">{fmtAmount(p.invoice_amount)}</div></>
                         ) : (
-                          <div className="match-name" style={{ color: "var(--text3)" }}>No match found</div>
+                          <div className="match-name" style={{ color: "var(--text3)" }}>No invoice matched</div>
                         )}
                       </td>
                     </tr>
@@ -180,7 +184,11 @@ export default function MatchingPage() {
                           <div style={{ fontSize: 12, fontWeight: 600, color: "var(--gold-dark)", marginBottom: 6, marginTop: 8 }}>
                             Why this match?
                           </div>
-                          <WhyCards why={p.explanation} confidence={p.confidence} />
+                          <WhyCards
+                            why={p.explanation}
+                            confidence={p.confidence}
+                            blendNote={"Aito probability blended with amount proximity \u2192"}
+                          />
                         </td>
                       </tr>
                     )}

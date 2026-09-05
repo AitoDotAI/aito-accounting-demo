@@ -141,7 +141,17 @@ def _walk_why_grouped(node: dict, out: list[dict]) -> None:
             if isinstance(cond, dict) and "$has" in cond:
                 target_value = str(cond["$has"])
                 break
-        out.append({"type": "base", "base_p": round(base_p, 4), "target_value": target_value})
+        # Do NOT round to a fixed number of decimals. A GL-code base rate
+        # is ~0.46 and survives, but predicting a link target such as
+        # `invoice_id` has a base rate near 1/128000 — round(…, 4) turns
+        # that into exactly 0.0, so the popup showed "0%" and the factor
+        # chain started from a literal zero. Significant figures keep both
+        # readable; the UI decides how to render a very small value.
+        out.append({
+            "type": "base",
+            "base_p": float(f"{base_p:.4g}"),
+            "target_value": target_value,
+        })
     elif t == "relatedPropositionLift":
         lift = float(node.get("value", 0) or 0)
         # Drop noise: lifts close to 1.0 contribute nothing.
@@ -176,7 +186,14 @@ def _walk_why_grouped(node: dict, out: list[dict]) -> None:
 
         out.append({
             "type": "pattern",
-            "lift": round(lift, 2),
+            # Significant figures, not decimal places — for the same reason
+            # as base_p above. A strong counter-evidence factor can have a
+            # lift of 3.4e-06 ("this evidence makes the value essentially
+            # impossible"); round(_, 2) turns that into 0.0, which renders
+            # as "x 0.0" and zeroes the whole multiplicative chain. The
+            # magnitude is the information here, so keep it and let the UI
+            # decide how to show a very small one.
+            "lift": float(f"{lift:.4g}"),
             "propositions": propositions,
             "highlights": highlights,
         })
@@ -189,19 +206,31 @@ def _walk_why_grouped(node: dict, out: list[dict]) -> None:
 
 
 def _collect_props(prop: dict, out: list[dict]) -> None:
-    if "$and" in prop:
-        for sub in prop["$and"]:
-            _collect_props(sub, out)
-        return
+    """Flatten a $why proposition into {field, value} pairs.
+
+    Handles both API generations. v1 wraps every value in an operator
+    (`{vendor: {$has: "Kesko"}}`) and groups conjunctions under `$and`;
+    v2 returns the bare value (`{vendor: "Kesko"}`) and groups under
+    `$group`. Both are accepted, so one explanation UI serves both --
+    without this, every v2 factor collects nothing and the popup
+    silently degrades to the base rate alone.
+    """
+    for grouping in ("$and", "$group"):
+        if grouping in prop:
+            for sub in prop[grouping]:
+                _collect_props(sub, out)
+            return
     for field_name, cond in prop.items():
-        if not isinstance(cond, dict):
-            continue
-        # $has = exact value match (categorical fields)
-        if "$has" in cond:
-            out.append({"field": field_name, "value": str(cond["$has"])})
-        # $match = text token match (Text fields)
-        elif "$match" in cond:
-            out.append({"field": field_name, "value": str(cond["$match"])})
+        if isinstance(cond, dict):
+            # $has = exact value match (categorical fields)
+            if "$has" in cond:
+                out.append({"field": field_name, "value": str(cond["$has"])})
+            # $match = text token match (Text fields)
+            elif "$match" in cond:
+                out.append({"field": field_name, "value": str(cond["$match"])})
+        elif cond is not None:
+            # v2: the proposition carries the value directly.
+            out.append({"field": field_name, "value": str(cond)})
 
 
 @dataclass
@@ -218,7 +247,7 @@ class InvoicePrediction:
     confidence: float
     invoice_date: str | None = None
     due_days: int | None = None
-    vat_pct: int | None = None
+    vat_pct: str | None = None
     vendor_country: str | None = None
     category: str | None = None
     description: str | None = None

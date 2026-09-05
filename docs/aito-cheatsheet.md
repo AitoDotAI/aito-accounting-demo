@@ -402,3 +402,76 @@ different operator's response shape.
 - `_evaluate` is the slow operator (~8 s for 50 samples). It runs
   leave-one-out cross-validation at query time. Precompute and
   cache aggressively.
+
+---
+
+## v2 API (`/api/v2`) — what changes
+
+The v2 API is not a version bump; see ADR 0017. Everything above is v1 and
+still runs the live demo. This section is the delta, all verified live against
+the `v2-demo` environment (core rev `7d5c48a9`).
+
+**Addressing.** An environment is two path segments, `/env/<name>/`:
+
+```
+https://shared.aito.ai/db/aito-accounting-demo/env/v2-demo/api/v2/_query
+```
+
+The master API key authorizes every env — env auth is database-scoped and
+there is no env-scoped key. Env names may **not** start with `_`, `env.`, or
+`release.`; those prefixes are reserved (the built-in master env is
+nonetheless reported as `env.master`).
+
+**One endpoint, mostly.** `POST /api/v2/_query` takes the query type as a
+top-level key. The grammar, per the server's own parse error:
+
+```
+from, let, where, search, get, predict, recommend, goal, relate, basedOn,
+orderBy, select, offset, exclusiveness, limit, config, fromWhere, fromLimit,
+relatePatterns, fromJoin, fromUnion
+```
+
+`_match` and `_evaluate` are **not** in it and remain separate endpoints
+(`POST /api/v2/_match`, `POST /api/v2/_evaluate`). `recommend` answers both at
+`/_query` and at `/_recommend`.
+
+**Response deltas** (what actually breaks a v1 client):
+
+| Verb | v1 | v2 |
+|---|---|---|
+| `predict` | value in `feature` | value in `$value` |
+| `recommend` | column at top level (`article_id`) | `$value` (+ `select`ed columns) |
+| `relate` | `related: {f: {$has: v}}` | `related: {f: v}` |
+| `_evaluate` | metrics at top level | wrapped in `{"kind","data"}`; cases use `$value` |
+| links | explicit | auto-flatten to dotted fields (`customer_id.name`) |
+
+`$why` is unchanged — the same nested factor tree, so explanation parsing
+carries over as-is.
+
+`src/aito_v2_client.py` normalizes each of these, which is why the services
+take either client unchanged.
+
+### v2 gotchas that cost real time
+
+- **`select: ["feature"]` used to 400.** As of rev `38a234a6` (2026-08-31)
+  `feature` and `field` are accepted as v1 compat aliases on any ranked-value
+  query, alongside `$value`. Prefer `$value` in new code.
+- **`predict` returns ~10 candidates by default.** Pass `limit` to cover a
+  target field's full value set, or alternatives silently go missing.
+- **`relate`/`$patterns` need a *collection*.** A legacy (v1-uploaded) table
+  returns **501 "supported on collections only"**.
+- **`_match` was not usable for matching before rev `38a234a6`** — it returned
+  `$f` (a raw count), never `$p`/`$why`, silently ignored `select`, and tied
+  every candidate at 0 for unseen input (core issue V2-12). **Fixed
+  2026-08-31**: it now returns a graded `$p`, generalizes to evidence never
+  seen verbatim, and honours `select` / `$why`. (This demo's payment matching
+  uses `_predict` on the linked `bank_transactions.invoice_id`, not `_match`.)
+- **`recommend` silently dropped disjunctive filters on linked fields** before
+  rev `38a234a6`: plain equality was honored but `{"$or": [...]}` and `$in`
+  were discarded **with a 200**, leaking other tenants' rows through a
+  multi-tenant eligibility clause (core issue V2-13). **Fixed 2026-08-31** —
+  `$or` and `$in` on a linked field now filter correctly. Worth keeping in mind
+  as a *shape* to test for: a dropped filter fails open, with a 200 and no
+  error, so nothing but a row count catches it.
+- **Bulk load then `optimize`.** `POST /data/{name}/optimize` after a batch
+  load; predict is degraded until it runs (`relate` is already correct).
