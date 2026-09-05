@@ -110,10 +110,17 @@ Click the **Data flow** toggle in the topbar.
 
 Click **Payment Matching**.
 
-- Two-column layout: open invoices ↔ bank transactions, connected
-  by confidence-scored matches.
-- The first matched row's **why panel auto-expands** — shows the
-  factors Aito used: vendor name token lift, amount proximity.
+- **Read it left to right: incoming payment → assigned invoice.** That
+  is the direction of the decision — a payment arrives and has to be
+  matched to one invoice in the open ledger. An invoice with no payment
+  is simply unpaid, so only *payments* can show as unmatched.
+- The first matched row's **why panel auto-expands** — the factors Aito
+  used: description token lifts and amount proximity. A row matched by
+  vendor rather than by Aito's own top candidate says so, naming the
+  invoice Aito ranked, instead of borrowing that invoice's explanation.
+- The final confidence blends Aito's probability with an amount score,
+  so the panel states that step rather than printing an equals sign
+  between two unrelated numbers.
 - Bank descriptions are realistic Finnish: `KESKO HELSINKI / VIITE
   661031599 / PVM 18.08.24` with check-digit-correct Viite numbers.
 
@@ -124,6 +131,10 @@ Click **Payment Matching**.
 > association with the bank description and amount, and returns the
 > full invoice row. No separate matching service, no Levenshtein
 > heuristic — it's just `_predict`."
+
+**If asked how good it is:** `./do eval-matching` scores the matcher
+against ground truth rather than counting pairs produced. The view's
+"match rate" only ever counted the latter.
 
 ### 6 — Rule Mining + drill-down [~45 sec]
 
