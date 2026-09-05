@@ -43,6 +43,28 @@ class AitoV2Error(AitoError):
     """
 
 
+def resolve_env(value: str | None) -> tuple[bool, str | None]:
+    """Interpret `AITO_V2_ENV` into (use_v2, environment or None).
+
+        unset / blank  -> (False, None)   v1, the production default
+        "<name>"       -> (True, "<name>")  v2 against that env branch
+        "master"       -> (True, None)      v2 against master, unscoped
+
+    `master` is a sentinel, not an env. The API refuses `/env/master/`
+    outright — "Env 'master' is the default; use the unscoped /api/...
+    path" — so the one name that cannot denote a branch is free to mean
+    "no branch". That is the end state of a v2 cutover: the env is
+    promoted into master and the app stops pointing at a branch.
+    Without it, v2-against-master cannot be expressed at all.
+    """
+    name = (value or "").strip()
+    if not name:
+        return False, None
+    if name.lower() in ("master", "env.master"):
+        return True, None
+    return True, name
+
+
 class AitoV2Client:
     """Synchronous client for the Aito v2 REST API.
 

@@ -38,17 +38,32 @@ aito = AitoClient(config)
 # the two health probes still call v1 directly.
 # `AitoV2Client` is a drop-in for the v1 client's interface, so the
 # services are passed it unchanged. See ADR 0017.
+# `AITO_V2_ENV` selects the v2 path and says WHERE:
+#
+#   unset      -> v1, unchanged (production default)
+#   <name>     -> v2 against the environment branch `<name>`
+#   "master"   -> v2 against master, with no /env/ segment
+#
+# `master` is a sentinel rather than an environment: the API refuses
+# `/env/master/` outright ("Env 'master' is the default; use the
+# unscoped /api/... path"), so the one name that cannot mean an env
+# branch is free to mean "no branch". That is the final state of a v2
+# cutover — the env is promoted into master and the app stops pointing
+# at a branch — and without it, v2-against-master is not expressible.
+from src.aito_v2_client import resolve_env  # noqa: E402
+
 _v2_env = os.environ.get("AITO_V2_ENV", "").strip()
-if _v2_env:
+_use_v2, _v2_target = resolve_env(_v2_env)
+if _use_v2:
     from src.aito_v2_client import AitoV2Client
-    v2_client = AitoV2Client(config.aito_api_url, config.aito_api_key, env=_v2_env)
+    v2_client = AitoV2Client(config.aito_api_url, config.aito_api_key, env=_v2_target)
 else:
     v2_client = aito
 
 # Cache-key prefix that keeps v1 and v2 results in separate slots, so
 # flipping AITO_V2_ENV can never serve a v1 answer for a v2 query (or
 # the reverse) out of a warm cache.
-_V2 = "v2:" if _v2_env else ""
+_V2 = "v2:" if _use_v2 else ""
 
 
 def _ttl(seconds: int) -> int:
@@ -65,7 +80,7 @@ def _ttl(seconds: int) -> int:
     Demo data is static, so on v2 we hold entries for an hour. This
     changes nothing on v1, where the value is returned unchanged.
     """
-    return max(seconds, 3600) if _v2_env else seconds
+    return max(seconds, 3600) if _use_v2 else seconds
 
 # Initialize two-layer cache: in-memory L1 + Aito-persistent L2
 cache.init(aito)

@@ -7,7 +7,7 @@ non-obvious parts of the v2 migration. These are pure (no network): the URL
 tests read `_url`, the body tests capture what would be sent.
 """
 
-from src.aito_v2_client import AitoV2Client
+from src.aito_v2_client import AitoV2Client, resolve_env
 
 
 def _client(env=None):
@@ -163,3 +163,40 @@ class TestEvaluateDropIn:
         client.evaluate({"testSource": {}, "evaluate": {}})
         # `_evaluate` is not a Query2 key — the grammar rejects one.
         assert client.path == "/_evaluate"
+
+
+class TestResolveEnv:
+    """How `AITO_V2_ENV` decides which API generation, and where.
+
+    This is the switch a production cutover turns. The end state of one
+    is v2 reading master directly — the env has been promoted and the
+    app should stop pointing at a branch — and that state was not
+    expressible until `master` became a sentinel here.
+    """
+
+    def test_unset_means_v1(self):
+        assert resolve_env(None) == (False, None)
+        assert resolve_env("") == (False, None)
+
+    def test_whitespace_is_not_a_v2_opt_in(self):
+        # `AITO_V2_ENV=` in a deploy config must not silently switch
+        # production onto a different API generation.
+        assert resolve_env("   ") == (False, None)
+
+    def test_a_name_selects_that_environment(self):
+        assert resolve_env("v2-demo") == (True, "v2-demo")
+
+    def test_master_means_v2_with_no_env_segment(self):
+        # Not an env named "master": the API refuses /env/master/, so the
+        # name is free to mean "unscoped".
+        assert resolve_env("master") == (True, None)
+
+    def test_the_env_prefixed_form_of_master_too(self):
+        assert resolve_env("env.master") == (True, None)
+        assert resolve_env("MASTER") == (True, None)
+
+    def test_master_resolves_to_the_unscoped_url(self):
+        _, target = resolve_env("master")
+        assert _client(target)._url("/_query") == (
+            "https://shared.aito.ai/db/aito-accounting-demo/api/v2/_query"
+        )

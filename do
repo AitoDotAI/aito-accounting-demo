@@ -162,8 +162,10 @@ cmd_precompute() {
 # script imports, because the precompute store reads it at import time to
 # choose its key namespace — set it late and v2 answers land under v1 keys.
 cmd_precompute_v2() {
+  # AITO_V2_ENV may name an env branch, or be `master` for v2 against
+  # master with no /env/ segment — the end state of a cutover.
   export AITO_V2_ENV="${AITO_V2_ENV:-v2-demo}"
-  echo "Pre-computing against Aito v2 — env '$AITO_V2_ENV'"
+  echo "Pre-computing against Aito v2 — $AITO_V2_ENV"
   echo "  (writes v2:-prefixed keys and data/precomputed/v2/; v1 output untouched)"
   cmd_precompute --v2 "$@"
 }

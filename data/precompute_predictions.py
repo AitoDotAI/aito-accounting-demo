@@ -416,14 +416,20 @@ def main() -> None:
     # client changes with --v2. See src/precompute_store.py.
     store_client = AitoClient(config)
     if args.v2:
-        env = os.environ.get("AITO_V2_ENV", "").strip()
-        if not env:
-            print("--v2 needs AITO_V2_ENV set (e.g. AITO_V2_ENV=v2-demo). "
-                  "Build one with: ./do v2-build", file=sys.stderr)
+        # Same interpretation the app uses, so a cutover's final state
+        # (AITO_V2_ENV=master, meaning v2 with no /env/ segment) computes
+        # against the same place the app will read. Passing "master"
+        # through as an env name would build /env/master/ and 400.
+        from src.aito_v2_client import AitoV2Client, resolve_env
+
+        use_v2, target = resolve_env(os.environ.get("AITO_V2_ENV"))
+        if not use_v2:
+            print("--v2 needs AITO_V2_ENV set (an env name, or 'master' for "
+                  "v2 against master). Build an env with: ./do v2-build",
+                  file=sys.stderr)
             sys.exit(2)
-        from src.aito_v2_client import AitoV2Client
-        client = AitoV2Client(config.aito_api_url, config.aito_api_key, env=env)
-        print(f"Computing against Aito v2 — env '{env}'")
+        client = AitoV2Client(config.aito_api_url, config.aito_api_key, env=target)
+        print(f"Computing against Aito v2 — {target or 'master (unscoped)'}")
     else:
         client = store_client
 
