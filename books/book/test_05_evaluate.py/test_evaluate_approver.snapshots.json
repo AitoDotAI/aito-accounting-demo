@@ -14,6 +14,7 @@
           "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
           "access-control-allow-origin": "*",
           "connection": "keep-alive",
+          "content-length": "70063",
           "content-type": "application/json",
           "date": "Mon, 27 Apr 2026 17:29:58 GMT",
           "permissions-policy": "geolocation=(), microphone=(), camera=()",
