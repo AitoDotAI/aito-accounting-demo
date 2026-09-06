@@ -39,6 +39,8 @@ free to mean "no branch". See `resolve_env` in `src/aito_v2_client.py`.
 ## Before you start
 
 - `./do check` green on `main`
+- The instance's build is known: `curl -s https://shared.aito.ai/version`.
+  If it moved since the branch was built, repair the branch — see step 1.
 - `./do audit` clean against whatever the app currently reads
 - A backup env exists (step 0 below). Promote **replaces** master; the
   backup is the only way back.
@@ -62,6 +64,33 @@ AITO_V2_ENV=v2-demo ./do v2-build --reset
 ```
 
 Master is untouched and still serving throughout.
+
+**If the instance has been upgraded since the branch was built, repair
+it first.** A v2 binary-format change auto-migrates master but *not*
+environment branches, so a branch built on an older build fails plain
+reads until each collection is rebuilt:
+
+```bash
+# once per COLLECTION — rep1 `type: table` tables are unaffected
+for T in bank_transactions corporate_entities customers employees \
+         help_articles help_impressions invoices overrides; do
+  curl -sS -X POST -H "x-api-key: $AITO_API_KEY" \
+    ".../db/aito-accounting-demo/env/v2-demo/api/v2/data/$T/repair"
+done
+```
+
+The failure does not name itself. It surfaces as an internal error on a
+query that has nothing to do with the upgrade —
+`slice [1090930175543, 1090930175543] ouf of bounds [0, 41573889]` on a
+plain `get`, or `ListSeqRepIoType expected 8 entries in OrderDir, got 6`
+on `_estimate`. Nothing in either message says "format" or "repair".
+Read an internal error on a branch that master handles fine as this,
+first, before bisecting anything.
+
+The asymmetry bites exactly this runbook: a branch is by definition
+older than master, so an upgrade lands on the branch and not on the
+thing it was branched from. Tracked as td-20260906220805012114; a core
+fix is planned.
 
 Verify the branch before anyone sees it:
 
@@ -156,6 +185,13 @@ number quoted in `docs/demo-script.md`, the README and the verification
 report is from the previous dataset, as are the committed bootstrap
 files (`data/precomputed/landing.json`, `help_related.json`) and the
 screenshots. Re-measure and re-capture after the cutover.
+
+**A format change between verification and promote would go unnoticed.**
+The repair in step 1 fixes the branch at that moment; nothing rechecks
+it later. If the instance is upgraded in the window between step 1 and
+step 3, re-run the repair and re-run `./do audit` before promoting —
+otherwise the state you promote into master is one nobody has read since
+the upgrade.
 
 **Master's storage engine changes.** Master currently holds rep1
 `type: table` tables; the branch holds rep2 `type: collection`
