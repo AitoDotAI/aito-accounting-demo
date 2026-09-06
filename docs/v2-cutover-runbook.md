@@ -9,6 +9,19 @@ master.** That way the new data is proven by the live application, on a
 branch, while master still holds the old state and can be returned to by
 unsetting one variable.
 
+**But do not linger on the branch.** Only master is kept hot in memory
+on the shared instance; an environment branch is not, so every query
+against it pays a cold cost that has nothing to do with the application.
+Steps 2 and 3 belong in the same sitting — deploy, smoke-test, promote —
+rather than a soak of days. Do the deep verification in step 1, against
+the branch, *before* anyone is pointed at it.
+
+This also revises a measurement in `docs/verification/aito-v2-ui.md`:
+the 15 s–4½ min cold-view latencies recorded there were measured against
+an env branch and attributed entirely to the missing precompute. Some of
+that is the branch not being retained. Re-measure on master after the
+promote before quoting those numbers again.
+
 ## The switch
 
 `AITO_V2_ENV` selects the API generation and says where to read:
@@ -72,8 +85,15 @@ branch**; master is untouched.
 **Back out:** remove the variable and redeploy. Instantly back to v1 on
 master, with the old data intact.
 
-Watch here. This is the step where the application, not a test, decides
-whether v2 is ready.
+Watch here — but briefly. This is the step where the application, not a
+test, decides whether v2 is ready, and a smoke test is what it is for:
+
+```bash
+./do verify-demo --base https://accounting.aito.ai
+```
+
+Expect it to be slower than it will be after the promote, because the
+branch is not held hot. Judge correctness here and latency after step 3.
 
 ## 3. Promote the branch into master
 
@@ -83,6 +103,10 @@ POST /api/v2/_envs/v2-demo/promote
 
 Atomic swap. Master now holds the new state; the branch is not deleted
 and continues to reference the same content.
+
+Do this **soon after step 2, not days later** — see the memory note at
+the top. Master is the only state kept hot, so until you promote, the
+demo is paying a cold cost on every query.
 
 **Immediately afterwards, clear the precompute** — see the caveat below.
 It is stale the instant this completes.

@@ -73,6 +73,12 @@ blend and `amt_score` carries it. What needs revisiting is how the panel
 presents a legitimately tiny probability. Not a blocker; it is a presentation
 bug in one panel.
 
+> **Caveat added 2026-09-06.** Every latency below was measured against
+> the `v2-demo` **environment branch**. Only master is kept hot in memory
+> on the shared instance, so part of these numbers is the branch not
+> being retained rather than the missing precompute they are attributed
+> to. Re-measure on master after the cutover before quoting them.
+
 **D4 — cold-path latency is the real gap for a v2 demo.**
 On v1 the heavy views are served instantly from the precompute bootstrap. v2
 deliberately bypasses precompute (it is v1-derived), so every view computes
