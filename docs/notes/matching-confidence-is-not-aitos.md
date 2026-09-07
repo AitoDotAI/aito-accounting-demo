@@ -58,16 +58,76 @@ honestly, the gap became visible.
   28.3x group factor — not evidence against the match. Treating every
   lift < 1 as counter-evidence is our rule, and it misleads here.
 
+## The candidate domain is the root cause, and it is fixable
+
+The claim above that "`$p` never will be meaningful for a 98k-class
+target" was wrong, because it treated the candidate universe as fixed.
+It is not. `customer_id` was being passed as *evidence*; the engine also
+scopes the candidate universe through the linked path, which is what
+`InvoicesTest` and `InvoiceRoutingEvaluation` in aito-core do:
+
+```json
+"where":   { "description": ..., "amount": ..., "invoice_id.customer_id": "CUST-0000" },
+"predict": "invoice_id"
+```
+
+Measured on `env.v2-demo`, the Botnia row:
+
+| variant | `total` (universe) | `$p` | `1/baseP` | latency |
+|---|---|---|---|---|
+| A current — `customer_id` as evidence | 128 000 | 0.0124% | 97 946 | 26 340 ms |
+| B evidence **and** linked-path scope | 16 000 | 0.633% | 41 946 | 7 051 ms |
+| C linked-path scope replacing evidence | 16 000 | 0.633% | 41 946 | 2 418 ms |
+| D `invoice_id: {$or: [30 ledger ids]}` | 128 000 | 1.41% | 97 946 | 16 416 ms |
+
+Two mechanisms, only one of which scopes:
+
+- **The linked path narrows the universe.** `total` drops to exactly
+  16 000, this tenant's invoice count.
+- **`$or` on the predict target does not.** `total` stays 128 000 and
+  `baseP` is unchanged, so it lands as evidence. There is therefore no
+  way to scope down to the 30-row `open_invoices` ledger this way; the
+  tenant is the granularity available.
+
+### Accuracy: keep the evidence, add the scope
+
+Top-1 against the fixture's ground-truth link, 24 payments over
+`CUST-0000/0001/0002`:
+
+```
+A (current)          22/24
+B (evidence + scope) 21/24     $p range 1.6e-04 .. 0.664
+C (scope only)       16/24     $p range 1.1e-04 .. 0.273
+```
+
+C is a real regression — dropping `customer_id` from the evidence loses
+signal that the scope does not replace. B is within noise of A at this
+sample size while raising `$p` by 10x to 60 000x. Under A, 9 of the 24
+correct predictions sat at exactly `1.089e-05`, i.e. flat on the base
+rate: the ranking was right and the probability carried no information
+at all. Under B the same rows span 0.0001 to 0.66.
+
+**So B is the change to make**, and it is worth making for latency
+alone (26.3 s -> 7.1 s here) independently of any display decision.
+
+It does not fully settle the blend question: at the weak end `$p` is
+still ~1e-04, where `aito_p*0.5 + 1.0*0.5` remains amount-dominated. It
+does mean Aito's number becomes real and quotable on most rows —
+"23%, against a 0.002% base rate, out of 16 000 candidates".
+
 ## Options
 
+- **Fix the candidate domain (do this first)** — variant B above.
+  Better `$p`, better latency, accuracy unchanged. Needs a wider
+  accuracy run than n=24 before it ships.
 - **Narrow** — include the normalizer in the chain; stop labelling
-  decomposition terms as counter-evidence.
-- **Broad** — stop showing absolute probabilities on this page. For a
-  98k-class link target, rank is the meaningful output and `$p` never
-  will be. "12x more likely than base, top of 98 000 candidates" is both
-  true and stronger than "0.01%".
+  decomposition terms as counter-evidence. Independent of the above.
 - **Honest blend** — keep the percentage but label the split, so the
-  page states how much is Aito and how much is amount matching.
+  page states how much is Aito and how much is amount matching. Still
+  worth doing for the weak rows even after B.
+- **Broad** — drop absolute probabilities for rank. Now the weakest
+  option: after B the probability carries information, so discarding it
+  throws away the thing that was just fixed.
 
-The third changes what the demo claims and touches
-`docs/demo-script.md`; it needs a decision, not just a patch.
+The blend decision touches `docs/demo-script.md` and needs a call, not
+just a patch.
