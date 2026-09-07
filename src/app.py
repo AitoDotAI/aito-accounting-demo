@@ -337,15 +337,45 @@ def cache_status(customer_id: str = Query(...)):
 
 @app.get("/api/cache/warm_customers")
 def warm_customers():
-    """Customer ids that have precomputed JSON (instant load).
+    """Customer ids whose views are precomputed (instant load).
 
-    Drives the dot indicator in the customer dropdown so a developer
-    evaluator can see at a glance which customers will be fast.
+    Drives the dot indicator in the customer dropdown so an evaluator
+    can see at a glance which customers will be fast — and, more to the
+    point, which will not: an un-precomputed tenant costs 9 s on the
+    invoice list and over three minutes on payment matching.
+
+    Asks the precompute STORE, not the filesystem. Reading
+    `data/precomputed/*/` was wrong in both directions. The deployed
+    image ships no per-customer JSON at all (gitignored, only the two
+    cross-tenant files are committed), so in production every tenant
+    showed cold including the ones that are instant. And under v2 the
+    local tree is the v1 one, so a developer saw green dots for tenants
+    with no v2 precompute whatsoever — a green light onto a 3-minute
+    hang, which is worse than no light.
+
+    The store is namespaced, so this answers for whichever generation
+    the app is actually running.
     """
-    base = _PROJECT_ROOT / "data" / "precomputed"
-    if not base.is_dir():
+    prefix = f"{precompute_store.namespace()}cust:"
+    try:
+        rows = aito.search(
+            "precompute_entries", {"name": {"$startsWith": prefix}}, limit=2000,
+        ).get("hits", [])
+    except AitoError:
         return {"customer_ids": []}
-    ids = sorted(p.name for p in base.iterdir() if p.is_dir())
+    # Strip the prefix before splitting: the customer id is the first
+    # segment AFTER it, and the prefix itself is one segment longer on
+    # v2 ("v2:cust:CUST-0000:view" vs "cust:CUST-0000:view"). Indexing
+    # the un-stripped key works on exactly one generation.
+    ids = sorted({
+        rest.split(":")[0]
+        for rest in (
+            r.get("name", "")[len(prefix):]
+            for r in rows
+            if r.get("name", "").startswith(prefix)
+        )
+        if ":" in rest
+    })
     return {"customer_ids": ids}
 
 
