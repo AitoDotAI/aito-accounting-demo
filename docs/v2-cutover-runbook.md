@@ -162,7 +162,38 @@ content.
 
 ## Caveats that will bite
 
-**Precompute goes stale at promote, silently.** `precompute_entries`
+**Promote does not just stale the precompute — it REVERTS it.** This
+corrects an earlier version of this runbook, which said to clear the
+table at promote. The actual behaviour is worse and less obvious.
+
+An environment is a copy-on-write view of the *whole database*, and that
+includes the plain `type: table` tables the app writes to at runtime —
+`precompute_entries`, `cache_entries`, `prediction_log`. The branch
+froze them at creation and has not seen a write since. Measured today,
+mid-cutover:
+
+| table | master | env `v2-demo` |
+|---|---|---|
+| `precompute_entries` | 180 | 143 |
+| `cache_entries` | — | 49 |
+
+Since promote makes master reference the env's state, expect master's
+180 rows to be replaced by the branch's frozen 143 — discarding every
+`v2:` precompute written for the deploy, plus 37 v1 rows. `prediction_log`
+would roll back the same way, losing any form-fill submissions made
+while the demo ran on the branch.
+
+So the order is: **precompute before step 2** (the app on the branch
+reads `precompute_entries` from *master*, not from the branch), then
+**precompute again after step 3**, because the promote throws the first
+one away. It is genuinely double work; the alternative is copying those
+tables into the branch before promoting, which is more moving parts for
+the same result.
+
+Note the step-0 backup does not save you here either — it is a snapshot
+of the same kind, frozen when it was taken.
+
+**And the precompute is stale in content, not only in bookkeeping.** `precompute_entries`
 holds payloads computed from the previous data. Invoice ids are stable
 (`CUST-0000-INV-000042` always exists) but the vendor, amount and date
 behind one all change, so the app would serve precomputed views that
