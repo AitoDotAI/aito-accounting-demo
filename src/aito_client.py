@@ -467,6 +467,49 @@ class AitoClient:
         """
         return self._request("POST", "/_evaluate", json=body, timeout=timeout)
 
+    def recommend(
+        self,
+        table: str,
+        where: dict,
+        recommend_field: str,
+        goal: dict,
+        select: list | None = None,
+        limit: int = 5,
+        based_on: list | None = None,
+    ) -> dict:
+        """Rank the values of a link field by P(goal), given `where`.
+
+        `recommend_field` is a link, so `select` may name the LINKED
+        row's columns and they resolve per candidate — which is how the
+        help drawer gets rendered articles back from one call.
+
+        `based_on=[]` switches off attribute-based generalization over
+        the linked entity. That is a real speed lever on the
+        related-articles query and not a default worth guessing at, so
+        it is passed through rather than assumed.
+        """
+        query: dict = {
+            "from": table,
+            "where": where,
+            "recommend": recommend_field,
+            "goal": goal,
+            "limit": limit,
+        }
+        if based_on is not None:
+            query["basedOn"] = based_on
+        if select is not None:
+            query["select"] = select
+        return self._request("POST", "/_recommend", json=query)
+
+    def insert_batch(self, table: str, rows: list[dict]) -> dict:
+        """Append rows to a table.
+
+        Exists so callers don't reach for the private `_request`, and so
+        both clients expose the same write entry point — `/data/{t}/batch`
+        is the one insert path that is identical on v1 and v2.
+        """
+        return self._request("POST", f"/data/{table}/batch", json=rows)
+
     def search(self, table: str, where: dict, limit: int = 10) -> dict:
         """Run a _search query to retrieve matching rows.
 

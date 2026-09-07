@@ -33,9 +33,10 @@ aito = AitoClient(config)
 
 # Optionally run the predictive endpoints against a v2 environment
 # (collections): invoice processing, smart form-fill, rule mining,
-# payment matching, anomaly detection and the quality dashboard. Set
-# AITO_V2_ENV=v2-demo to route them at v2. Only the help endpoints and
-# the two health probes still call v1 directly.
+# payment matching, anomaly detection, the quality dashboard and the
+# help drawer. Set AITO_V2_ENV to route them at v2. Only the two health
+# probes still call v1 directly — they check instance connectivity, so
+# v1-against-master is the right thing for them to report on.
 # `AitoV2Client` is a drop-in for the v1 client's interface, so the
 # services are passed it unchanged. See ADR 0017.
 # `AITO_V2_ENV` selects the v2 path and says WHERE:
@@ -1156,13 +1157,13 @@ def help_search(
     experience is dominated by repeat queries during a session, so
     server-side caching is what makes the drawer responsive.
     """
-    cache_key = f"help_search:{customer_id}:{page}:{q}:{limit}"
+    cache_key = f"help_search:{_V2}{customer_id}:{page}:{q}:{limit}"
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
     from src.help_service import search_help
     articles = search_help(
-        aito,
+        v2_client,
         customer_id=customer_id,
         page=page or None,
         query=q or None,
@@ -1181,7 +1182,7 @@ def help_impression(body: dict):
     """Log that an article was shown (or clicked, if clicked=true)."""
     from src.help_service import log_impression
     log_impression(
-        aito,
+        v2_client,
         article_id=body.get("article_id", ""),
         customer_id=body.get("customer_id", ""),
         page=body.get("page", ""),
@@ -1225,12 +1226,12 @@ def help_related(
     if article_id in cust_pre:
         return {"articles": cust_pre[article_id][:limit]}
 
-    cache_key = f"help_related:{customer_id}:{article_id}:{limit}"
+    cache_key = f"help_related:{_V2}{customer_id}:{article_id}:{limit}"
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
     from src.help_service import related_articles
-    result = {"articles": related_articles(aito, article_id, customer_id, limit=limit)}
+    result = {"articles": related_articles(v2_client, article_id, customer_id, limit=limit)}
     cache.set(cache_key, result, ttl=_ttl(3600))
     return result
 
@@ -1346,7 +1347,7 @@ def help_stats(customer_id: str = Query(...)):
     if cached is not None:
         return cached
     from src.help_service import customer_help_stats
-    result = customer_help_stats(aito, customer_id)
+    result = customer_help_stats(v2_client, customer_id)
     cache.set(cache_key, result, ttl=_ttl(300))
     return result
 

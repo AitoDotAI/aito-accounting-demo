@@ -200,3 +200,45 @@ class TestResolveEnv:
         assert _client(target)._url("/_query") == (
             "https://shared.aito.ai/db/aito-accounting-demo/api/v2/_query"
         )
+
+
+class TestRecommendDropIn:
+    """`recommend` is a Query2 key, so it goes through the unified endpoint.
+
+    This is the query that could not migrate until core V2-13 was fixed:
+    v2 silently discarded a disjunctive filter on a linked field, so the
+    help drawer's tenant-eligibility clause was dropped and other
+    customers' articles came back with a 200.
+    """
+
+    def test_builds_a_query2_body_not_a_recommend_endpoint_call(self):
+        client = _CapturingClient()
+        client.recommend(
+            "help_impressions",
+            {"customer_id": "C", "article_id.customer_id": {"$or": ["*", "C"]}},
+            "article_id",
+            goal={"clicked": True},
+            select=["$p", "article_id"],
+            limit=4,
+        )
+        assert client.body["recommend"] == "article_id"
+        assert client.body["goal"] == {"clicked": True}
+        assert client.body["limit"] == 4
+        # The eligibility clause must survive into the request untouched.
+        assert client.body["where"]["article_id.customer_id"] == {"$or": ["*", "C"]}
+
+    def test_based_on_is_only_sent_when_asked_for(self):
+        client = _CapturingClient()
+        client.recommend("t", {}, "f", goal={"g": True})
+        assert "basedOn" not in client.body
+
+        client = _CapturingClient()
+        client.recommend("t", {}, "f", goal={"g": True}, based_on=[])
+        # `basedOn: []` switches off link generalization — a real speed
+        # lever, and meaningfully different from omitting the key.
+        assert client.body["basedOn"] == []
+
+    def test_aliases_value_to_feature_for_v1_shaped_consumers(self):
+        client = _CannedQueryClient({"hits": [{"$p": 0.5, "$value": "ART-1"}]})
+        out = client.recommend("t", {}, "article_id", goal={"clicked": True})
+        assert out["hits"][0]["feature"] == "ART-1"

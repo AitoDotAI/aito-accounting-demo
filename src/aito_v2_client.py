@@ -309,6 +309,44 @@ class AitoV2Client:
             hit.setdefault("feature", hit.get("$value"))
         return response
 
+    def recommend(
+        self,
+        table: str,
+        where: dict,
+        recommend_field: str,
+        goal: dict,
+        select: list | None = None,
+        limit: int = 5,
+        based_on: list | None = None,
+    ) -> dict:
+        """Rank a link field's values by P(goal) — drop-in for the v1 client.
+
+        `recommend` is a Query2 key, so this goes through the unified
+        endpoint rather than `/_recommend`. Hits carry `$value`; it is
+        aliased to `feature` for consumers written against v1, the same
+        way `predict` does.
+
+        Note this is the query that could not migrate until core V2-13
+        was fixed: v2 silently discarded disjunctive filters on a linked
+        field, so a tenant-eligibility clause was dropped and other
+        customers' articles came back with a 200.
+        """
+        body: dict = {
+            "from": table,
+            "where": where,
+            "recommend": recommend_field,
+            "goal": goal,
+            "limit": limit,
+        }
+        if based_on is not None:
+            body["basedOn"] = based_on
+        if select is not None:
+            body["select"] = select
+        response = self.query(body)
+        for hit in response.get("hits", []):
+            hit.setdefault("feature", hit.get("$value"))
+        return response
+
     def evaluate(self, body: dict, timeout: float | None = 600.0) -> dict:
         """Run cross-validation, shaped as a v1 `_evaluate` response (drop-in).
 

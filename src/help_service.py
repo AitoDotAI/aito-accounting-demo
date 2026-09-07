@@ -88,17 +88,17 @@ def search_help(
         where.update(_query_clause(query))
 
     try:
-        result = client._request("POST", "/_recommend", json={
-            "from": "help_impressions",
-            "where": where,
-            "recommend": "article_id",
-            "goal": {"clicked": True},
-            "select": [
+        result = client.recommend(
+            "help_impressions",
+            where,
+            "article_id",
+            goal={"clicked": True},
+            select=[
                 "$p", "article_id", "title", "body", "category",
                 "tags", "page_context", "customer_id",
             ],
-            "limit": limit,
-        })
+            limit=limit,
+        )
     except AitoError:
         return []
 
@@ -126,30 +126,30 @@ def related_articles(
        when the candidate pool is already narrow. We pass
        `basedOn: []` so the recommend skips that step.
     """
-    query = {
-        "from": "help_impressions",
-        "basedOn": [],
-        "where": {
+    where = {
             # Explicit-key traversal: don't trip the linked-field
             # property-expansion slow path.
-            "prev_article_id.article_id": article_id,
-            "customer_id": customer_id,
-            "article_id.customer_id": _eligibility_clause(customer_id),
-        },
-        "recommend": "article_id",
-        "goal": {"clicked": True},
-        "select": [
-            "$p", "article_id", "title", "body", "category",
-            "tags", "page_context", "customer_id",
-        ],
-        # Over-fetch by 1 so we can drop the source article if it
-        # self-recommends. Aito's `recommend` field doesn't accept
-        # {"$not": ...} (link fields take values, not comparison
-        # clauses), so the exclusion stays client-side.
-        "limit": limit + 1,
+        "prev_article_id.article_id": article_id,
+        "customer_id": customer_id,
+        "article_id.customer_id": _eligibility_clause(customer_id),
     }
     try:
-        result = client._request("POST", "/_recommend", json=query)
+        result = client.recommend(
+            "help_impressions",
+            where,
+            "article_id",
+            goal={"clicked": True},
+            select=[
+                "$p", "article_id", "title", "body", "category",
+                "tags", "page_context", "customer_id",
+            ],
+            # Over-fetch by 1 so we can drop the source article if it
+            # self-recommends. Aito's `recommend` field doesn't accept
+            # {"$not": ...} (link fields take values, not comparison
+            # clauses), so the exclusion stays client-side.
+            limit=limit + 1,
+            based_on=[],
+        )
     except AitoError:
         return []
 
@@ -178,11 +178,7 @@ def customer_help_stats(client: AitoClient, customer_id: str) -> dict:
     """
     def _count(where: dict) -> int:
         try:
-            r = client._request("POST", "/_search", json={
-                "from": "help_impressions",
-                "where": where,
-                "limit": 0,
-            })
+            r = client.search("help_impressions", where, limit=0)
             return int(r.get("total", 0))
         except AitoError:
             return 0
@@ -231,7 +227,7 @@ def log_impression(
 
     def _persist() -> None:
         try:
-            client._request("POST", "/data/help_impressions", json=row)
+            client.insert_batch("help_impressions", [row])
         except AitoError as exc:
             print(f"help_impressions write failed: {exc}")
 
