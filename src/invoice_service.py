@@ -31,6 +31,71 @@ GL_LABELS = {
 }
 
 
+# Which of a tenant's own values exist, per (customer, field). A predict
+# enumerates candidates from the column's GLOBAL distinct value set and
+# scopes only the STATISTICS by the `where`, so for a field whose values
+# are tenant-private — an approver's name — the tail of the candidate
+# list is other companies' staff. Sub-percent probabilities, but shown.
+#
+# This bounds the ALTERNATIVES to values the tenant actually uses. It is
+# a stop-gap: the real fix is to link `approver` to employees so the
+# candidates can be filtered server-side with `fromWhere`, which also
+# fixes the separate problem that 52% of approver names are shared
+# between tenants. Tracked in td-20260901082623647538.
+#
+# Not applied to gl_code or cost_centre: a chart of accounts is a shared
+# vocabulary, so suggesting a GL the tenant has not used yet is a
+# legitimate suggestion rather than a leak.
+_TENANT_PRIVATE_FIELDS = ("approver", "processor")
+_known_values_cache: dict[tuple[str, str], set[str]] = {}
+
+
+def known_tenant_values(client, customer_id: str, field: str, sample: int = 1000) -> set[str]:
+    """The values of `field` this customer actually uses.
+
+    Sampled rather than exhaustive, because `$f` in `select` — which
+    would give an exact per-candidate count — is a v2-only capability
+    and v1 is still the production path and the cutover's fallback.
+    A miss costs a legitimate low-frequency alternative being hidden,
+    never a wrong value being shown, so the failure direction is right.
+
+    Cached per process for the life of the request batch: predicting 20
+    invoices must not run 20 identical scans.
+    """
+    if not customer_id:
+        # No tenant scope, nothing to be foreign to. A prediction made
+        # without a customer_id is not tenant-scoped in the first place,
+        # so filtering against "this tenant's values" is meaningless —
+        # and querying for them would be a wasted round trip.
+        return set()
+    key = (customer_id, field)
+    cached = _known_values_cache.get(key)
+    if cached is not None:
+        return cached
+    try:
+        rows = client.search("invoices", {"customer_id": customer_id}, limit=sample)
+    except AitoError:
+        return set()
+    values = {r[field] for r in rows.get("hits", []) if r.get(field)}
+    _known_values_cache[key] = values
+    return values
+
+
+def _drop_foreign_candidates(hits: list[dict], known: set[str]) -> list[dict]:
+    """Keep only candidates the tenant actually uses.
+
+    Never returns empty: a tenant with no history at all (cold start)
+    has nothing to filter against, and hiding every alternative would
+    turn a leak into a blank panel. The top candidate is always kept —
+    it is what the prediction itself reports, so removing it here would
+    contradict the value shown beside it.
+    """
+    if not known or not hits:
+        return hits
+    kept = [h for h in hits if h.get("feature", h.get("$value")) in known]
+    return kept if kept else hits[:1]
+
+
 def _extract_alternatives(hits: list[dict], label_map: dict | None = None, prefix: str = "") -> list[dict]:
     """Extract top-3 alternatives from Aito _predict hits.
 
@@ -425,7 +490,13 @@ def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None 
         source=source,
         confidence=overall_conf,
         gl_alternatives=_extract_alternatives(gl_hits, GL_LABELS),
-        approver_alternatives=_extract_alternatives(approver_hits, prefix="AP / "),
+        approver_alternatives=_extract_alternatives(
+            _drop_foreign_candidates(
+                approver_hits,
+                known_tenant_values(client, invoice.get("customer_id", ""), "approver"),
+            ),
+            prefix="AP / ",
+        ),
     )
 
 

@@ -9,6 +9,7 @@ import pytest
 from src.aito_client import AitoClient, AitoError
 from src.config import Config
 from src.invoice_service import (
+    _drop_foreign_candidates,
     REVIEW_THRESHOLD,
     check_rules,
     compute_metrics,
@@ -191,3 +192,41 @@ class TestComputeMetrics:
         assert d["gl_code"] == "4400"
         assert d["gl_label"] == "Supplies"
         assert d["source"] == "aito"
+
+
+class TestForeignCandidatesAreDropped:
+    """A predict enumerates candidates GLOBALLY and scopes only the stats.
+
+    For a tenant-private field like `approver`, that puts other
+    companies' staff names in the tail of the candidate list at
+    sub-percent probability. This is the stop-gap that keeps them out of
+    the alternatives; the real fix is linking approver to employees so
+    candidates can be bounded server-side (td-20260901082623647538).
+    """
+
+    def test_a_candidate_the_tenant_never_uses_is_dropped(self):
+        hits = [
+            {"feature": "Matti Laitinen", "$p": 0.994},
+            {"feature": "Juha Nieminen", "$p": 0.0002},   # another company's
+        ]
+        kept = _drop_foreign_candidates(hits, {"Matti Laitinen"})
+        assert [h["feature"] for h in kept] == ["Matti Laitinen"]
+
+    def test_v2_shaped_hits_are_matched_on_value_too(self):
+        hits = [{"$value": "Matti Laitinen", "$p": 0.9}, {"$value": "Foreign Name", "$p": 0.001}]
+        kept = _drop_foreign_candidates(hits, {"Matti Laitinen"})
+        assert len(kept) == 1
+
+    def test_a_cold_start_tenant_keeps_its_alternatives(self):
+        # No history means nothing to filter against. Hiding everything
+        # would turn a leak into a blank panel, which is a worse demo and
+        # a worse bug.
+        hits = [{"feature": "A", "$p": 0.4}, {"feature": "B", "$p": 0.3}]
+        assert _drop_foreign_candidates(hits, set()) == hits
+
+    def test_the_top_candidate_survives_even_if_unknown(self):
+        # The top candidate is the value the prediction itself reports.
+        # Removing it here would contradict the number shown beside it.
+        hits = [{"feature": "Unseen", "$p": 0.6}, {"feature": "AlsoUnseen", "$p": 0.2}]
+        kept = _drop_foreign_candidates(hits, {"Someone Else"})
+        assert [h["feature"] for h in kept] == ["Unseen"]
