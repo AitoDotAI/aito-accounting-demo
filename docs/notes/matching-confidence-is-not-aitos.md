@@ -115,11 +115,52 @@ still ~1e-04, where `aito_p*0.5 + 1.0*0.5` remains amount-dominated. It
 does mean Aito's number becomes real and quotable on most rows —
 "23%, against a 0.002% base rate, out of 16 000 candidates".
 
+## Higher probabilities are available, from evidence not scope
+
+The query passes only `description` and `amount`. `bank_transactions`
+also carries `vendor_name`, which was simply never used:
+
+```json
+{"customer_id": "CUST-0000", "description": "KARDEX FINLAND  Saaja  VIITE 468883814  10.05.25",
+ "vendor_name": "Kardex Finland Oy", "amount": 1854.8, "bank": "Handelsbanken",
+ "transaction_id": "...", "invoice_id": "CUST-0000-INV-000000"}
+```
+
+12 payments over `CUST-0000/0001`:
+
+| variant | acc | median `$p` | max | universe | latency |
+|---|---|---|---|---|---|
+| A current | 11/12 | 0.000111 | 0.070 | 128 000 | 9 892 ms |
+| B tenant scope | 11/12 | 0.0236 | 0.664 | 8–16 000 | 1 556 ms |
+| **F B + `vendor_name` evidence** | **11/12** | **0.262** | 0.701 | 8–16 000 | **1 561 ms** |
+| G B + `invoice_id.vendor` scope | 9/12 | 0.0558 | 0.773 | 270–1 922 | 526 ms |
+| H G + vendor evidence | 9/12 | 0.340 | 0.628 | 270–1 922 | 574 ms |
+
+**F is the change to make.** Accuracy identical to today's, median `$p`
+up 2 367x, latency down 6.3x. The ceiling was never the candidate
+domain alone — it was a discriminative field the query wasn't passing.
+
+**Do not scope on vendor.** G and H are the tempting version and they
+lose 2 of 12: a hard filter on the candidate universe is unrecoverable,
+so any row where the transaction's vendor does not resolve to the
+invoice's vendor excludes the true answer outright. The same field used
+as *evidence* costs nothing when it is wrong. Scope on the tenant, which
+is an identity the app owns; pass everything else as evidence.
+
+### Caveat on `vendor_name`
+
+`data/generate_fixtures.py:841` sets `"vendor_name": vdef["name"]` — an
+exact, noise-free copy of the vendor the invoice carries. It is not the
+ground-truth link (a vendor has 270–1 922 invoices per tenant, so real
+discrimination remains), but a real bank feed's payer name would not
+match the AP vendor master this cleanly. If `$p` around 0.26 becomes the
+demo's headline, say plainly that this field is exact in the fixture.
+
 ## Options
 
-- **Fix the candidate domain (do this first)** — variant B above.
-  Better `$p`, better latency, accuracy unchanged. Needs a wider
-  accuracy run than n=24 before it ships.
+- **Pass `vendor_name` and scope to the tenant (do this first)** —
+  variant F above. Median `$p` 0.0001 -> 0.26, latency 9.9 s -> 1.6 s,
+  accuracy unchanged. Needs a wider accuracy run before it ships.
 - **Narrow** — include the normalizer in the chain; stop labelling
   decomposition terms as counter-evidence. Independent of the above.
 - **Honest blend** — keep the percentage but label the split, so the
