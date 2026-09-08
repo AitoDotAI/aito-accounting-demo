@@ -36,6 +36,13 @@ promote before quoting those numbers again.
 `/env/master/` outright, so the one name that cannot denote a branch is
 free to mean "no branch". See `resolve_env` in `src/aito_v2_client.py`.
 
+**And it is not a git branch either.** This repository has exactly one:
+`main`. Every "master" in this document is the Aito *environment* —
+`env.master`, the live database — so "master rejects the query" is a
+statement about the database's schema, never about anything in git.
+The two words sit close enough together here to mislead; when in doubt,
+`env.master` is the environment and `main` is the branch.
+
 ## Before you start
 
 - `./do check` green on `main`
