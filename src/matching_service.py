@@ -83,10 +83,24 @@ def match_bank_txn_to_invoice(
     # $why with `highlight` returns the matched description tokens
     # already wrapped in <mark> tags (Aito's text analyzer marks
     # whichever spans of the bank description carried the signal).
+    # `customer_id` in `where` is EVIDENCE about the transaction; it does not
+    # restrict which invoices Aito may rank. Without the linked-path scope the
+    # candidate universe is every invoice in the instance, so a CUST-0002
+    # payment gets ranked against CUST-0000's invoices -- measured at 17
+    # foreign candidates in the top 5 over 8 payments. `invoice_id.customer_id`
+    # scopes the candidate domain through the link instead, which is the
+    # tenant boundary this page needs. It also happens to cut latency ~6x and
+    # the probability's under-confidence ~48x, but the boundary is the reason.
+    customer_id = txn.get("customer_id")
+    where = {"description": txn["description"], "amount": txn["amount"]}
+    if customer_id is not None:
+        where["customer_id"] = customer_id
+        where["invoice_id.customer_id"] = customer_id
+
     try:
         result = client._request("POST", "/_predict", json={
             "from": "bank_transactions",
-            "where": {k: v for k, v in [("customer_id", txn.get("customer_id")), ("description", txn["description"]), ("amount", txn["amount"])] if v is not None},
+            "where": where,
             "predict": "invoice_id",
             "select": [
                 "$p",
