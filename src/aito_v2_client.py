@@ -289,7 +289,9 @@ class AitoV2Client:
     # matched tokens (same request the v1 client makes).
     _WHY_SELECT = {"$why": {"highlight": {"posPreTag": "<mark>", "posPostTag": "</mark>"}}}
 
-    def predict(self, table: str, where: dict, predict_field: str, limit: int = 50) -> dict:
+    def predict(self, table: str, where: dict, predict_field: str, limit: int = 50,
+                based_on: list[str] | None = None,
+                extra_select: list[str] | None = None) -> dict:
         """Run a prediction, shaped as a v1 `_predict` response (drop-in).
 
         Signature and response match the v1 client: v2 returns the predicted
@@ -301,10 +303,12 @@ class AitoV2Client:
         `limit` bounds the returned candidate values (default returns only ~10,
         so we lift it to cover a target field's full value set).
         """
-        response = self.query(
-            {"from": table, "where": where, "predict": predict_field,
-             "select": ["$p", "$value", self._WHY_SELECT], "limit": limit}
-        )
+        query = {"from": table, "where": where, "predict": predict_field,
+                 "select": ["$p", "$value", *(extra_select or []), self._WHY_SELECT],
+                 "limit": limit}
+        if based_on:
+            query["basedOn"] = based_on
+        response = self.query(query)
         for hit in response.get("hits", []):
             hit.setdefault("feature", hit.get("$value"))
         return response

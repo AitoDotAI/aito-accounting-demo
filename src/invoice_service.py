@@ -49,6 +49,18 @@ GL_LABELS = {
 # gl_code and cost_centre are deliberately NOT scoped this way: a chart of
 # accounts is a shared vocabulary, and a GL the tenant has not used yet is
 # a legitimate suggestion rather than a leak.
+def _names_from_hits(hits: list[dict]) -> dict[str, str]:
+    """employee_id -> name, read off the predict hits themselves.
+
+    A predict on a linked field returns rows of the linked table, so the
+    name arrives with the prediction. Empty when the hits carry no `name`
+    — an older deploy, or a target that is not a link — and the caller
+    falls back to fetching the roster.
+    """
+    return {h["feature"]: h["name"]
+            for h in hits if h.get("feature") and h.get("name")}
+
+
 def _extract_alternatives(hits: list[dict], label_map: dict | None = None, prefix: str = "",
                           label_replaces_value: bool = False) -> list[dict]:
     """Extract top-3 alternatives from Aito _predict hits.
@@ -408,7 +420,17 @@ def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None 
         approver_where = dict(where)
         if invoice.get("customer_id"):
             approver_where["approver.customer_id"] = invoice["customer_id"]
-        approver_result = client.predict("invoices", approver_where, "approver")
+        # `approver` is a link, so the hits are employee rows: `basedOn`
+        # lets the model generalise over the person's role and department
+        # (the fixture escalates invoices over 10k to a senior signer, and
+        # that is learnable as ROLE rather than as a list of names), and
+        # selecting `name` means the person comes back with the prediction
+        # instead of needing a second lookup.
+        approver_result = client.predict(
+            "invoices", approver_where, "approver",
+            based_on=["role", "department"],
+            extra_select=["name", "role", "department"],
+        )
     except AitoError:
         return InvoicePrediction(
             invoice_id=invoice_id,
@@ -437,8 +459,12 @@ def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None 
 
     gl_code = gl_top["feature"] if gl_top else None
     gl_conf = gl_top["$p"] if gl_top else 0.0
-    # The model predicts an employee_id; the page shows a person.
-    employee_names = tenant_employee_names(client, invoice.get("customer_id", ""))
+    # The model predicts an employee_id; the page shows a person. `name`
+    # rides along on the hit because approver links to employees, so the
+    # roster is only needed for hits that somehow lack it.
+    employee_names = _names_from_hits(approver_hits) or tenant_employee_names(
+        client, invoice.get("customer_id", "")
+    )
     approver_name = resolve(employee_names, approver_top["feature"] if approver_top else None)
     approver_conf = approver_top["$p"] if approver_top else 0.0
 

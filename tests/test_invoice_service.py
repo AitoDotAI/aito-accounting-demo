@@ -11,6 +11,7 @@ from src.config import Config
 from src.invoice_service import (
     REVIEW_THRESHOLD,
     _extract_alternatives,
+    _names_from_hits,
     tenant_employee_names,
     check_rules,
     compute_metrics,
@@ -234,6 +235,24 @@ class TestApproverIsResolvedToAName:
                                      prefix="AP / ", label_replaces_value=True)
 
         assert alts[0]["display"] == "AP / CUST-0000-EMP-9999"
+
+    def test_the_name_rides_along_on_the_hit(self):
+        # `approver` links to employees, so a predict returns employee
+        # ROWS. The name arrives with the prediction and no second lookup
+        # is needed.
+        hits = [{"feature": "CUST-0000-EMP-0001", "name": "Juha Laitinen", "$p": 0.9},
+                {"feature": "CUST-0000-EMP-0002", "name": "Mikko Nieminen", "$p": 0.08}]
+
+        assert _names_from_hits(hits) == {
+            "CUST-0000-EMP-0001": "Juha Laitinen",
+            "CUST-0000-EMP-0002": "Mikko Nieminen",
+        }
+
+    def test_hits_without_a_name_fall_back_to_the_roster(self):
+        # An older deploy, or a target that is not a link. Returning {}
+        # rather than a half-map is what lets the caller tell the
+        # difference and fetch instead.
+        assert _names_from_hits([{"feature": "CUST-0000-EMP-0001", "$p": 0.9}]) == {}
 
     def test_names_are_not_fetched_without_a_tenant(self):
         # A prediction with no customer_id is not tenant-scoped, so there
