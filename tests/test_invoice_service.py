@@ -9,8 +9,9 @@ import pytest
 from src.aito_client import AitoClient, AitoError
 from src.config import Config
 from src.invoice_service import (
-    _drop_foreign_candidates,
     REVIEW_THRESHOLD,
+    _extract_alternatives,
+    tenant_employee_names,
     check_rules,
     compute_metrics,
     predict_invoice,
@@ -194,39 +195,51 @@ class TestComputeMetrics:
         assert d["source"] == "aito"
 
 
-class TestForeignCandidatesAreDropped:
-    """A predict enumerates candidates GLOBALLY and scopes only the stats.
+class TestApproverIsResolvedToAName:
+    """`approver` stores an employee_id and links to `employees`.
 
-    For a tenant-private field like `approver`, that puts other
-    companies' staff names in the tail of the candidate list at
-    sub-percent probability. This is the stop-gap that keeps them out of
-    the alternatives; the real fix is linking approver to employees so
-    candidates can be bounded server-side (td-20260901082623647538).
+    It used to store a NAME, which could not link and — because 42% of
+    employee names are shared between tenants — pooled every same-named
+    approver's history into one value. The candidate set is now confined
+    server-side by `approver.customer_id`, and the id the model returns
+    is resolved to a person for display.
     """
 
-    def test_a_candidate_the_tenant_never_uses_is_dropped(self):
-        hits = [
-            {"feature": "Matti Laitinen", "$p": 0.994},
-            {"feature": "Juha Nieminen", "$p": 0.0002},   # another company's
-        ]
-        kept = _drop_foreign_candidates(hits, {"Matti Laitinen"})
-        assert [h["feature"] for h in kept] == ["Matti Laitinen"]
+    def test_the_predicted_id_is_shown_as_a_person_not_a_key(self):
+        hits = [{"feature": "CUST-0000-EMP-0156", "$p": 0.91}]
+        names = {"CUST-0000-EMP-0156": "Matti Niemi"}
 
-    def test_v2_shaped_hits_are_matched_on_value_too(self):
-        hits = [{"$value": "Matti Laitinen", "$p": 0.9}, {"$value": "Foreign Name", "$p": 0.001}]
-        kept = _drop_foreign_candidates(hits, {"Matti Laitinen"})
-        assert len(kept) == 1
+        alts = _extract_alternatives(hits, names, prefix="AP / ",
+                                     label_replaces_value=True)
 
-    def test_a_cold_start_tenant_keeps_its_alternatives(self):
-        # No history means nothing to filter against. Hiding everything
-        # would turn a leak into a blank panel, which is a worse demo and
-        # a worse bug.
-        hits = [{"feature": "A", "$p": 0.4}, {"feature": "B", "$p": 0.3}]
-        assert _drop_foreign_candidates(hits, set()) == hits
+        assert alts[0]["display"] == "AP / Matti Niemi"
+        # The id stays the machine-readable value: it is what an override
+        # is recorded against, and it is unique where a name is not.
+        assert alts[0]["value"] == "CUST-0000-EMP-0156"
 
-    def test_the_top_candidate_survives_even_if_unknown(self):
-        # The top candidate is the value the prediction itself reports.
-        # Removing it here would contradict the number shown beside it.
-        hits = [{"feature": "Unseen", "$p": 0.6}, {"feature": "AlsoUnseen", "$p": 0.2}]
-        kept = _drop_foreign_candidates(hits, {"Someone Else"})
-        assert [h["feature"] for h in kept] == ["Unseen"]
+    def test_a_gl_code_still_shows_its_code_alongside_the_label(self):
+        # The two label maps are not interchangeable: an accountant works
+        # with the GL code itself, so it is shown as well as its meaning.
+        alts = _extract_alternatives([{"feature": "4400", "$p": 0.9}],
+                                     {"4400": "Office supplies"})
+
+        assert alts[0]["display"] == "4400 \u2013 Office supplies"
+
+    def test_an_unresolvable_id_falls_back_to_the_id(self):
+        # An employee who has left is absent from the roster but still
+        # appears in history. Showing the raw id is ugly; showing nothing
+        # would drop a real alternative.
+        alts = _extract_alternatives([{"feature": "CUST-0000-EMP-9999", "$p": 0.5}],
+                                     {"CUST-0000-EMP-0156": "Matti Niemi"},
+                                     prefix="AP / ", label_replaces_value=True)
+
+        assert alts[0]["display"] == "AP / CUST-0000-EMP-9999"
+
+    def test_names_are_not_fetched_without_a_tenant(self):
+        # A prediction with no customer_id is not tenant-scoped, so there
+        # is no roster to resolve against and no round trip worth making.
+        class ExplodingClient:
+            def search(self, *a, **k):
+                raise AssertionError("should not query without a customer_id")
+
+        assert tenant_employee_names(ExplodingClient(), "") == {}

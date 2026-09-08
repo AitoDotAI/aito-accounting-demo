@@ -29,6 +29,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from src.aito_client import AitoClient, AitoError
+from src.employee_directory import tenant_employee_names
 from src.invoice_service import GL_LABELS
 
 # Fields known at invoice intake — the only legitimate rule inputs.
@@ -63,10 +64,18 @@ MIN_SUPPORT = 3
 MIN_LIFT = 1.0
 
 
-def target_value_label(target_field: str, value: str) -> str:
-    """Human label for a target value (GL name, or the approver itself)."""
+def target_value_label(target_field: str, value: str,
+                       employee_names: dict[str, str] | None = None) -> str:
+    """Human label for a target value: a GL name, or an approver's name.
+
+    `approver` holds an employee_id, so without the roster the label is
+    the raw key. Callers that have a client pass `employee_names`;
+    the fallback keeps this function pure and its tests offline.
+    """
     if target_field == "gl_code":
         return GL_LABELS.get(value, value)
+    if employee_names:
+        return employee_names.get(value, value)
     return value
 
 
@@ -223,6 +232,7 @@ def build_candidate(
     rule_match: int,
     target_total: int,
     n: int,
+    employee_names: dict[str, str] | None = None,
 ) -> RuleCandidate:
     """Assemble a RuleCandidate from EXACT `_search` counts.
 
@@ -237,7 +247,7 @@ def build_candidate(
         clauses=clauses,
         target_field=target_field,
         target_value=target_value,
-        target_label=target_value_label(target_field, target_value),
+        target_label=target_value_label(target_field, target_value, employee_names),
         rule_match=rule_match,
         rule_total=rule_total,
         target_total=target_total,
@@ -256,6 +266,9 @@ def mine_rules(client: AitoClient, customer_id: str | None = None) -> dict:
     targets, sort strongest-first, and summarise.
     """
     where_filter = {"customer_id": customer_id} if customer_id else {}
+    # `approver` targets are employee_ids; the roster turns them into
+    # people for the rule labels.
+    employee_names = tenant_employee_names(client, customer_id or "")
     try:
         n = _count(client, where_filter)  # exact rows in scope (lift base)
     except AitoError:
@@ -303,7 +316,8 @@ def mine_rules(client: AitoClient, customer_id: str | None = None) -> dict:
             if rule_match < MIN_SUPPORT:
                 continue
             candidate = build_candidate(
-                clauses, target_field, target_value, rule_total, rule_match, target_total, n
+                clauses, target_field, target_value, rule_total, rule_match, target_total, n,
+                employee_names,
             )
             if candidate.lift <= MIN_LIFT:  # positive only, on the exact lift
                 continue
