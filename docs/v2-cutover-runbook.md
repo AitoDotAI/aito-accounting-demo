@@ -169,19 +169,35 @@ table at promote. The actual behaviour is worse and less obvious.
 An environment is a copy-on-write view of the *whole database*, and that
 includes the plain `type: table` tables the app writes to at runtime —
 `precompute_entries`, `cache_entries`, `prediction_log`. The branch
-froze them at creation and has not seen a write since. Measured today,
-mid-cutover:
+froze them at creation and has not seen a write since.
 
-| table | master | env `v2-demo` |
+Measured 2026-09-08, and it is worse than "discarding a stale copy":
+
+| | rows | of which `v2:` |
 |---|---|---|
-| `precompute_entries` | 180 | 143 |
-| `cache_entries` | — | 49 |
+| master | 180 | **37** |
+| env `v2-demo` | 143 | **0** |
 
-Since promote makes master reference the env's state, expect master's
-180 rows to be replaced by the branch's frozen 143 — discarding every
-`v2:` precompute written for the deploy, plus 37 v1 rows. `prediction_log`
-would roll back the same way, losing any form-fill submissions made
-while the demo ran on the branch.
+The `v2:` rows are the ONLY ones the v2 app reads — the app queries data
+from the branch but reads and writes `precompute_entries` on *master*,
+under the `v2:` prefix. The branch has none of them, because it was
+branched before they were written.
+
+So promote does not degrade the precompute, it **erases** it: master's
+37 `v2:` rows vanish, and the 143 rows that replace them are v1-prefixed
+entries no v2 app will ever look at. The 37 v1 rows serving production
+go too. `prediction_log` rolls back the same way, losing any form-fill
+submissions made while the demo ran on the branch.
+
+Rebuilding those 37 rows took **424 s** (5 tenants, `--workers 2`), so
+the second precompute pass is not a formality.
+
+**A data reload does not clear the precompute.** `./do v2-build --reset`
+drops and recreates the rep2 *collections*; `precompute_entries` is a
+rep1 `type: table` and is left untouched — 143 rows before the
+2026-09-08 reload and 143 after. Stale entries therefore survive a
+rebuild of the very data they describe, with no error. Clear it
+deliberately or rebuild it; do not assume `--reset` did.
 
 So the order is: **precompute before step 2** (the app on the branch
 reads `precompute_entries` from *master*, not from the branch), then
