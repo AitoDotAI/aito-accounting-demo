@@ -156,6 +156,36 @@ discrimination remains), but a real bank feed's payer name would not
 match the AP vendor master this cleanly. If `$p` around 0.26 becomes the
 demo's headline, say plainly that this field is exact in the fixture.
 
+## Evaluation after tenant scoping shipped
+
+`./do eval-matching --v2 --env v2-demo --n 25 --split-on-reference`,
+CUST-0000, 25 payments against a 55-invoice open ledger, run after
+commit 29161fa:
+
+| | n | accuracy | precision on `matched` | mean confidence |
+|---|---|---|---|---|
+| quoted the invoice reference | 12 | **100.0%** | 12/12 | 0.67 |
+| no reference — needs a model | 13 | **92.3%** | 12/12 | 0.53 |
+| all | 25 | **96.0%** | **24/24 = 100%** | 0.60 |
+
+Random baseline 1.8%. The single failure is a REFUSAL, not a wrong
+answer: `DOTTORESSA 10062025` (truth `CUST-0000-INV-000144`) fell below
+the 0.15 suggest threshold and returned no-match. Precision on
+everything it did assign is 100%, which is the right failure mode for
+AP — an unmatched payment goes to a human, a wrongly matched one does
+not.
+
+This is not a controlled before/after: the pre-scoping numbers in this
+note came from ad-hoc per-row runs (22/24 on a different sample), not
+from this script. Re-running `eval-matching` with the scope removed
+would give a real delta and has not been done.
+
+**Calibration is visible here too.** Precision on assigned matches is
+100% while the mean displayed confidence is 0.60 — the page understates
+itself by 40 points on the matched set, after the domain fix. Consistent
+with td-20260907231635389671: scoping shrinks the gap, it does not close
+it, because the remaining under-confidence is in the estimate.
+
 ## Options
 
 - **Pass `vendor_name` and scope to the tenant (do this first)** —
