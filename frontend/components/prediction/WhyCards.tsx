@@ -1,6 +1,6 @@
 "use client";
 
-import LiftHint from "./LiftHint";
+import LiftHint, { formatLift } from "./LiftHint";
 import type { WhyFactor } from "@/lib/types";
 
 // ── $why factor cards ─────────────────────────────────────────────
@@ -60,6 +60,14 @@ export default function WhyCards({
     if (v > 0 && v < 0.01) return `${(v * 100).toFixed(2)}%`;
     return `${(v * 100).toFixed(0)}%`;
   };
+
+  const summaryStyle = {
+    marginTop: 2, padding: "8px 10px",
+    background: "var(--surface)", borderRadius: 4,
+    display: "flex", alignItems: "baseline", justifyContent: "center", flexWrap: "wrap",
+    fontSize: 12, color: "var(--text2)", gap: 4,
+    fontFamily: "'IBM Plex Mono', monospace",
+  } as const;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -181,24 +189,34 @@ export default function WhyCards({
         </div>
       ))}
 
-      {(base || lifts.length > 0) && (
-        <div style={{
-          marginTop: 2, padding: "8px 10px",
-          background: "var(--surface)", borderRadius: 4,
-          display: "flex", alignItems: "baseline", justifyContent: "center", flexWrap: "wrap",
-          fontSize: 12, color: "var(--text2)", gap: 4,
-          fontFamily: "'IBM Plex Mono', monospace",
-        }}>
-          <span>{pct(baseP)}</span>
-          {lifts.map((lift, i) => (
-            // Same reason as pct(): a counter-evidence lift can be 3.4e-06,
-            // and "× 0.0" reads as broken rather than as very small.
-            <span key={i}> × {lift > 0 && lift < 0.05 ? "<0.05" : lift.toFixed(1)}</span>
-          ))}
-          <span style={{ color: "var(--text3)" }}> = </span>
-          <span style={{ fontWeight: 700, color: "var(--gold-dark)" }}>
-            {pct(blendNote ? chainProduct : confidence)}
-          </span>
+      {/* The chain needs a base probability to multiply. A same-vendor
+          substitute has no `$why` of its own — see `_build_explanation`
+          in src/matching_service.py — and rendering its missing base as
+          "0%" printed "0% × 1.0 = 0%" underneath a 57% match. With no
+          base there is no equation to show, only the number itself. */}
+      {(base || (!blendNote && lifts.length > 0)) && (
+        <div style={summaryStyle}>
+          {base ? (
+            <>
+              <span>{pct(baseP)}</span>
+              {lifts.map((lift, i) => (
+                // formatLift, not a local rule: this chain restates the
+                // numbers on the cards above, so both must round alike.
+                <span key={i}> × {formatLift(lift)}</span>
+              ))}
+              <span style={{ color: "var(--text3)" }}> = </span>
+              <span style={{ fontWeight: 700, color: "var(--gold-dark)" }}>
+                {pct(blendNote ? chainProduct : confidence)}
+              </span>
+            </>
+          ) : (
+            <>
+              <span style={{ color: "var(--text3)" }}>confidence </span>
+              <span style={{ fontWeight: 700, color: "var(--gold-dark)" }}>
+                {pct(confidence)}
+              </span>
+            </>
+          )}
         </div>
       )}
 
