@@ -328,8 +328,13 @@ cmd_screenshots() {
   echo "Done. Screenshots in $out_dir/"
 }
 
+# The book baselines record ONE backend's output -- a `.md` cannot hold
+# both v1's and v2's numbers -- and they are recorded against v2. Default
+# the switch so `./do book` works without ceremony; override it to point
+# at another environment, e.g. AITO_V2_ENV=master after the cutover.
 cmd_book() {
-  echo "Running book tests..."
+  export AITO_V2_ENV="${AITO_V2_ENV:-v2-demo}"
+  echo "Running book tests against Aito v2 — $AITO_V2_ENV"
   cd "$SCRIPT_DIR"
   uv run booktest -v book/ "$@"
 }
@@ -338,7 +343,8 @@ cmd_book() {
 # output. A test whose baseline is missing or stale still reports a diff
 # after this — use `book-accept` for that.
 cmd_book_update() {
-  echo "Updating book test snapshots..."
+  export AITO_V2_ENV="${AITO_V2_ENV:-v2-demo}"
+  echo "Updating book test snapshots... ($AITO_V2_ENV)"
   cd "$SCRIPT_DIR"
   uv run booktest -v -u book/ "$@"
 }
@@ -351,7 +357,8 @@ cmd_book_update() {
 # returning 200 with extra rows snapshots perfectly cleanly. Review with
 # `./do book` and the files under books/.out/ before running this.
 cmd_book_accept() {
-  echo "Accepting current output as the expected baseline..."
+  export AITO_V2_ENV="${AITO_V2_ENV:-v2-demo}"
+  echo "Accepting current output as the expected baseline... ($AITO_V2_ENV)"
   cd "$SCRIPT_DIR"
   uv run booktest -v -c -a book/ "$@"
 }

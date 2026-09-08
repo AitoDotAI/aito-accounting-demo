@@ -7,7 +7,7 @@ index is in memory. The gap shows Aito-side caching.
 ## vendor = Kardex Finland Oy
 
 first call:
-0.531 ms
+0.388 ms (was 179.316 ms)
 second call:
-2.186 ms
+0.449 ms (was 167.394 ms)
   same top GL: True

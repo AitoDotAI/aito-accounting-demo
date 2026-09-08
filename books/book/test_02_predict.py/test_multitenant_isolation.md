@@ -6,9 +6,9 @@ because each customer has their own routing patterns.
 
 ## Vendor: Kardex Finland Oy
 
-  CUST-0000 (16000 invoices): GL 4400   p=0.9719
-  CUST-0003 ( 4000 invoices): GL 6200   p=0.8160
-  CUST-0010 ( 2000 invoices): GL 4400   p=0.9582
-  CUST-0100 (  250 invoices): GL 6200   p=0.6654
+  CUST-0000 (16000 invoices): GL 4400   p=0.9753
+  CUST-0003 ( 4000 invoices): GL 4400   p=0.9214
+  CUST-0010 ( 2000 invoices): GL 4400   p=0.9836
+  CUST-0100 (  250 invoices): GL 4400   p=0.9675
 
 Different GL codes per customer = multi-tenancy working.

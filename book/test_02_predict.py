@@ -6,12 +6,8 @@ same vendor.
 """
 
 import booktest as bt
-from src.config import load_config
-from src.aito_client import AitoClient
 
-
-def get_client():
-    return AitoClient(load_config())
+from book.aito_env import get_client
 
 
 @bt.snapshot_httpx()
@@ -44,14 +40,30 @@ def test_predict_approver(t: bt.TestCaseRun):
     t.h1("Approver prediction (per-customer)")
     t.tln("")
 
+    # `approver` links to `employees`, so two things follow, and this is
+    # the shape an application wants:
+    #   - `approver.customer_id` confines the candidates to this tenant,
+    #     rather than every employee in the instance;
+    #   - `basedOn` lets the model generalise over the person's role and
+    #     department, and `name` rides back on the hit so the id never
+    #     has to be resolved in a second query.
     r = c.search("invoices", {"customer_id": "CUST-0000"}, limit=5)
     vendors_seen = set()
     for inv in r["hits"]:
         if inv["vendor"] not in vendors_seen and len(vendors_seen) < 3:
             vendors_seen.add(inv["vendor"])
-            result = c.predict("invoices", {"customer_id": "CUST-0000", "vendor": inv["vendor"]}, "approver")
+            result = c.predict(
+                "invoices",
+                {"customer_id": "CUST-0000", "vendor": inv["vendor"],
+                 "approver.customer_id": "CUST-0000"},
+                "approver",
+                based_on=["role", "department"],
+                extra_select=["name", "role", "department"],
+            )
             top = result["hits"][0]
-            t.iln(f"  {inv['vendor']:35} -> {top['feature']:20} p={top['$p']:.4f}")
+            # The model predicts an employee_id; people read a person.
+            who = top.get("name", top["feature"])
+            t.iln(f"  {inv['vendor']:35} -> {who:20} p={top['$p']:.4f}")
 
 
 @bt.snapshot_httpx()
