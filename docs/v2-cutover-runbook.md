@@ -209,13 +209,33 @@ Until that finishes, heavy views compute live: 15 s to 4½ min each.
 Precompute the tenants you intend to show before presenting, and confirm
 with `./do verify-demo`, which flags any step slow enough to look broken.
 
-**Regeneration changes everything, not just the new fields.** The
-generator seeds per-customer RNG with `hash(customer_id)`, which Python
-randomises per process, so no two runs produce the same data. Every
-number quoted in `docs/demo-script.md`, the README and the verification
-report is from the previous dataset, as are the committed bootstrap
-files (`data/precomputed/landing.json`, `help_related.json`) and the
-screenshots. Re-measure and re-capture after the cutover.
+**Regeneration is reproducible ONLY if `PYTHONHASHSEED` is set, and
+nothing in this repo sets it.** This corrects an earlier version of this
+runbook, which stated flatly that no two runs produce the same data.
+
+The generator seeds per-customer RNG with `hash(customer_id)`. Python
+randomises `hash()` per process *unless* `PYTHONHASHSEED` is set in the
+environment. It happens to be `0` on the machine this was developed on,
+which is why the 2026-09-08 regeneration reproduced the previous dataset
+exactly — `CUST-0000-INV-000002` came back as Oy Botnia-Foto Ab, €1 756,00,
+2026-02-24, with the same payment description, and `./do eval-matching`
+returned the same 24/25 down to the same failing payment.
+
+So the blast radius depends on the environment:
+
+- **With `PYTHONHASHSEED` set** (this machine): regeneration changes only
+  the fields whose generation code changed. Quoted numbers, bootstrap
+  files and screenshots all stay valid.
+- **Without it** (a fresh clone, CI, a colleague's laptop): every value
+  changes, and every number in `docs/demo-script.md`, the README and the
+  verification report, plus `data/precomputed/landing.json`,
+  `help_related.json` and the screenshots, is stale.
+
+Do not rely on the accident. The generator should seed from a stable
+digest (`hashlib`/`zlib.crc32`) rather than `hash()`, so reproducibility
+is a property of the code. That change regenerates a different dataset
+exactly once, so it wants doing deliberately rather than mid-cutover.
+Until then, check `PYTHONHASHSEED` before assuming either outcome.
 
 **A format change between verification and promote would go unnoticed.**
 The repair in step 1 fixes the branch at that moment; nothing rechecks
