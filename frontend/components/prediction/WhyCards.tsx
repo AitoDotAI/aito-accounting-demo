@@ -59,6 +59,20 @@ export default function WhyCards({
   const lifts = patterns.map((p) => p.lift ?? 1);
   const hover = onHoverFactor ?? (() => {});
 
+  // Fields that already carry a POSITIVE lift somewhere in this
+  // explanation. A lift < 1 on such a field is not evidence against the
+  // match -- it is the decomposition avoiding double-counting a field it
+  // has already credited. The payment-matching panel showed
+  // "COUNTER-EVIDENCE  amount 7812.0  x 0.1" on a payment whose amount
+  // matched TO THE CENT, because the same amount also appeared inside a
+  // x20 group factor. Calling that counter-evidence is simply wrong.
+  const creditedFields = new Set<string>();
+  patterns.forEach((f) => {
+    if ((f.lift ?? 1) > 1) {
+      (f.propositions ?? []).forEach((p) => creditedFields.add(p.field));
+    }
+  });
+
   // The chain's own result, including Aito's normalisation terms.
   const chainProduct = normalizers.reduce(
     (acc, n) => acc * (n.multiplier ?? 1),
@@ -118,9 +132,33 @@ export default function WhyCards({
         </div>
       )}
 
+      {/* Model terms with no proposition of their own: exclusiveness,
+          rowCap, nameBoost. They multiply the chain, so a reader who sees
+          "x 59.6" in the footer needs a line saying what it was. */}
+      {normalizers.map((n, i) => (
+        <div key={`norm-${i}`} style={{
+          background: "var(--surface2)", borderRadius: 4, padding: "6px 10px",
+          display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8,
+          fontSize: 11, color: "var(--text2)",
+        }}>
+          <div>
+            <span style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px" }}>
+              Model term
+            </span>{" "}
+            <code style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{n.name}</code>
+          </div>
+          <span style={{ fontWeight: 600 }}>× {formatLift(n.multiplier ?? 1)}×</span>
+        </div>
+      ))}
+
       {patterns.map((f, i) => {
         const lift = f.lift ?? 1;
-        const negative = lift < 1;
+        // Only call it counter-evidence when the fields it names have not
+        // already been credited above. Otherwise it is a correction term.
+        const fields = (f.propositions ?? []).map((p) => p.field);
+        const isCorrection =
+          lift < 1 && fields.length > 0 && fields.every((x) => creditedFields.has(x));
+        const negative = lift < 1 && !isCorrection;
         // Render rule: each "row" inside a pattern card corresponds to
         // one input field. Source of truth:
         //   - highlights[] when Aito returned them (text fields with
@@ -156,8 +194,10 @@ export default function WhyCards({
             onMouseEnter={() => hover({ field: firstField, value: null })}
             onMouseLeave={() => hover({ field: null, value: null })}
             style={{
-              background: negative ? "rgba(220, 53, 69, 0.06)" : "var(--gold-light)",
-              borderLeft: `3px solid ${negative ? "var(--red)" : "var(--gold-dark)"}`,
+              background: negative ? "rgba(220, 53, 69, 0.06)"
+                : isCorrection ? "var(--surface2)" : "var(--gold-light)",
+              borderLeft: `3px solid ${negative ? "var(--red)"
+                : isCorrection ? "var(--border)" : "var(--gold-dark)"}`,
               borderRadius: 4,
               padding: "8px 10px",
               display: "flex", justifyContent: "space-between", gap: 12,
@@ -167,10 +207,10 @@ export default function WhyCards({
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{
                 fontSize: 10,
-                color: negative ? "var(--red)" : "var(--gold-dark)",
+                color: negative ? "var(--red)" : isCorrection ? "var(--text3)" : "var(--gold-dark)",
                 textTransform: "uppercase", letterSpacing: ".6px", fontWeight: 600,
               }}>
-                {negative ? "Counter-evidence" : "Pattern match"}
+                {negative ? "Counter-evidence" : isCorrection ? "Overlap adjustment" : "Pattern match"}
               </div>
               <div style={{ fontSize: 11, color: "var(--text2)", lineHeight: 1.55, marginTop: 2 }}>
                 {rows.length === 0 ? null : (

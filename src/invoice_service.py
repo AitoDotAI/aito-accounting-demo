@@ -189,13 +189,23 @@ def _walk_why_grouped(node: dict, out: list[dict]) -> None:
             "base_p": float(f"{base_p:.4g}"),
             "target_value": target_value,
         })
-    elif t in ("normalizer", "calibration"):
-        # Aito nests these under a `product` node: exclusiveness,
-        # trueFalseExclusiveness, rowCap. They are genuine terms of the
-        # model's own product and were being dropped, so the chain the UI
-        # printed was short by their product -- 1.735x on the payment
-        # matching row that exposed this. A factor we hide is a factor the
-        # reader cannot reconcile, which is the whole complaint.
+    elif t in ("normalizer", "calibration", "composition"):
+        # Model terms that multiply the chain but carry no proposition:
+        # `normalizer` (exclusiveness, trueFalseExclusiveness), `calibration`
+        # (rowCap), and `composition` (nameBoost).
+        #
+        # All three were dropped, and the chain the UI printed was short by
+        # their product. `composition:nameBoost` is the one that mattered:
+        # it is new in 2.8.1, carries 28.4x on the payment-matching row that
+        # exposed this, and its absence is why the panel showed 3.5% under a
+        # 99.7% match. With every term included the tree reconciles exactly
+        # --  base 2.384e-05 x ... x 28.378 = 0.9974318446 = $p, ratio
+        # 1.0000000000 -- so $why IS a complete decomposition and the walk
+        # was the incomplete part.
+        #
+        # Emit unknown multiplier types rather than skipping them: a factor
+        # we do not recognise is exactly the kind we cannot afford to drop
+        # silently, which is how 2.8.1 broke this in the first place.
         value = float(node.get("value", 1) or 1)
         if abs(value - 1.0) >= 0.05:
             out.append({
