@@ -795,7 +795,12 @@ def generate_invoices_for_customer(
             "amount_band": band,
             "gl_code": gl_code,
             "cost_centre": cost_centre_for(vdef["category"], rng),
-            "approver": approver["name"],
+            # The employee_id, not the name: names are not unique across
+            # tenants (42% of them are shared), so storing the name pooled
+            # every same-named approver's history into one value. The id is
+            # tenant-prefixed, so it links and its statistics stay this
+            # customer's own. Resolved back to a name for display.
+            "approver": approver["employee_id"],
             "processor": processor["employee_id"],
             "vat_pct": vat_pct_for(vdef["category"], inv_date),
             # Master data, not a per-invoice choice: a vendor is set up once
@@ -851,8 +856,9 @@ def generate_invoices_for_customer(
                 predicted = gl_code
                 corrected = rng.choice([c for c in set(v[0] for v in GL_CODES.values()) if c != predicted])
             elif field == "approver":
-                predicted = approver["name"]
-                corrected = rng.choice([a["name"] for a in approvers if a["name"] != predicted]) if len(approvers) > 1 else predicted
+                predicted = approver["employee_id"]
+                corrected = rng.choice([a["employee_id"] for a in approvers
+                                        if a["employee_id"] != predicted]) if len(approvers) > 1 else predicted
             else:
                 predicted = invoice["cost_centre"]
                 corrected = rng.choice([v for v in COST_CENTRES.values() if v != predicted])

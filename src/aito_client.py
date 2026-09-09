@@ -258,7 +258,9 @@ class AitoClient:
         except AitoError:
             return False
 
-    def predict(self, table: str, where: dict, predict_field: str) -> dict:
+    def predict(self, table: str, where: dict, predict_field: str,
+                based_on: list[str] | None = None,
+                extra_select: list[str] | None = None) -> dict:
         """Run a _predict query.
 
         Example:
@@ -280,6 +282,12 @@ class AitoClient:
         # `highlight` Aito only returns propositions like
         # {description: {$match: "monthly"}} -- with it, the response
         # also tells you which exact span matched.
+        # `based_on` and `extra_select` only mean anything when the target
+        # is a LINK: the hits are then rows of the linked table, so the
+        # model can generalise over their columns (a Director signs large
+        # invoices) and those columns can be read straight off the hit
+        # instead of resolved afterwards. Passing either for a plain
+        # column target is an error, so callers opt in per field.
         query = {
             "from": table,
             "where": where,
@@ -287,9 +295,12 @@ class AitoClient:
             "select": [
                 "$p",
                 "feature",
+                *(extra_select or []),
                 {"$why": {"highlight": {"posPreTag": "<mark>", "posPostTag": "</mark>"}}},
             ],
         }
+        if based_on:
+            query["basedOn"] = based_on
         return self._request("POST", "/_predict", json=query)
 
     def relate(self, table: str, where: dict, relate_field: str) -> dict:

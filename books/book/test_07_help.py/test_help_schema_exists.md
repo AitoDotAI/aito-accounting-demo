@@ -21,6 +21,7 @@ ok
   customer_id        String  
   impression_id      String  
   page               String  
+  prev_article_id    String  
   query              Text    
   timestamp          Int     
 

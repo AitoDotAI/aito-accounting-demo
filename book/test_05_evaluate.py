@@ -5,12 +5,8 @@ For full-scale evaluation, use jobs via the Aito Console.
 """
 
 import booktest as bt
-from src.config import load_config
-from src.aito_client import AitoClient
 
-
-def get_client():
-    return AitoClient(load_config())
+from book.aito_env import get_client
 
 
 @bt.snapshot_httpx()
@@ -21,7 +17,7 @@ def test_evaluate_gl_code(t: bt.TestCaseRun):
     t.h1("_evaluate: GL code accuracy (CUST-0000, 50 test samples)")
     t.tln("")
 
-    result = c._request("POST", "/_evaluate", json={
+    result = c.evaluate({
         "testSource": {
             "from": "invoices",
             "where": {"customer_id": "CUST-0000"},
@@ -55,7 +51,7 @@ def test_evaluate_approver(t: bt.TestCaseRun):
     t.h1("_evaluate: approver accuracy (CUST-0000, 50 test samples)")
     t.tln("")
 
-    result = c._request("POST", "/_evaluate", json={
+    result = c.evaluate({
         "testSource": {
             "from": "invoices",
             "where": {"customer_id": "CUST-0000"},

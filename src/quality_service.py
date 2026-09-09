@@ -1,6 +1,7 @@
 """Quality dashboard service — aggregate metrics per customer."""
 
 from src.aito_client import AitoClient, AitoError
+from src.employee_directory import resolve, tenant_employee_names
 
 
 def compute_automation_breakdown(client: AitoClient, customer_id: str | None = None) -> dict:
@@ -274,7 +275,10 @@ def mine_rules_for_customer(client: AitoClient, customer_id: str, top_n: int = 8
         try:
             ap_result = client.predict(
                 "invoices",
-                {"customer_id": customer_id, "vendor": vendor, "gl_code": target},
+                {"customer_id": customer_id, "vendor": vendor, "gl_code": target,
+                 # Confine the candidate employees to this tenant, as the
+                 # other approver predicts do.
+                 "approver.customer_id": customer_id},
                 "approver",
             )
         except AitoError:
@@ -610,6 +614,7 @@ def compute_rule_performance(client: AitoClient, customer_id: str | None = None)
         pass
 
     mined = mine_rules_for_customer(client, customer_id, top_n=10)
+    employee_names = tenant_employee_names(client, customer_id)
 
     today = datetime.utcnow().date()
     rules_data = []
@@ -630,7 +635,8 @@ def compute_rule_performance(client: AitoClient, customer_id: str | None = None)
 
         rules_data.append({
             "rule": rule["name"],
-            "fires_on": f"GL {rule['gl_code']} ({GL_LABELS.get(rule['gl_code'], rule['gl_code'])}), {rule['approver']}",
+            "fires_on": f"GL {rule['gl_code']} ({GL_LABELS.get(rule['gl_code'], rule['gl_code'])}), "
+                        f"{resolve(employee_names, rule['approver'])}",
             "coverage": f"{coverage_pct}%",
             "precision": round(precision, 2),
             "total_matches": n_match,

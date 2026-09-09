@@ -25,13 +25,9 @@ Tests:
 
 import booktest as bt
 
-from src.aito_client import AitoClient
-from src.config import load_config
+from book.aito_env import get_client
+
 from src.help_service import search_help, related_articles
-
-
-def get_client():
-    return AitoClient(load_config())
 
 
 @bt.snapshot_httpx()
@@ -117,7 +113,7 @@ def test_help_evaluate_click_prediction(t: bt.TestCaseRun):
     t.tln("Predicting per-impression click probability — used as ranking signal.")
     t.tln("")
 
-    result = c._request("POST", "/_evaluate", json={
+    result = c.evaluate({
         "testSource": {
             "from": "help_impressions",
             "limit": 200,
@@ -237,7 +233,7 @@ def test_help_evaluate_on_unseen_customer(t: bt.TestCaseRun):
         t.assertln("documented cold-start behavior", True)
         return
 
-    result = c._request("POST", "/_evaluate", json={
+    result = c.evaluate({
         "testSource": {
             "from": "help_impressions",
             "where": {"customer_id": cid},

@@ -2,8 +2,8 @@
 
 Small customers have fewer invoices. How confident is Aito?
 
-  CUST-0063 (250 invoices): vendor=Veromiehenkylän Städerska -> GL 5100   p=0.6016
-  CUST-0064 (250 invoices): vendor=Biomed Food Oy Ab         -> GL 4100   p=0.2224
-  CUST-0065 (250 invoices): vendor=Oy Botnia Retail Data Ab  -> GL 6100   p=0.4308
+  CUST-0063 (250 invoices): vendor=Oy Aahan Thai Ltd         -> GL 5400   p=0.9836
+  CUST-0064 (250 invoices): vendor=Pangea Telecommunications -> GL 6200   p=0.9836
+  CUST-0065 (250 invoices): vendor=HS Cleaning Oy            -> GL 5100   p=0.9238
 
 Confidence decreases with fewer invoices — honest uncertainty.

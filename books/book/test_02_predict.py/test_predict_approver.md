@@ -1,6 +1,6 @@
 # Approver prediction (per-customer)
 
 
-  Kardex Finland Oy                   -> Hanna Heinonen       p=0.1054
-  Cafetering Oy                       -> Janne Turunen        p=0.1641
-  Pukaron Pihviparoni Oy              -> Heikki Karjalainen   p=0.1397
+  Kardex Finland Oy                   -> Minna Rantanen       p=0.9076
+  Inside Restaurant Service Oy        -> Markku Heikkinen     p=0.9820
+  Oy Botnia-Foto Ab                   -> Minna Rantanen       p=0.9638

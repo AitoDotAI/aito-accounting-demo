@@ -13,6 +13,7 @@ each value.
 from dataclasses import dataclass, field
 
 from src.aito_client import AitoClient, AitoError
+from src.employee_directory import resolve, tenant_employee_names
 
 REVIEW_THRESHOLD = 0.50
 
@@ -31,83 +32,53 @@ GL_LABELS = {
 }
 
 
-# Which of a tenant's own values exist, per (customer, field). A predict
-# enumerates candidates from the column's GLOBAL distinct value set and
-# scopes only the STATISTICS by the `where`, so for a field whose values
-# are tenant-private — an approver's name — the tail of the candidate
-# list is other companies' staff. Sub-percent probabilities, but shown.
+# `approver` holds an employee_id and links to `employees`, so a predict
+# on it enumerates candidates from the linked table and
+# `approver.customer_id` confines them to this tenant. That replaces an
+# earlier stop-gap which filtered the alternatives list to values the
+# tenant had used before.
 #
-# This bounds the ALTERNATIVES to values the tenant actually uses. It is
-# a stop-gap: the real fix is to link `approver` to employees so the
-# candidates can be filtered server-side with `fromWhere`, which also
-# fixes the separate problem that 52% of approver names are shared
-# between tenants. Tracked in td-20260901082623647538.
+# The stop-gap could not have been made correct. Approver was stored as a
+# NAME, and 42% of employee names are shared between tenants, so a name
+# the tenant genuinely uses still pooled every same-named approver's
+# history: only 12 of the 645 rows behind "Matti Niemi" were CUST-0000's.
+# Filtering the list hid foreign names while leaving the statistics behind
+# a familiar one contaminated. See
+# docs/notes/approver-pools-other-tenants-evidence.md.
 #
-# Not applied to gl_code or cost_centre: a chart of accounts is a shared
-# vocabulary, so suggesting a GL the tenant has not used yet is a
-# legitimate suggestion rather than a leak.
-_TENANT_PRIVATE_FIELDS = ("approver", "processor")
-_known_values_cache: dict[tuple[str, str], set[str]] = {}
+# gl_code and cost_centre are deliberately NOT scoped this way: a chart of
+# accounts is a shared vocabulary, and a GL the tenant has not used yet is
+# a legitimate suggestion rather than a leak.
+def _names_from_hits(hits: list[dict]) -> dict[str, str]:
+    """employee_id -> name, read off the predict hits themselves.
 
-
-def known_tenant_values(client, customer_id: str, field: str, sample: int = 1000) -> set[str]:
-    """The values of `field` this customer actually uses.
-
-    Sampled rather than exhaustive, because `$f` in `select` — which
-    would give an exact per-candidate count — is a v2-only capability
-    and v1 is still the production path and the cutover's fallback.
-    A miss costs a legitimate low-frequency alternative being hidden,
-    never a wrong value being shown, so the failure direction is right.
-
-    Cached per process for the life of the request batch: predicting 20
-    invoices must not run 20 identical scans.
+    A predict on a linked field returns rows of the linked table, so the
+    name arrives with the prediction. Empty when the hits carry no `name`
+    — an older deploy, or a target that is not a link — and the caller
+    falls back to fetching the roster.
     """
-    if not customer_id:
-        # No tenant scope, nothing to be foreign to. A prediction made
-        # without a customer_id is not tenant-scoped in the first place,
-        # so filtering against "this tenant's values" is meaningless —
-        # and querying for them would be a wasted round trip.
-        return set()
-    key = (customer_id, field)
-    cached = _known_values_cache.get(key)
-    if cached is not None:
-        return cached
-    try:
-        rows = client.search("invoices", {"customer_id": customer_id}, limit=sample)
-    except AitoError:
-        return set()
-    values = {r[field] for r in rows.get("hits", []) if r.get(field)}
-    _known_values_cache[key] = values
-    return values
+    return {h["feature"]: h["name"]
+            for h in hits if h.get("feature") and h.get("name")}
 
 
-def _drop_foreign_candidates(hits: list[dict], known: set[str]) -> list[dict]:
-    """Keep only candidates the tenant actually uses.
-
-    Never returns empty: a tenant with no history at all (cold start)
-    has nothing to filter against, and hiding every alternative would
-    turn a leak into a blank panel. The top candidate is always kept —
-    it is what the prediction itself reports, so removing it here would
-    contradict the value shown beside it.
-    """
-    if not known or not hits:
-        return hits
-    kept = [h for h in hits if h.get("feature", h.get("$value")) in known]
-    return kept if kept else hits[:1]
-
-
-def _extract_alternatives(hits: list[dict], label_map: dict | None = None, prefix: str = "") -> list[dict]:
+def _extract_alternatives(hits: list[dict], label_map: dict | None = None, prefix: str = "",
+                          label_replaces_value: bool = False) -> list[dict]:
     """Extract top-3 alternatives from Aito _predict hits.
 
     Each alternative includes the value, display label, confidence,
     and $why explanation factors.
+
+    `label_replaces_value` distinguishes the two kinds of label map. A GL
+    code is shown ALONGSIDE its meaning ("4400 - Office supplies") because
+    the code is what an accountant works with. An employee_id is an
+    internal key nobody wants to read, so its name replaces it outright.
     """
     alts = []
     for hit in hits[:3]:
         value = hit.get("feature", "")
         display = value
         if label_map and value in label_map:
-            display = f"{value} \u2013 {label_map[value]}"
+            display = label_map[value] if label_replaces_value else f"{value} \u2013 {label_map[value]}"
         if prefix:
             display = f"{prefix}{display}"
 
@@ -393,7 +364,13 @@ def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None 
 
     rule_match = check_rules(invoice, rules=rules)
     if rule_match:
-        gl_code, approver, rule_name = rule_match
+        gl_code, approver_id, rule_name = rule_match
+        # Mined rules store the employee_id, same as the invoices they
+        # were mined from, so this path needs the same resolution as the
+        # predicted one.
+        approver = resolve(
+            tenant_employee_names(client, invoice.get("customer_id", "")), approver_id,
+        ) or approver_id
         # Mined-rule explanations look like a single pattern card with
         # one proposition (the rule name) and lift 1.0 — same grouped
         # shape as Aito _predict $why factors so the renderer is uniform.
@@ -421,7 +398,7 @@ def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None 
             source="rule",
             confidence=0.99,
             gl_alternatives=[{"value": gl_code, "display": f"{gl_code} \u2013 {gl_label}", "confidence": 0.99, "why": rule_why}],
-            approver_alternatives=[{"value": approver, "display": f"AP / {approver}", "confidence": 0.99, "why": rule_why}],
+            approver_alternatives=[{"value": approver_id, "display": f"AP / {approver}", "confidence": 0.99, "why": rule_why}],
         )
 
     where = {"vendor": vendor, "amount": amount}
@@ -437,7 +414,23 @@ def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None 
 
     try:
         gl_result = client.predict("invoices", where, "gl_code")
-        approver_result = client.predict("invoices", where, "approver")
+        # `approver.customer_id` confines the candidate employees to this
+        # tenant. Without it the candidate set is every employee in the
+        # instance, exactly as payment matching ranked over every invoice.
+        approver_where = dict(where)
+        if invoice.get("customer_id"):
+            approver_where["approver.customer_id"] = invoice["customer_id"]
+        # `approver` is a link, so the hits are employee rows: `basedOn`
+        # lets the model generalise over the person's role and department
+        # (the fixture escalates invoices over 10k to a senior signer, and
+        # that is learnable as ROLE rather than as a list of names), and
+        # selecting `name` means the person comes back with the prediction
+        # instead of needing a second lookup.
+        approver_result = client.predict(
+            "invoices", approver_where, "approver",
+            based_on=["role", "department"],
+            extra_select=["name", "role", "department"],
+        )
     except AitoError:
         return InvoicePrediction(
             invoice_id=invoice_id,
@@ -466,7 +459,13 @@ def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None 
 
     gl_code = gl_top["feature"] if gl_top else None
     gl_conf = gl_top["$p"] if gl_top else 0.0
-    approver_name = approver_top["feature"] if approver_top else None
+    # The model predicts an employee_id; the page shows a person. `name`
+    # rides along on the hit because approver links to employees, so the
+    # roster is only needed for hits that somehow lack it.
+    employee_names = _names_from_hits(approver_hits) or tenant_employee_names(
+        client, invoice.get("customer_id", "")
+    )
+    approver_name = resolve(employee_names, approver_top["feature"] if approver_top else None)
     approver_conf = approver_top["$p"] if approver_top else 0.0
 
     overall_conf = min(gl_conf, approver_conf)
@@ -491,11 +490,8 @@ def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None 
         confidence=overall_conf,
         gl_alternatives=_extract_alternatives(gl_hits, GL_LABELS),
         approver_alternatives=_extract_alternatives(
-            _drop_foreign_candidates(
-                approver_hits,
-                known_tenant_values(client, invoice.get("customer_id", ""), "approver"),
-            ),
-            prefix="AP / ",
+            approver_hits, employee_names, prefix="AP / ",
+            label_replaces_value=True,
         ),
     )
 
