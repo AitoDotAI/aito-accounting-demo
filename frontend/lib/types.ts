@@ -37,7 +37,12 @@ export interface Alternative {
  *    back to propositions for fields without text highlights.
  */
 export interface WhyFactor {
-  type?: "base" | "pattern";
+  type?: "base" | "pattern" | "normalizer";
+  /** normalizer only: which term (exclusiveness, rowCap, …). */
+  name?: string;
+  /** normalizer only: its multiplier. Not `value`, which legacy flat
+   *  factors already use for a proposition's string value. */
+  multiplier?: number;
   lift?: number;
   base_p?: number;
   target_value?: string | null;

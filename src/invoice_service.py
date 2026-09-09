@@ -127,9 +127,10 @@ def _extract_why_factors(why: dict | None) -> list[dict]:
     # Order: base first, then patterns by descending |lift - 1|. Top 5
     # so a noisy long tail of small lifts doesn't fill the popup.
     base = [f for f in out if f.get("type") == "base"]
+    normalizers = [f for f in out if f.get("type") == "normalizer"]
     patterns = [f for f in out if f.get("type") == "pattern"]
     patterns.sort(key=lambda f: abs(f.get("lift", 1) - 1), reverse=True)
-    return base + patterns[:5]
+    return base + normalizers + patterns[:5]
 
 
 def _walk_why_grouped(node: dict, out: list[dict]) -> None:
@@ -188,6 +189,20 @@ def _walk_why_grouped(node: dict, out: list[dict]) -> None:
             "base_p": float(f"{base_p:.4g}"),
             "target_value": target_value,
         })
+    elif t in ("normalizer", "calibration"):
+        # Aito nests these under a `product` node: exclusiveness,
+        # trueFalseExclusiveness, rowCap. They are genuine terms of the
+        # model's own product and were being dropped, so the chain the UI
+        # printed was short by their product -- 1.735x on the payment
+        # matching row that exposed this. A factor we hide is a factor the
+        # reader cannot reconcile, which is the whole complaint.
+        value = float(node.get("value", 1) or 1)
+        if abs(value - 1.0) >= 0.05:
+            out.append({
+                "type": "normalizer",
+                "name": str(node.get("name") or t),
+                "multiplier": float(f"{value:.4g}"),
+            })
     elif t == "relatedPropositionLift":
         lift = float(node.get("value", 0) or 0)
         # Drop noise: lifts close to 1.0 contribute nothing.
@@ -217,6 +232,16 @@ def _walk_why_grouped(node: dict, out: list[dict]) -> None:
                 continue
             html = h.get("highlight", "")
             if not html:
+                continue
+            # An "highlight" with no <mark> in it is the whole field value
+            # with nothing marked -- it says which field matched but not
+            # WHICH PART, so it is strictly less informative than the
+            # proposition we already have. Aito returns these for some
+            # tokens (`PVM`, `RELAX`), and rendering them produced several
+            # cards showing the identical full description with different
+            # lifts, which reads as a duplicate rather than as different
+            # evidence. Fall through to the proposition instead.
+            if "<mark>" not in html:
                 continue
             highlights.append({"field": field, "html": html})
 

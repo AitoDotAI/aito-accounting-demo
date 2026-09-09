@@ -26,6 +26,7 @@ export default function WhyCards({
   why,
   confidence,
   blendNote,
+  modelP,
   onHoverFactor,
 }: {
   why: WhyFactor[];
@@ -39,19 +40,45 @@ export default function WhyCards({
    * between two unrelated quantities (which read as "0% × 0.7 = 58%").
    */
   blendNote?: string;
+  /**
+   * The model's own probability for this value, when the caller knows it.
+   * `confidence` may be a blend of it with something else, so the factor
+   * chain is a decomposition of THIS number rather than of `confidence`.
+   */
+  modelP?: number;
   onHoverFactor?: (h: HoverHighlight) => void;
 }) {
   const base = why.find((f) => f.type === "base");
   const patterns = why.filter((f) => f.type === "pattern");
+  // Aito's own normalisation terms (exclusiveness, rowCap). Real factors of
+  // the model's product; dropping them made the printed chain short.
+  const normalizers = why.filter((f) => f.type === "normalizer");
   const legacy = why.filter((f) => !f.type && f.field);  // old precomputed JSON
 
   const baseP = base?.base_p ?? 0;
   const lifts = patterns.map((p) => p.lift ?? 1);
   const hover = onHoverFactor ?? (() => {});
 
-  // The chain's own result. When there is no blend this equals the
-  // model's probability, so the equation is checkable by eye.
-  const chainProduct = lifts.reduce((acc, l) => acc * l, baseP);
+  // The chain's own result, including Aito's normalisation terms.
+  const chainProduct = normalizers.reduce(
+    (acc, n) => acc * (n.multiplier ?? 1),
+    lifts.reduce((acc, l) => acc * l, baseP),
+  );
+
+  // Does the chain actually account for the model's probability?
+  //
+  // It is supposed to: on Aito 2.8.0 the factors multiplied to $p exactly.
+  // On 2.8.1 they do not — 3.5% of factors against a reported 99.74%, a 28x
+  // gap that is inside the response and not ours to close
+  // (td-20260909133103405502). Printing "= 0.71%" under a 97% match is worse
+  // than printing nothing: it invites the reader to check arithmetic that
+  // cannot balance. So when the chain misses by more than half an order of
+  // magnitude we show what the factors come to AND what the model said,
+  // labelled, instead of asserting an equation between them.
+  const reconciles =
+    modelP == null ||
+    modelP <= 0 ||
+    (chainProduct > 0 && Math.abs(Math.log10(chainProduct / modelP)) < 0.5);
 
   // A link-target base rate is ~1/128000. Printing that as "0%" makes
   // the whole line read as broken, so show the smallest honest figure.
@@ -199,14 +226,17 @@ export default function WhyCards({
           {base ? (
             <>
               <span>{pct(baseP)}</span>
+              {normalizers.map((n, i) => (
+                <span key={`n${i}`} title={n.name}> × {formatLift(n.multiplier ?? 1)}</span>
+              ))}
               {lifts.map((lift, i) => (
                 // formatLift, not a local rule: this chain restates the
                 // numbers on the cards above, so both must round alike.
                 <span key={i}> × {formatLift(lift)}</span>
               ))}
-              <span style={{ color: "var(--text3)" }}> = </span>
+              <span style={{ color: "var(--text3)" }}>{reconciles ? " = " : " → "}</span>
               <span style={{ fontWeight: 700, color: "var(--gold-dark)" }}>
-                {pct(blendNote ? chainProduct : confidence)}
+                {pct(reconciles && !blendNote ? confidence : chainProduct)}
               </span>
             </>
           ) : (
@@ -217,6 +247,21 @@ export default function WhyCards({
               </span>
             </>
           )}
+        </div>
+      )}
+
+      {/* The factors do not account for the model's probability. Say so,
+          rather than leaving a reader to check arithmetic that cannot
+          balance. Tracked as td-20260909133103405502. */}
+      {!reconciles && modelP != null && (
+        <div style={{
+          padding: "6px 10px", fontSize: 11, color: "var(--text3)",
+          borderTop: "1px dashed var(--border)", textAlign: "center",
+        }}>
+          These factors account for {pct(chainProduct)} of the model&rsquo;s{" "}
+          <strong style={{ color: "var(--text2)" }}>{pct(modelP)}</strong>
+          {" "}— Aito&rsquo;s explanation is currently incomplete, so the chain
+          above is a partial decomposition rather than the whole calculation.
         </div>
       )}
 

@@ -26,6 +26,10 @@ class MatchPair:
     confidence: float
     status: str  # "matched", "suggested", "unmatched"
     explanation: list[dict] = field(default_factory=list)
+    # Aito's own $p for this invoice, distinct from `confidence`, which
+    # blends it with amount proximity. The panel needs both: the factor
+    # chain is a decomposition of THIS number, not of the blend.
+    model_p: float = 0.0
 
     def to_dict(self) -> dict:
         return {
@@ -37,6 +41,7 @@ class MatchPair:
             "bank_amount": self.bank_amount,
             "bank_name": self.bank_name,
             "confidence": round(self.confidence, 2),
+            "model_p": self.model_p,
             "status": self.status,
             "explanation": self.explanation,
         }
@@ -206,6 +211,7 @@ def match_bank_txn_to_invoice(
         bank_amount=txn["amount"],
         bank_name=txn["bank"],
         confidence=best_score,
+        model_p=best_p,
         status=status,
         explanation=explanation,
     )

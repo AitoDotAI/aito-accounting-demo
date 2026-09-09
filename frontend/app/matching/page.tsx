@@ -46,6 +46,9 @@ interface MatchExplanation {
 import type { WhyFactor } from "@/lib/types";
 
 interface MatchPair {
+  /** Aito's own $p for this invoice, before the amount-proximity blend.
+   *  The $why chain decomposes THIS, not `confidence`. */
+  model_p?: number;
   invoice_id: string;
   invoice_vendor: string;
   invoice_amount: number;
@@ -187,6 +190,7 @@ export default function MatchingPage() {
                           <WhyCards
                             why={p.explanation}
                             confidence={p.confidence}
+                            modelP={p.model_p}
                             blendNote={"Aito probability blended with amount proximity \u2192"}
                           />
                         </td>

@@ -5,7 +5,7 @@ import { useCustomer } from "@/lib/customer-context";
 import { apiFetch, fmtAmount } from "@/lib/api";
 import LiftHint from "@/components/prediction/LiftHint";
 import WhyCards from "@/components/prediction/WhyCards";
-import type { InvoicePrediction } from "@/lib/types";
+import type { InvoicePrediction, WhyFactor } from "@/lib/types";
 
 interface VendorHistoryRow {
   invoice_id: string;
@@ -98,22 +98,9 @@ export default function InvoiceDetail({ inv }: { inv: InvoicePrediction }) {
 // row highlights the source field on the left -- and tokens within
 // the description that drove the match get a yellow background.
 
-interface WhyProposition {
-  field: string;
-  value: string;
-  highlight?: string;
-}
-
-interface WhyFactor {
-  type?: "base" | "pattern";
-  lift?: number;
-  base_p?: number;
-  target_value?: string | null;
-  propositions?: WhyProposition[];
-  // Legacy flat shape (old precomputed JSON without grouping):
-  field?: string;
-  value?: string;
-}
+// WhyFactor lives in @/lib/types. It used to be re-declared here, and the
+// copies drifted: adding `normalizer` to the shared one broke this file,
+// because a local duplicate cannot learn about a new factor kind.
 
 interface Alternative {
   value: string;
