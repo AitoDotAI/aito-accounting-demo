@@ -127,9 +127,10 @@ def _extract_why_factors(why: dict | None) -> list[dict]:
     # Order: base first, then patterns by descending |lift - 1|. Top 5
     # so a noisy long tail of small lifts doesn't fill the popup.
     base = [f for f in out if f.get("type") == "base"]
+    normalizers = [f for f in out if f.get("type") == "normalizer"]
     patterns = [f for f in out if f.get("type") == "pattern"]
     patterns.sort(key=lambda f: abs(f.get("lift", 1) - 1), reverse=True)
-    return base + patterns[:5]
+    return base + normalizers + patterns[:5]
 
 
 def _walk_why_grouped(node: dict, out: list[dict]) -> None:
@@ -188,6 +189,30 @@ def _walk_why_grouped(node: dict, out: list[dict]) -> None:
             "base_p": float(f"{base_p:.4g}"),
             "target_value": target_value,
         })
+    elif t in ("normalizer", "calibration", "composition"):
+        # Model terms that multiply the chain but carry no proposition:
+        # `normalizer` (exclusiveness, trueFalseExclusiveness), `calibration`
+        # (rowCap), and `composition` (nameBoost).
+        #
+        # All three were dropped, and the chain the UI printed was short by
+        # their product. `composition:nameBoost` is the one that mattered:
+        # it is new in 2.8.1, carries 28.4x on the payment-matching row that
+        # exposed this, and its absence is why the panel showed 3.5% under a
+        # 99.7% match. With every term included the tree reconciles exactly
+        # --  base 2.384e-05 x ... x 28.378 = 0.9974318446 = $p, ratio
+        # 1.0000000000 -- so $why IS a complete decomposition and the walk
+        # was the incomplete part.
+        #
+        # Emit unknown multiplier types rather than skipping them: a factor
+        # we do not recognise is exactly the kind we cannot afford to drop
+        # silently, which is how 2.8.1 broke this in the first place.
+        value = float(node.get("value", 1) or 1)
+        if abs(value - 1.0) >= 0.05:
+            out.append({
+                "type": "normalizer",
+                "name": str(node.get("name") or t),
+                "multiplier": float(f"{value:.4g}"),
+            })
     elif t == "relatedPropositionLift":
         lift = float(node.get("value", 0) or 0)
         # Drop noise: lifts close to 1.0 contribute nothing.
@@ -217,6 +242,16 @@ def _walk_why_grouped(node: dict, out: list[dict]) -> None:
                 continue
             html = h.get("highlight", "")
             if not html:
+                continue
+            # An "highlight" with no <mark> in it is the whole field value
+            # with nothing marked -- it says which field matched but not
+            # WHICH PART, so it is strictly less informative than the
+            # proposition we already have. Aito returns these for some
+            # tokens (`PVM`, `RELAX`), and rendering them produced several
+            # cards showing the identical full description with different
+            # lifts, which reads as a duplicate rather than as different
+            # evidence. Fall through to the proposition instead.
+            if "<mark>" not in html:
                 continue
             highlights.append({"field": field, "html": html})
 

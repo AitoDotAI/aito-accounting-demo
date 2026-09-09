@@ -26,6 +26,7 @@ export default function WhyCards({
   why,
   confidence,
   blendNote,
+  modelP,
   onHoverFactor,
 }: {
   why: WhyFactor[];
@@ -39,19 +40,59 @@ export default function WhyCards({
    * between two unrelated quantities (which read as "0% × 0.7 = 58%").
    */
   blendNote?: string;
+  /**
+   * The model's own probability for this value, when the caller knows it.
+   * `confidence` may be a blend of it with something else, so the factor
+   * chain is a decomposition of THIS number rather than of `confidence`.
+   */
+  modelP?: number;
   onHoverFactor?: (h: HoverHighlight) => void;
 }) {
   const base = why.find((f) => f.type === "base");
   const patterns = why.filter((f) => f.type === "pattern");
+  // Aito's own normalisation terms (exclusiveness, rowCap). Real factors of
+  // the model's product; dropping them made the printed chain short.
+  const normalizers = why.filter((f) => f.type === "normalizer");
   const legacy = why.filter((f) => !f.type && f.field);  // old precomputed JSON
 
   const baseP = base?.base_p ?? 0;
   const lifts = patterns.map((p) => p.lift ?? 1);
   const hover = onHoverFactor ?? (() => {});
 
-  // The chain's own result. When there is no blend this equals the
-  // model's probability, so the equation is checkable by eye.
-  const chainProduct = lifts.reduce((acc, l) => acc * l, baseP);
+  // Fields that already carry a POSITIVE lift somewhere in this
+  // explanation. A lift < 1 on such a field is not evidence against the
+  // match -- it is the decomposition avoiding double-counting a field it
+  // has already credited. The payment-matching panel showed
+  // "COUNTER-EVIDENCE  amount 7812.0  x 0.1" on a payment whose amount
+  // matched TO THE CENT, because the same amount also appeared inside a
+  // x20 group factor. Calling that counter-evidence is simply wrong.
+  const creditedFields = new Set<string>();
+  patterns.forEach((f) => {
+    if ((f.lift ?? 1) > 1) {
+      (f.propositions ?? []).forEach((p) => creditedFields.add(p.field));
+    }
+  });
+
+  // The chain's own result, including Aito's normalisation terms.
+  const chainProduct = normalizers.reduce(
+    (acc, n) => acc * (n.multiplier ?? 1),
+    lifts.reduce((acc, l) => acc * l, baseP),
+  );
+
+  // Does the chain actually account for the model's probability?
+  //
+  // It is supposed to: on Aito 2.8.0 the factors multiplied to $p exactly.
+  // On 2.8.1 they do not — 3.5% of factors against a reported 99.74%, a 28x
+  // gap that is inside the response and not ours to close
+  // (td-20260909133103405502). Printing "= 0.71%" under a 97% match is worse
+  // than printing nothing: it invites the reader to check arithmetic that
+  // cannot balance. So when the chain misses by more than half an order of
+  // magnitude we show what the factors come to AND what the model said,
+  // labelled, instead of asserting an equation between them.
+  const reconciles =
+    modelP == null ||
+    modelP <= 0 ||
+    (chainProduct > 0 && Math.abs(Math.log10(chainProduct / modelP)) < 0.5);
 
   // A link-target base rate is ~1/128000. Printing that as "0%" makes
   // the whole line read as broken, so show the smallest honest figure.
@@ -91,9 +132,33 @@ export default function WhyCards({
         </div>
       )}
 
+      {/* Model terms with no proposition of their own: exclusiveness,
+          rowCap, nameBoost. They multiply the chain, so a reader who sees
+          "x 59.6" in the footer needs a line saying what it was. */}
+      {normalizers.map((n, i) => (
+        <div key={`norm-${i}`} style={{
+          background: "var(--surface2)", borderRadius: 4, padding: "6px 10px",
+          display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8,
+          fontSize: 11, color: "var(--text2)",
+        }}>
+          <div>
+            <span style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px" }}>
+              Model term
+            </span>{" "}
+            <code style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{n.name}</code>
+          </div>
+          <span style={{ fontWeight: 600 }}>× {formatLift(n.multiplier ?? 1)}×</span>
+        </div>
+      ))}
+
       {patterns.map((f, i) => {
         const lift = f.lift ?? 1;
-        const negative = lift < 1;
+        // Only call it counter-evidence when the fields it names have not
+        // already been credited above. Otherwise it is a correction term.
+        const fields = (f.propositions ?? []).map((p) => p.field);
+        const isCorrection =
+          lift < 1 && fields.length > 0 && fields.every((x) => creditedFields.has(x));
+        const negative = lift < 1 && !isCorrection;
         // Render rule: each "row" inside a pattern card corresponds to
         // one input field. Source of truth:
         //   - highlights[] when Aito returned them (text fields with
@@ -129,8 +194,10 @@ export default function WhyCards({
             onMouseEnter={() => hover({ field: firstField, value: null })}
             onMouseLeave={() => hover({ field: null, value: null })}
             style={{
-              background: negative ? "rgba(220, 53, 69, 0.06)" : "var(--gold-light)",
-              borderLeft: `3px solid ${negative ? "var(--red)" : "var(--gold-dark)"}`,
+              background: negative ? "rgba(220, 53, 69, 0.06)"
+                : isCorrection ? "var(--surface2)" : "var(--gold-light)",
+              borderLeft: `3px solid ${negative ? "var(--red)"
+                : isCorrection ? "var(--border)" : "var(--gold-dark)"}`,
               borderRadius: 4,
               padding: "8px 10px",
               display: "flex", justifyContent: "space-between", gap: 12,
@@ -140,10 +207,10 @@ export default function WhyCards({
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{
                 fontSize: 10,
-                color: negative ? "var(--red)" : "var(--gold-dark)",
+                color: negative ? "var(--red)" : isCorrection ? "var(--text3)" : "var(--gold-dark)",
                 textTransform: "uppercase", letterSpacing: ".6px", fontWeight: 600,
               }}>
-                {negative ? "Counter-evidence" : "Pattern match"}
+                {negative ? "Counter-evidence" : isCorrection ? "Overlap adjustment" : "Pattern match"}
               </div>
               <div style={{ fontSize: 11, color: "var(--text2)", lineHeight: 1.55, marginTop: 2 }}>
                 {rows.length === 0 ? null : (
@@ -199,14 +266,17 @@ export default function WhyCards({
           {base ? (
             <>
               <span>{pct(baseP)}</span>
+              {normalizers.map((n, i) => (
+                <span key={`n${i}`} title={n.name}> × {formatLift(n.multiplier ?? 1)}</span>
+              ))}
               {lifts.map((lift, i) => (
                 // formatLift, not a local rule: this chain restates the
                 // numbers on the cards above, so both must round alike.
                 <span key={i}> × {formatLift(lift)}</span>
               ))}
-              <span style={{ color: "var(--text3)" }}> = </span>
+              <span style={{ color: "var(--text3)" }}>{reconciles ? " = " : " → "}</span>
               <span style={{ fontWeight: 700, color: "var(--gold-dark)" }}>
-                {pct(blendNote ? chainProduct : confidence)}
+                {pct(reconciles && !blendNote ? confidence : chainProduct)}
               </span>
             </>
           ) : (
@@ -217,6 +287,21 @@ export default function WhyCards({
               </span>
             </>
           )}
+        </div>
+      )}
+
+      {/* The factors do not account for the model's probability. Say so,
+          rather than leaving a reader to check arithmetic that cannot
+          balance. Tracked as td-20260909133103405502. */}
+      {!reconciles && modelP != null && (
+        <div style={{
+          padding: "6px 10px", fontSize: 11, color: "var(--text3)",
+          borderTop: "1px dashed var(--border)", textAlign: "center",
+        }}>
+          These factors account for {pct(chainProduct)} of the model&rsquo;s{" "}
+          <strong style={{ color: "var(--text2)" }}>{pct(modelP)}</strong>
+          {" "}— Aito&rsquo;s explanation is currently incomplete, so the chain
+          above is a partial decomposition rather than the whole calculation.
         </div>
       )}
 
