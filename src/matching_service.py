@@ -91,11 +91,18 @@ def match_bank_txn_to_invoice(
     # scopes the candidate domain through the link instead, which is the
     # tenant boundary this page needs. It also happens to cut latency ~6x and
     # the probability's under-confidence ~48x, but the boundary is the reason.
+    #
+    # `vendor_name` rides on the bank transaction and was not being passed.
+    # Four of five wrong assignments in a 640-invoice evaluation picked an
+    # invoice from the WRONG VENDOR while the description named the right
+    # one, so the field the bank already gives us was the missing evidence.
     customer_id = txn.get("customer_id")
     where = {"description": txn["description"], "amount": txn["amount"]}
     if customer_id is not None:
         where["customer_id"] = customer_id
         where["invoice_id.customer_id"] = customer_id
+    if txn.get("vendor_name"):
+        where["vendor_name"] = txn["vendor_name"]
 
     try:
         result = client._request("POST", "/_predict", json={
@@ -109,60 +116,70 @@ def match_bank_txn_to_invoice(
                 "amount",
                 {"$why": {"highlight": {"posPreTag": "<mark>", "posPostTag": "</mark>"}}},
             ],
-            # `limit` constrains how many candidates Aito has to mark
-            # up. With highlight enabled on a Text field, scoring +
-            # marking 20 candidates was running >120s on long bank
-            # descriptions; 5 keeps the per-call budget bounded.
-            "limit": 5,
+            # 20, not 5. The old limit was set when highlight on a Text
+            # field made 20 candidates run >120 s. Re-measured warm on
+            # 2.8.1 against the tenant-scoped candidate domain, limit 5
+            # and limit 20 are both ~5.2 s -- the limit costs nothing now,
+            # and 5 was truncating the true invoice out of the ranking.
+            "limit": 20,
         })
     except AitoError:
         return None
 
-    # Find the best open invoice from Aito's predictions
-    best_score = 0.0
-    best_invoice = None
-    best_p = 0.0
-    best_why = None
-    # Set only when the winner is a same-vendor substitute: the id Aito
-    # actually ranked, so the explanation can say so out loud.
-    best_ranked_id: str | None = None
+    # Direct hits and same-vendor substitutes are scored SEPARATELY, and a
+    # direct hit always wins.
+    #
+    # They used to compete on one number, with the substitute weighting
+    # amount 0.6 against a direct hit's 0.5. Because Aito's $p for a link
+    # target is ~1e-3 while an amount score is ~1, the amount term decided
+    # everything -- and a substitute from the wrong vendor with a marginally
+    # closer amount beat the invoice Aito had ranked FIRST:
+    #
+    #   direct    INV-000146 Pukaron   0.00116*0.5 + 0.95*0.5 = 0.4756
+    #   substitute INV-000171 Kardex   0.00015*0.4 + 0.95*0.6 = 0.5701  won
+    #
+    # Aito was right and the arithmetic threw it away. A substitute is a
+    # fallback for when Aito ranked nothing we hold, never an improvement
+    # on something it did.
+    best_direct: tuple[float, dict, float, dict | None] | None = None
+    best_sub: tuple[float, dict, float, str] | None = None
 
     for hit in result.get("hits", []):
         inv_id = hit.get("invoice_id")
         vendor = hit.get("vendor")
         aito_p = hit.get("$p", 0)
 
-        # Direct match: Aito returned an open invoice
+        # Direct match: Aito returned an open invoice.
         if inv_id in open_ids:
             amt_score = _amount_match_score(open_by_id[inv_id]["amount"], txn["amount"])
             combined = aito_p * 0.5 + amt_score * 0.5
-            if combined > best_score:
-                best_score = combined
-                best_invoice = open_by_id[inv_id]
-                best_p = aito_p
-                best_why = hit.get("$why")
-                best_ranked_id = None
+            if best_direct is None or combined > best_direct[0]:
+                best_direct = (combined, open_by_id[inv_id], aito_p, hit.get("$why"))
             continue
 
-        # Indirect match: Aito ranked a different invoice from the same
-        # vendor. We substitute an open invoice from that vendor whose
-        # amount fits better.
+        # Indirect: Aito ranked a different invoice from the same vendor, so
+        # we substitute an open one from that vendor whose amount fits.
         #
         # Aito's `$why` explains the invoice Aito ranked, NOT the one we
-        # substitute, so it must not be carried over — doing so rendered
-        # one invoice's explanation under another invoice's match, with
-        # the base rate naming an id that appeared nowhere on screen.
+        # substitute, so it must not be carried over -- doing so rendered one
+        # invoice's explanation under another invoice's match, with the base
+        # rate naming an id that appeared nowhere on screen.
         # `_build_explanation` describes the substitution instead.
         if vendor and vendor in open_by_vendor:
             for inv in open_by_vendor[vendor]:
                 amt_score = _amount_match_score(inv["amount"], txn["amount"])
                 combined = aito_p * 0.4 + amt_score * 0.6
-                if combined > best_score:
-                    best_score = combined
-                    best_invoice = inv
-                    best_p = aito_p
-                    best_why = None
-                    best_ranked_id = inv_id
+                if best_sub is None or combined > best_sub[0]:
+                    best_sub = (combined, inv, aito_p, inv_id)
+
+    best_ranked_id: str | None = None
+    if best_direct is not None:
+        best_score, best_invoice, best_p, best_why = best_direct
+    elif best_sub is not None:
+        best_score, best_invoice, best_p, best_ranked_id = best_sub
+        best_why = None
+    else:
+        best_score, best_invoice, best_p, best_why = 0.0, None, 0.0, None
 
     if best_invoice is None:
         return None
