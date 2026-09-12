@@ -196,9 +196,15 @@ def main() -> int:
 
     config = load_config()
     if args.v2:
-        from src.aito_v2_client import AitoV2Client
-        client = AitoV2Client(config.aito_api_url, config.aito_api_key, env=args.env)
-        print(f"(v2 environment '{args.env}')")
+        from src.aito_v2_client import AitoV2Client, resolve_env
+        # `master` is a SENTINEL meaning "v2 with no /env/ segment", not an
+        # environment name -- the API refuses /env/master/ outright. Passing
+        # args.env straight through made `--env master`, the cutover's end
+        # state, fail with "Env 'master' is the default; use the unscoped
+        # /api/... path". resolve_env is the one place that knows.
+        _use, target = resolve_env(args.env)
+        client = AitoV2Client(config.aito_api_url, config.aito_api_key, env=target)
+        print(f"(v2 environment '{target or 'master (unscoped)'}')")
     else:
         client = AitoClient(config)
     payments, pool = load_sample(client, args.customer, args.n, args.pool, args.seed)
