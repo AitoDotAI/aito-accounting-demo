@@ -319,9 +319,11 @@ def main() -> int:
 
     config = load_config()
     if args.v2:
-        from src.aito_v2_client import AitoV2Client
-        client = AitoV2Client(config.aito_api_url, config.aito_api_key, env=args.env)
-        target = f"v2 env '{args.env}'"
+        from src.aito_v2_client import AitoV2Client, resolve_env
+        # See evaluate_matching: `master` means "no /env/ segment".
+        _use, env_target = resolve_env(args.env)
+        client = AitoV2Client(config.aito_api_url, config.aito_api_key, env=env_target)
+        target = f"v2 env '{env_target or 'master (unscoped)'}'"
     else:
         client = AitoClient(config)
         target = "v1"

@@ -387,14 +387,19 @@ def build_client(use_v2: bool):
         from src.aito_client import AitoClient
         return AitoClient(config), "v1"
 
-    from src.aito_v2_client import AitoV2Client
+    from src.aito_v2_client import AitoV2Client, resolve_env
 
-    env = os.environ.get("AITO_V2_ENV", "").strip()
-    if not env:
+    # `master` is a sentinel for "v2 with no /env/ segment"; resolve_env
+    # turns it into None. Passing the raw string builds /env/master/, which
+    # the API refuses.
+    use_v2, target = resolve_env(os.environ.get("AITO_V2_ENV"))
+    if not use_v2:
         raise SystemExit(
-            "--v2 needs AITO_V2_ENV set to the env to check (e.g. AITO_V2_ENV=v2-demo).\n"
+            "--v2 needs AITO_V2_ENV set to the env to check (e.g. AITO_V2_ENV=v2-demo,\n"
+            "or AITO_V2_ENV=master for v2 against master).\n"
             "Build one with: ./do v2-build")
-    return AitoV2Client(config.aito_api_url, config.aito_api_key, env=env), f"v2 env '{env}'"
+    return (AitoV2Client(config.aito_api_url, config.aito_api_key, env=target),
+            f"v2 env '{target or 'master (unscoped)'}'")
 
 
 def main() -> int:
