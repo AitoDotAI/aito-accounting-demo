@@ -245,7 +245,7 @@ def mine_rules_for_customer(client: AitoClient, customer_id: str, top_n: int = 8
         try:
             relate_result = client.relate(
                 "invoices",
-                {"customer_id": customer_id, "vendor": vendor},
+                {"customer_id": customer_id, "vendor": {"$has": vendor}},
                 "gl_code",
             )
         except AitoError:
@@ -275,7 +275,7 @@ def mine_rules_for_customer(client: AitoClient, customer_id: str, top_n: int = 8
         try:
             ap_result = client.predict(
                 "invoices",
-                {"customer_id": customer_id, "vendor": vendor, "gl_code": target,
+                {"customer_id": customer_id, "vendor": {"$has": vendor}, "gl_code": target,
                  # Confine the candidate employees to this tenant, as the
                  # other approver predicts do.
                  "approver.customer_id": customer_id},
