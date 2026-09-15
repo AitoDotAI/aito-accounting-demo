@@ -113,6 +113,10 @@ def evaluate(client, payments, pool, *, strip: bool, workers: int) -> list[dict]
                 "amount": txn["amount"],
                 "bank": txn.get("bank", ""),
                 "customer_id": txn.get("customer_id"),
+                # The matcher reads this; omitting it measured a matcher
+                # running without its vendor evidence, which is not the one
+                # that ships.
+                "vendor_name": txn.get("vendor_name"),
             },
             pool,
         )
