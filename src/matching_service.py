@@ -331,6 +331,13 @@ def match_all(
         "amount": t["amount"],
         "bank": t.get("bank", ""),
         "customer_id": customer_id,
+        # Carried, or `match_bank_txn_to_invoice` reads None and silently
+        # drops the vendor evidence it is written to use. Without it the
+        # true invoice falls out of Aito's top 20 entirely -- measured on
+        # CUST-0000-INV-000011: rank 1 with vendor_name, not ranked at all
+        # without -- and the matcher then substitutes a same-vendor invoice
+        # and explains itself with "Aito ranked <some other invoice>".
+        "vendor_name": t.get("vendor_name"),
     } for t in payments]
 
     pairs: list[MatchPair] = []
