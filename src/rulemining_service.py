@@ -362,9 +362,30 @@ def _empty_metrics() -> dict:
     return {"total": 0, "strong": 0, "review": 0, "weak": 0, "coverage_gain": 0.0}
 
 
+def _exact(where: dict) -> dict:
+    """Wrap plain values in `$has` so they match the WHOLE value.
+
+    On a Text column a bare value is a token conjunction, not an equality:
+    `{"vendor": "BASF Oy"}` returns 104 rows spanning both `BASF Oy` and
+    `BASF Construction Chemicals Finland Oy`, because the query's two tokens
+    both occur in the longer name. `{"vendor": {"$has": "BASF Oy"}}` returns
+    the 68 that actually are BASF Oy.
+
+    Support counts are the one thing in rule mining that must be exact --
+    they are what "149/150 (99%)" on the page means -- so every count goes
+    through here. `$has` is also correct on String columns and on v1, so
+    this needs no branching: verified 1328 rows for the same vendor across
+    String/Text and v1/v2.
+    """
+    out: dict = {}
+    for field, value in where.items():
+        out[field] = value if isinstance(value, dict) else {"$has": value}
+    return out
+
+
 def _count(client: AitoClient, where: dict) -> int:
     """Exact row count for a where-clause via `_search` with `limit: 0`."""
-    return int(client.search("invoices", where, limit=0).get("total", 0))
+    return int(client.search("invoices", _exact(where), limit=0).get("total", 0))
 
 
 # ── Rule diagnostics (ADR 0015) ───────────────────────────────────────
