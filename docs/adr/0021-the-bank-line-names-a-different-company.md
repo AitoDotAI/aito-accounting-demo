@@ -130,6 +130,23 @@ A denormalised duplicate in a reference project needs justifying, and the
 justification is in the schema comment: it is not redundancy for
 convenience, it is one column per access pattern.
 
+**This should be temporary.** Aito indexes a Text column's distinct whole
+values *and* its distinct tokens separately, so `$patterns` has the
+information to propose `vendor = "Re - Copiers Oy"` and simply does not.
+Filed as `td-20260916122259713206`, with the sharper form of the argument:
+the token conjunction is not merely uglier, it is **wrong** where one
+vendor's tokens are a subset of another's —
+
+```
+vendor      = "Kauko Oy"                  245   the truth
+vendor_text $has "kauko" AND $has "oy"    331   what $patterns mines
+vendor      = "Kauko Group Oy"             86   absorbed silently
+```
+
+— so a mined rule's displayed support inflates by 35% and conflates two
+legal entities. When that lands, `vendor_text` should be deleted and
+`vendor` retyped to `Text`.
+
 ## Acceptance criteria
 
 - A payment whose bank line names a settlement entity, for a vendor with
