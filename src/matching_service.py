@@ -109,6 +109,24 @@ def match_bank_txn_to_invoice(
     if txn.get("vendor_name"):
         where["vendor_name"] = txn["vendor_name"]
 
+    # Rank the OPEN LEDGER, not the whole invoice table.
+    #
+    # The question this page asks is "which outstanding invoice does this
+    # payment settle?" -- roughly 30 candidates. Without this clause Aito
+    # ranks all ~2000 of the tenant's invoices and we filter to the open
+    # ones afterwards, so the true invoice has to beat 1970 rows that were
+    # never eligible. It frequently does not: a payment quoting no
+    # reference number left CUST-0007-INV-000006 out of the top 20
+    # entirely, and the matcher settled on a different vendor at p=0.023.
+    # Scoped to the ledger the same payment ranks it FIRST at p=0.482.
+    #
+    # Use the linked key `invoice_id.invoice_id`, not the bare target
+    # `invoice_id`. Both rank correctly, but `$or` on the predict target
+    # itself returns `invoice_id: null` on every hit after the first --
+    # the matcher reads that field, so it would silently drop candidates.
+    if open_ids:
+        where["invoice_id.invoice_id"] = {"$or": sorted(open_ids)}
+
     try:
         result = client._request("POST", "/_predict", json={
             "from": "bank_transactions",
@@ -121,12 +139,10 @@ def match_bank_txn_to_invoice(
                 "amount",
                 {"$why": {"highlight": {"posPreTag": "<mark>", "posPostTag": "</mark>"}}},
             ],
-            # 20, not 5. The old limit was set when highlight on a Text
-            # field made 20 candidates run >120 s. Re-measured warm on
-            # 2.8.1 against the tenant-scoped candidate domain, limit 5
-            # and limit 20 are both ~5.2 s -- the limit costs nothing now,
-            # and 5 was truncating the true invoice out of the ranking.
-            "limit": 20,
+            # Every open invoice, because the candidate domain is now the
+            # ledger itself. A fixed cut here is what truncated the true
+            # invoice out of the ranking when the domain was all 2000.
+            "limit": max(len(open_ids), 1),
         })
     except AitoError:
         return None
