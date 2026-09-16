@@ -466,6 +466,29 @@ take either client unchanged.
   2026-08-31**: it now returns a graded `$p`, generalizes to evidence never
   seen verbatim, and honours `select` / `$why`. (This demo's payment matching
   uses `_predict` on the linked `bank_transactions.invoice_id`, not `_match`.)
+- **`_match` and `_predict` are the same computation on a linked column.**
+  Measured 2026-09-16 on shared 2.9.0: the same `where` sent to
+  `POST /_match` with `"match": "invoice_id"` and to `POST /_predict` with
+  `"predict": "invoice_id"` returned byte-identical hits — same `$p` to six
+  decimal places, same ordering. The "Payment matching with `_match`" pattern
+  above is not a second capability; do not reach for `_match` expecting it to
+  match where `_predict` could not.
+- **A linked path in a `where` is a FILTER, not evidence — even inside
+  `_predict`.** `invoice_id.customer_id` scopes the candidate domain, which is
+  the tenant boundary payment matching relies on. Since 2.9.0 that filter is
+  exact, case-sensitive equality, and that applies in inference queries too.
+  Measured on a `_predict` whose target is `invoice_id`:
+
+  ```
+  invoice_id.vendor "Restaurant Kimito-Oskar Ab"  -> 5 hits, all that vendor
+  invoice_id.vendor "RESTAURANT KIMITO-OSKAR AB"  -> 0 hits   (case)
+  invoice_id.vendor "Restaurant Kimito-Oskar"     -> 0 hits   (partial)
+  invoice_id.vendor "Episto Oy"  (not stored)     -> 0 hits
+  ```
+
+  So a linked column cannot carry fuzzy vendor evidence. Resolve the value
+  first (`_predict vendor_name`), then filter on what that returns — a stored
+  value — rather than on a raw bank string.
 - **`recommend` silently dropped disjunctive filters on linked fields** before
   rev `38a234a6`: plain equality was honored but `{"$or": [...]}` and `$in`
   were discarded **with a 200**, leaking other tenants' rows through a
