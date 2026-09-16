@@ -170,9 +170,14 @@ cmd_precompute_v2() {
   cmd_precompute --v2 "$@"
 }
 
+# AITO_V2_ENV is UNSET here on purpose. The unit tests are hermetic, but
+# `precompute_store` reads that variable at import time to choose its key
+# namespace, so an exported value makes the fallback-file tests look for
+# `v2:`-prefixed keys and fail. A test suite must not depend on the shell
+# it was launched from.
 cmd_test() {
   cd "$SCRIPT_DIR"
-  uv run pytest tests/ -v
+  env -u AITO_V2_ENV uv run pytest tests/ -v
 }
 
 # ── Deployment ────────────────────────────────────────────────────
@@ -417,10 +422,7 @@ cmd_check() {
   cmd_test
   cmd_fmt
   # Default the query checks at the environment the demo actually serves,
-  # so a clean checkout does not have to know about the cutover. In a
-  # SUBSHELL: `precompute_store` reads AITO_V2_ENV at import time to pick
-  # its key namespace, so exporting it around `cmd_test` makes the
-  # fallback-file tests look for `v2:`-prefixed keys and fail.
+  # so a clean checkout does not have to know about the cutover.
   ( export AITO_V2_ENV="${AITO_V2_ENV:-master}"; cmd_aito_check )
 }
 

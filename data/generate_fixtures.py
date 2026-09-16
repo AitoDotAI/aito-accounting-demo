@@ -628,6 +628,66 @@ def generate_employees(customer: dict) -> list[dict]:
     return employees
 
 
+# ── Settlement entities ───────────────────────────────────────────
+
+# Finnish finance houses that buy receivables. When a vendor factors its
+# invoices, the money is collected by one of these and the bank line
+# carries THEIR name, not the vendor's.
+FACTORING_HOUSES = [
+    "Ropo Capital Oy",
+    "Intrum Oy",
+    "Svea Ekonomi Ab",
+    "Aktiv Kapital Finland Oy",
+    "Duetto Group Oy",
+]
+
+# Legal-entity suffixes a trade name settles under.
+_LEGAL_STEMS = [
+    "Holding", "Group", "Invest", "Partners", "Capital", "Varainhallinta",
+]
+
+# How often the bank line names someone other than the billed vendor.
+SETTLEMENT_ENTITY_SHARE = 0.20
+
+
+def settlement_entity_for(entity: dict) -> dict | None:
+    """The company whose name appears on the bank line, when it is not the
+    vendor's own.
+
+    An AP clerk meets this constantly: the invoice says one company and
+    the payment moves under another, because the vendor bills under a
+    trade name, or has factored the receivable, or belongs to a group
+    whose parent collects. The name that arrives is not in the vendor
+    master, so nothing can look it up — only this tenant's payment
+    history connects the two.
+
+    Seeded on `business_id` rather than drawn from the caller's rng ON
+    PURPOSE. Taking draws from the shared per-customer stream would shift
+    every value after it and rewrite all 128,000 invoices for a change
+    that only touches bank transactions. Keyed here, `invoices`
+    regenerates byte-identical.
+
+    Returns None for the ~80% of vendors that settle under their own name.
+    """
+    rng = random.Random(f"settlement:{entity['business_id']}")
+    if rng.random() >= SETTLEMENT_ENTITY_SHARE:
+        return None
+
+    name = entity["name"]
+    kind = rng.choice(["legal_entity", "factoring", "group_treasury"])
+
+    if kind == "factoring":
+        return {"name": rng.choice(FACTORING_HOUSES), "kind": kind}
+
+    # Both remaining kinds keep the vendor's distinguishing first word and
+    # change everything after it, which is what makes them hard: a human
+    # sees the connection, string similarity mostly does not.
+    stem = name.split()[0].rstrip(",")
+    if kind == "group_treasury":
+        return {"name": f"{stem} {rng.choice(['Group', 'Holding'])} Oyj", "kind": kind}
+    return {"name": f"{stem} {rng.choice(_LEGAL_STEMS)} Oy", "kind": kind}
+
+
 # ── Vendor assignment per customer ────────────────────────────────
 
 def assign_vendors_to_customer(customer: dict, entities: list[dict], rng: random.Random) -> list[dict]:
@@ -684,6 +744,9 @@ def assign_vendors_to_customer(customer: dict, entities: list[dict], rng: random
             # vendor's bank details and does not change per invoice.
             "payment_method": rng.choice(PAYMENT_METHODS),
             "due_days": rng.choice([14, 14, 30, 30, 30, 45]),
+            # None for most vendors; a dict for the ~20% whose payments
+            # arrive under another company's name. See settlement_entity_for.
+            "settlement_entity": settlement_entity_for(entity),
         })
 
     return vendors
@@ -789,6 +852,10 @@ def generate_invoices_for_customer(
             "customer_id": cid,
             "vendor_business_id": vdef["business_id"],
             "vendor": vdef["name"],
+            # Same string, carried twice on purpose -- see the schema note
+            # in src/data_loader.py. One copy is an atomic symbol for rule
+            # mining, the other is tokenized so payment matching can use it.
+            "vendor_text": vdef["name"],
             "vendor_country": vdef["country"],
             "category": vdef["category"],
             "amount": amount,
@@ -822,7 +889,12 @@ def generate_invoices_for_customer(
 
         # Bank transaction for ~60% of routed invoices
         if routed and rng.random() < 0.60:
-            vendor_part = vendor_to_bank_desc(vdef["name"], rng)
+            # The name the BANK carries, which is the vendor's own unless
+            # the receivable is settled by someone else. The invoice keeps
+            # `vdef["name"]` either way -- that asymmetry is the feature.
+            settlement = vdef.get("settlement_entity")
+            settling_name = settlement["name"] if settlement else vdef["name"]
+            vendor_part = vendor_to_bank_desc(settling_name, rng)
             # The payer quotes the INVOICE's reference, or quotes nothing.
             #
             # This split is the point of the whole matching feature. When
@@ -843,7 +915,7 @@ def generate_invoices_for_customer(
                 "transaction_id": f"{cid}-TXN-{len(bank_txns):06d}",
                 "customer_id": cid,
                 "description": bank_desc,
-                "vendor_name": vdef["name"],
+                "vendor_name": settling_name,
                 "amount": round(amount + amt_diff, 2),
                 "bank": bank,
                 "invoice_id": invoice["invoice_id"],

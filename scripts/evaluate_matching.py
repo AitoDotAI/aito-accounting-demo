@@ -101,6 +101,11 @@ def load_sample(client: AitoClient, customer_id: str, n: int, pool_size: int, se
     return payments, list(pool.values())
 
 
+def _norm(name: str) -> str:
+    """Compare company names the way a human would skim them."""
+    return " ".join(name.split()).casefold()
+
+
 def evaluate(client, payments, pool, *, strip: bool, workers: int) -> list[dict]:
     """Run the matcher over every payment and score it against truth."""
     def one(txn: dict) -> dict:
@@ -128,6 +133,9 @@ def evaluate(client, payments, pool, *, strip: bool, workers: int) -> list[dict]
             "status": pair.status if pair else "no-match",
             "confidence": pair.confidence if pair else 0.0,
             "correct": bool(pair and pair.invoice_id == txn["invoice_id"]),
+            # The name the BANK carried, so a caller can split on whether it
+            # was the billed vendor's own. See ADR 0021.
+            "bank_vendor_name": txn.get("vendor_name"),
         }
 
     with ThreadPoolExecutor(max_workers=workers) as pool_exec:
@@ -191,6 +199,9 @@ def main() -> int:
                         help="strip the Viite/RF number from the payment description")
     parser.add_argument("--compare-reference", action="store_true",
                         help="measure with AND without the reference number")
+    parser.add_argument("--split-on-settlement", action="store_true",
+                        help="split on whether the bank line names the billed vendor "
+                             "or a settlement entity (factoring, group, legal entity)")
     parser.add_argument("--split-on-reference", action="store_true",
                         help="report quoted-reference and no-reference payments separately — "
                              "the split that says where a model is actually needed")
@@ -240,6 +251,28 @@ def main() -> int:
         if without:
             report("payments with NO reference — the case that needs a model",
                    without, len(pool), args.detail)
+        report("all payments", rows, len(pool), args.detail)
+        return 0
+
+    if args.split_on_settlement:
+        # Whether the bank line named the billed vendor at all. A payment
+        # settled by a factoring house or a group parent carries a name
+        # that is NOWHERE in the vendor master, so only this tenant's
+        # payment history connects it to the invoice. Blending the two
+        # splits hides precisely that case. See ADR 0021.
+        by_id = {inv["invoice_id"]: inv for inv in pool}
+
+        def own_name(row):
+            billed = (by_id.get(row["truth"], {}).get("vendor") or "")
+            return _norm(billed) == _norm(row.get("bank_vendor_name") or "")
+
+        same = [r for r in rows if own_name(r)]
+        settled = [r for r in rows if not own_name(r)]
+        if same:
+            report("bank line names the BILLED VENDOR", same, len(pool), args.detail)
+        if settled:
+            report("bank line names a SETTLEMENT ENTITY — nowhere in the vendor master",
+                   settled, len(pool), args.detail)
         report("all payments", rows, len(pool), args.detail)
         return 0
 

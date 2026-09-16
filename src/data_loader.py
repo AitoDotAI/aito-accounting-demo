@@ -57,6 +57,24 @@ SCHEMAS = {
             "customer_id": {"type": "String", "nullable": False, "link": "customers.customer_id"},
             "vendor_business_id": {"type": "String", "nullable": False, "link": "corporate_entities.business_id"},
             "vendor": {"type": "String", "nullable": False},
+            # The SAME name, tokenized. Two features want this column with
+            # two different types and cannot both be served by one.
+            #
+            # Rule mining needs String: on a Text column `$patterns` returns
+            # the vendor decomposed into per-token clauses --
+            # `vendor $has "re" AND vendor $has "copiers"` in place of
+            # `vendor = "Re - Copiers Oy"` -- which is not a business rule,
+            # and parse_conjunction drops it. Retyping `vendor` alone took
+            # CUST-0007 from 20 mined rules to 0.
+            #
+            # Payment matching needs Text: the engine uses a linked table's
+            # column as a feature only if it is tokenized. With `vendor` as
+            # String, a bank line naming a settlement entity carries ZERO
+            # signal -- $p for the right invoice is identical to five
+            # decimals whether the payment names the vendor's own factoring
+            # house or an unrelated one. Tokenized, the same comparison
+            # moves it from rank 19 to rank 1. See ADR 0021.
+            "vendor_text": {"type": "Text", "nullable": False},
             "vendor_country": {"type": "String", "nullable": False},
             "category": {"type": "String", "nullable": False},
             "amount": {"type": "Decimal", "nullable": False},
