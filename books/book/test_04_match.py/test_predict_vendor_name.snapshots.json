@@ -1,160 +1,10 @@
 {
   "httpx": {
-    "376d2043960638daf372f3bdaf5fbe91a221a694": {
+    "30645bbc910be1e7ed42ae727494d226a0f8610c": {
       "request": {
-        "hash": "376d2043960638daf372f3bdaf5fbe91a221a694",
+        "hash": "30645bbc910be1e7ed42ae727494d226a0f8610c",
         "method": "POST",
-        "url": "https://shared.aito.ai/db/aito-accounting-demo/env/v2-demo/api/v2/_predict"
-      },
-      "response": {
-        "content": "ewogICJvZmZzZXQiIDogMCwKICAidG90YWwiIDogMTMzMiwKICAiaGl0cyIgOiBbIHsKICAgICIkcCIgOiAwLjk5OTAxMzE1MTY3MTUzNywKICAgICIkdmFsdWUiIDogIlNlY3VyaXR5IFZlbnR1cmUgT3kiCiAgfSBdCn0=",
-        "headers": {
-          "access-control-allow-credentials": "true",
-          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
-          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
-          "access-control-allow-origin": "*",
-          "connection": "keep-alive",
-          "content-length": "125",
-          "content-type": "application/json",
-          "date": "Tue, 08 Sep 2026 08:31:43 GMT",
-          "permissions-policy": "geolocation=(), microphone=(), camera=()",
-          "referrer-policy": "strict-origin-when-cross-origin",
-          "server": "nginx/1.29.1",
-          "strict-transport-security": "max-age=31536000; includeSubDomains",
-          "transfer-encoding": "chunked",
-          "x-aitoai-response-time": "125.18",
-          "x-content-type-options": "nosniff, nosniff",
-          "x-frame-options": "DENY, DENY",
-          "x-xss-protection": "1; mode=block"
-        },
-        "statusCode": 200
-      }
-    },
-    "495fda1ba7c7e4fa5366baaf7b6d5aed33ea4d57": {
-      "request": {
-        "hash": "495fda1ba7c7e4fa5366baaf7b6d5aed33ea4d57",
-        "method": "POST",
-        "url": "https://shared.aito.ai/db/aito-accounting-demo/env/v2-demo/api/v2/_predict"
-      },
-      "response": {
-        "content": "ewogICJvZmZzZXQiIDogMCwKICAidG90YWwiIDogMTMzMiwKICAiaGl0cyIgOiBbIHsKICAgICIkcCIgOiAwLjk5OTI3NjQxMDk5ODYwNDEsCiAgICAiJHZhbHVlIiA6ICJBdmFybiBTZWN1cml0eSBPeSIKICB9IF0KfQ==",
-        "headers": {
-          "access-control-allow-credentials": "true",
-          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
-          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
-          "access-control-allow-origin": "*",
-          "connection": "keep-alive",
-          "content-length": "124",
-          "content-type": "application/json",
-          "date": "Tue, 08 Sep 2026 08:31:43 GMT",
-          "permissions-policy": "geolocation=(), microphone=(), camera=()",
-          "referrer-policy": "strict-origin-when-cross-origin",
-          "server": "nginx/1.29.1",
-          "strict-transport-security": "max-age=31536000; includeSubDomains",
-          "transfer-encoding": "chunked",
-          "x-aitoai-response-time": "76.67",
-          "x-content-type-options": "nosniff, nosniff",
-          "x-frame-options": "DENY, DENY",
-          "x-xss-protection": "1; mode=block"
-        },
-        "statusCode": 200
-      }
-    },
-    "517dd084422bda5d92d70fcb794750ff5f47df2b": {
-      "request": {
-        "hash": "517dd084422bda5d92d70fcb794750ff5f47df2b",
-        "method": "POST",
-        "url": "https://shared.aito.ai/db/aito-accounting-demo/env/v2-demo/api/v2/_predict"
-      },
-      "response": {
-        "content": "ewogICJvZmZzZXQiIDogMCwKICAidG90YWwiIDogMTMzMiwKICAiaGl0cyIgOiBbIHsKICAgICIkcCIgOiAwLjk5OTIwMTAxMjI0MzUxOTMsCiAgICAiJHZhbHVlIiA6ICJPeSBCb3RuaWEtRm90byBBYiIKICB9IF0KfQ==",
-        "headers": {
-          "access-control-allow-credentials": "true",
-          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
-          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
-          "access-control-allow-origin": "*",
-          "connection": "keep-alive",
-          "content-length": "124",
-          "content-type": "application/json",
-          "date": "Tue, 08 Sep 2026 08:31:42 GMT",
-          "permissions-policy": "geolocation=(), microphone=(), camera=()",
-          "referrer-policy": "strict-origin-when-cross-origin",
-          "server": "nginx/1.29.1",
-          "strict-transport-security": "max-age=31536000; includeSubDomains",
-          "transfer-encoding": "chunked",
-          "x-aitoai-response-time": "216.95",
-          "x-content-type-options": "nosniff, nosniff",
-          "x-frame-options": "DENY, DENY",
-          "x-xss-protection": "1; mode=block"
-        },
-        "statusCode": 200
-      }
-    },
-    "770c51bc77b5ee8253d74f74913ec94441626ae5": {
-      "request": {
-        "hash": "770c51bc77b5ee8253d74f74913ec94441626ae5",
-        "method": "POST",
-        "url": "https://shared.aito.ai/db/aito-accounting-demo/env/v2-demo/api/v2/_predict"
-      },
-      "response": {
-        "content": "ewogICJvZmZzZXQiIDogMCwKICAidG90YWwiIDogMTMzMiwKICAiaGl0cyIgOiBbIHsKICAgICIkcCIgOiAwLjk5OTI3NjQxMDk5ODYwNDEsCiAgICAiJHZhbHVlIiA6ICJBdmFybiBTZWN1cml0eSBPeSIKICB9IF0KfQ==",
-        "headers": {
-          "access-control-allow-credentials": "true",
-          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
-          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
-          "access-control-allow-origin": "*",
-          "connection": "keep-alive",
-          "content-length": "124",
-          "content-type": "application/json",
-          "date": "Tue, 08 Sep 2026 08:31:42 GMT",
-          "permissions-policy": "geolocation=(), microphone=(), camera=()",
-          "referrer-policy": "strict-origin-when-cross-origin",
-          "server": "nginx/1.29.1",
-          "strict-transport-security": "max-age=31536000; includeSubDomains",
-          "transfer-encoding": "chunked",
-          "x-aitoai-response-time": "143.02",
-          "x-content-type-options": "nosniff, nosniff",
-          "x-frame-options": "DENY, DENY",
-          "x-xss-protection": "1; mode=block"
-        },
-        "statusCode": 200
-      }
-    },
-    "776b69511e33bc18ce99eb745c44e5e94647f47a": {
-      "request": {
-        "hash": "776b69511e33bc18ce99eb745c44e5e94647f47a",
-        "method": "POST",
-        "url": "https://shared.aito.ai/db/aito-accounting-demo/env/v2-demo/api/v2/_predict"
-      },
-      "response": {
-        "content": "ewogICJvZmZzZXQiIDogMCwKICAidG90YWwiIDogMTMzMiwKICAiaGl0cyIgOiBbIHsKICAgICIkcCIgOiAwLjk5OTI1ODI2OTcyNTkzOTMsCiAgICAiJHZhbHVlIiA6ICJLYXJkZXggRmlubGFuZCBPeSIKICB9IF0KfQ==",
-        "headers": {
-          "access-control-allow-credentials": "true",
-          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
-          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
-          "access-control-allow-origin": "*",
-          "connection": "keep-alive",
-          "content-length": "124",
-          "content-type": "application/json",
-          "date": "Tue, 08 Sep 2026 08:31:42 GMT",
-          "permissions-policy": "geolocation=(), microphone=(), camera=()",
-          "referrer-policy": "strict-origin-when-cross-origin",
-          "server": "nginx/1.29.1",
-          "strict-transport-security": "max-age=31536000; includeSubDomains",
-          "transfer-encoding": "chunked",
-          "x-aitoai-response-time": "248.81",
-          "x-content-type-options": "nosniff, nosniff",
-          "x-frame-options": "DENY, DENY",
-          "x-xss-protection": "1; mode=block"
-        },
-        "statusCode": 200
-      }
-    },
-    "b75335b47761a0e2706f1b7406fc80f10ecb6956": {
-      "request": {
-        "hash": "b75335b47761a0e2706f1b7406fc80f10ecb6956",
-        "method": "POST",
-        "url": "https://shared.aito.ai/db/aito-accounting-demo/env/v2-demo/api/v2/_query"
+        "url": "https://shared.aito.ai/db/aito-accounting-demo/api/v2/_query"
       },
       "response": {
         "content": "ewogICJvZmZzZXQiIDogMCwKICAidG90YWwiIDogODUyMSwKICAiaGl0cyIgOiBbIHsKICAgICJjdXN0b21lcl9pZCIgOiAiQ1VTVC0wMDAwIiwKICAgICJkZXNjcmlwdGlvbiIgOiAiS0FSREVYIEZJTkxBTkQgIFNhYWphICBWSUlURSA0Njg4ODM4MTQgIDEwLjA1LjI1IiwKICAgICJ2ZW5kb3JfbmFtZSIgOiAiS2FyZGV4IEZpbmxhbmQgT3kiLAogICAgImFtb3VudCIgOiAxODU0LjgsCiAgICAiYmFuayIgOiAiSGFuZGVsc2JhbmtlbiIsCiAgICAidHJhbnNhY3Rpb25faWQiIDogIkNVU1QtMDAwMC1UWE4tMDAwMDAwIiwKICAgICJpbnZvaWNlX2lkIiA6ICJDVVNULTAwMDAtSU5WLTAwMDAwMCIKICB9LCB7CiAgICAiY3VzdG9tZXJfaWQiIDogIkNVU1QtMDAwMCIsCiAgICAiZGVzY3JpcHRpb24iIDogIk9ZIEJPVE5JQS1GT1RPIEFCIFZBTlRBQSAyNDAyMjAyNiBWaWl0ZTogNzQ1MDc0NTExIiwKICAgICJ2ZW5kb3JfbmFtZSIgOiAiT3kgQm90bmlhLUZvdG8gQWIiLAogICAgImFtb3VudCIgOiAxNzU2LjAsCiAgICAiYmFuayIgOiAiTm9yZGVhIiwKICAgICJ0cmFuc2FjdGlvbl9pZCIgOiAiQ1VTVC0wMDAwLVRYTi0wMDAwMDEiLAogICAgImludm9pY2VfaWQiIDogIkNVU1QtMDAwMC1JTlYtMDAwMDAyIgogIH0sIHsKICAgICJjdXN0b21lcl9pZCIgOiAiQ1VTVC0wMDAwIiwKICAgICJkZXNjcmlwdGlvbiIgOiAiQVZBUk4gU0VDVVJJVFkgT1kgIFNhYWphICBWSUlURSA5MDEyNTYxMjggIDIxLjA4LjI0IiwKICAgICJ2ZW5kb3JfbmFtZSIgOiAiQXZhcm4gU2VjdXJpdHkgT3kiLAogICAgImFtb3VudCIgOiA3MTEzLjAsCiAgICAiYmFuayIgOiAiSGFuZGVsc2JhbmtlbiIsCiAgICAidHJhbnNhY3Rpb25faWQiIDogIkNVU1QtMDAwMC1UWE4tMDAwMDAyIiwKICAgICJpbnZvaWNlX2lkIiA6ICJDVVNULTAwMDAtSU5WLTAwMDAwNyIKICB9LCB7CiAgICAiY3VzdG9tZXJfaWQiIDogIkNVU1QtMDAwMCIsCiAgICAiZGVzY3JpcHRpb24iIDogIlNFQ1VSSVRZIFZFTlRVUkUgT1kgVklJVEUgMjgwOTcxOTU5IC8gMTMuMTEuMjUiLAogICAgInZlbmRvcl9uYW1lIiA6ICJTZWN1cml0eSBWZW50dXJlIE95IiwKICAgICJhbW91bnQiIDogNjQ3MC41LAogICAgImJhbmsiIDogIlMtUGFua2tpIiwKICAgICJ0cmFuc2FjdGlvbl9pZCIgOiAiQ1VTVC0wMDAwLVRYTi0wMDAwMDMiLAogICAgImludm9pY2VfaWQiIDogIkNVU1QtMDAwMC1JTlYtMDAwMDEwIgogIH0sIHsKICAgICJjdXN0b21lcl9pZCIgOiAiQ1VTVC0wMDAwIiwKICAgICJkZXNjcmlwdGlvbiIgOiAiQVZBUk4gU0VDVVJJVFkgMTUwNzIwMjUgVmlpdGU6IDMwMTc2ODkzMSIsCiAgICAidmVuZG9yX25hbWUiIDogIkF2YXJuIFNlY3VyaXR5IE95IiwKICAgICJhbW91bnQiIDogMTI4NTkuNSwKICAgICJiYW5rIiA6ICJOb3JkZWEiLAogICAgInRyYW5zYWN0aW9uX2lkIiA6ICJDVVNULTAwMDAtVFhOLTAwMDAwNCIsCiAgICAiaW52b2ljZV9pZCIgOiAiQ1VTVC0wMDAwLUlOVi0wMDAwMTEiCiAgfSBdCn0=",
@@ -166,13 +16,163 @@
           "connection": "keep-alive",
           "content-length": "1505",
           "content-type": "application/json",
-          "date": "Tue, 08 Sep 2026 08:31:42 GMT",
+          "date": "Wed, 16 Sep 2026 07:12:33 GMT",
           "permissions-policy": "geolocation=(), microphone=(), camera=()",
           "referrer-policy": "strict-origin-when-cross-origin",
           "server": "nginx/1.29.1",
           "strict-transport-security": "max-age=31536000; includeSubDomains",
           "transfer-encoding": "chunked",
-          "x-aitoai-response-time": "26.07",
+          "x-aitoai-response-time": "4.82",
+          "x-content-type-options": "nosniff, nosniff",
+          "x-frame-options": "DENY, DENY",
+          "x-xss-protection": "1; mode=block"
+        },
+        "statusCode": 200
+      }
+    },
+    "4e940f8d7f2f51ae18cc4b2ff86cfde71b21fc3e": {
+      "request": {
+        "hash": "4e940f8d7f2f51ae18cc4b2ff86cfde71b21fc3e",
+        "method": "POST",
+        "url": "https://shared.aito.ai/db/aito-accounting-demo/api/v2/_predict"
+      },
+      "response": {
+        "content": "ewogICJvZmZzZXQiIDogMCwKICAidG90YWwiIDogMTMzMiwKICAiaGl0cyIgOiBbIHsKICAgICIkcCIgOiAwLjk5OTIwMTAxMjI0MzUxOTMsCiAgICAiJHZhbHVlIiA6ICJPeSBCb3RuaWEtRm90byBBYiIKICB9IF0KfQ==",
+        "headers": {
+          "access-control-allow-credentials": "true",
+          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
+          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
+          "access-control-allow-origin": "*",
+          "connection": "keep-alive",
+          "content-length": "124",
+          "content-type": "application/json",
+          "date": "Wed, 16 Sep 2026 07:12:33 GMT",
+          "permissions-policy": "geolocation=(), microphone=(), camera=()",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "server": "nginx/1.29.1",
+          "strict-transport-security": "max-age=31536000; includeSubDomains",
+          "transfer-encoding": "chunked",
+          "x-aitoai-response-time": "100.11",
+          "x-content-type-options": "nosniff, nosniff",
+          "x-frame-options": "DENY, DENY",
+          "x-xss-protection": "1; mode=block"
+        },
+        "statusCode": 200
+      }
+    },
+    "6ac31dd56c3acedc6214766b7173251bcb1dcecd": {
+      "request": {
+        "hash": "6ac31dd56c3acedc6214766b7173251bcb1dcecd",
+        "method": "POST",
+        "url": "https://shared.aito.ai/db/aito-accounting-demo/api/v2/_predict"
+      },
+      "response": {
+        "content": "ewogICJvZmZzZXQiIDogMCwKICAidG90YWwiIDogMTMzMiwKICAiaGl0cyIgOiBbIHsKICAgICIkcCIgOiAwLjk5OTI3NjQxMDk5ODYwNDEsCiAgICAiJHZhbHVlIiA6ICJBdmFybiBTZWN1cml0eSBPeSIKICB9IF0KfQ==",
+        "headers": {
+          "access-control-allow-credentials": "true",
+          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
+          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
+          "access-control-allow-origin": "*",
+          "connection": "keep-alive",
+          "content-length": "124",
+          "content-type": "application/json",
+          "date": "Wed, 16 Sep 2026 07:12:34 GMT",
+          "permissions-policy": "geolocation=(), microphone=(), camera=()",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "server": "nginx/1.29.1",
+          "strict-transport-security": "max-age=31536000; includeSubDomains",
+          "transfer-encoding": "chunked",
+          "x-aitoai-response-time": "88.42",
+          "x-content-type-options": "nosniff, nosniff",
+          "x-frame-options": "DENY, DENY",
+          "x-xss-protection": "1; mode=block"
+        },
+        "statusCode": 200
+      }
+    },
+    "90b20fac584afad06004a9a35faaa163507ed95b": {
+      "request": {
+        "hash": "90b20fac584afad06004a9a35faaa163507ed95b",
+        "method": "POST",
+        "url": "https://shared.aito.ai/db/aito-accounting-demo/api/v2/_predict"
+      },
+      "response": {
+        "content": "ewogICJvZmZzZXQiIDogMCwKICAidG90YWwiIDogMTMzMiwKICAiaGl0cyIgOiBbIHsKICAgICIkcCIgOiAwLjk5OTAxMzE1MTY3MTUzNywKICAgICIkdmFsdWUiIDogIlNlY3VyaXR5IFZlbnR1cmUgT3kiCiAgfSBdCn0=",
+        "headers": {
+          "access-control-allow-credentials": "true",
+          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
+          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
+          "access-control-allow-origin": "*",
+          "connection": "keep-alive",
+          "content-length": "125",
+          "content-type": "application/json",
+          "date": "Wed, 16 Sep 2026 07:12:34 GMT",
+          "permissions-policy": "geolocation=(), microphone=(), camera=()",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "server": "nginx/1.29.1",
+          "strict-transport-security": "max-age=31536000; includeSubDomains",
+          "transfer-encoding": "chunked",
+          "x-aitoai-response-time": "85.33",
+          "x-content-type-options": "nosniff, nosniff",
+          "x-frame-options": "DENY, DENY",
+          "x-xss-protection": "1; mode=block"
+        },
+        "statusCode": 200
+      }
+    },
+    "c33bb45fe0f9c50bcfbcc80cb8c24095edaa77a0": {
+      "request": {
+        "hash": "c33bb45fe0f9c50bcfbcc80cb8c24095edaa77a0",
+        "method": "POST",
+        "url": "https://shared.aito.ai/db/aito-accounting-demo/api/v2/_predict"
+      },
+      "response": {
+        "content": "ewogICJvZmZzZXQiIDogMCwKICAidG90YWwiIDogMTMzMiwKICAiaGl0cyIgOiBbIHsKICAgICIkcCIgOiAwLjk5OTI3NjQxMDk5ODYwNDEsCiAgICAiJHZhbHVlIiA6ICJBdmFybiBTZWN1cml0eSBPeSIKICB9IF0KfQ==",
+        "headers": {
+          "access-control-allow-credentials": "true",
+          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
+          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
+          "access-control-allow-origin": "*",
+          "connection": "keep-alive",
+          "content-length": "124",
+          "content-type": "application/json",
+          "date": "Wed, 16 Sep 2026 07:12:34 GMT",
+          "permissions-policy": "geolocation=(), microphone=(), camera=()",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "server": "nginx/1.29.1",
+          "strict-transport-security": "max-age=31536000; includeSubDomains",
+          "transfer-encoding": "chunked",
+          "x-aitoai-response-time": "64.91",
+          "x-content-type-options": "nosniff, nosniff",
+          "x-frame-options": "DENY, DENY",
+          "x-xss-protection": "1; mode=block"
+        },
+        "statusCode": 200
+      }
+    },
+    "d564f515a3607cdc99bfd2f11a9da00a735c8f73": {
+      "request": {
+        "hash": "d564f515a3607cdc99bfd2f11a9da00a735c8f73",
+        "method": "POST",
+        "url": "https://shared.aito.ai/db/aito-accounting-demo/api/v2/_predict"
+      },
+      "response": {
+        "content": "ewogICJvZmZzZXQiIDogMCwKICAidG90YWwiIDogMTMzMiwKICAiaGl0cyIgOiBbIHsKICAgICIkcCIgOiAwLjk5OTI1ODI2OTcyNTkzOTMsCiAgICAiJHZhbHVlIiA6ICJLYXJkZXggRmlubGFuZCBPeSIKICB9IF0KfQ==",
+        "headers": {
+          "access-control-allow-credentials": "true",
+          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
+          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
+          "access-control-allow-origin": "*",
+          "connection": "keep-alive",
+          "content-length": "124",
+          "content-type": "application/json",
+          "date": "Wed, 16 Sep 2026 07:12:33 GMT",
+          "permissions-policy": "geolocation=(), microphone=(), camera=()",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "server": "nginx/1.29.1",
+          "strict-transport-security": "max-age=31536000; includeSubDomains",
+          "transfer-encoding": "chunked",
+          "x-aitoai-response-time": "136.36",
           "x-content-type-options": "nosniff, nosniff",
           "x-frame-options": "DENY, DENY",
           "x-xss-protection": "1; mode=block"

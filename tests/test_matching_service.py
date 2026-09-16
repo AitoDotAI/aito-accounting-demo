@@ -155,12 +155,18 @@ class TestMatchPair:
 
 
 class FakePredictClient:
-    """Returns a canned `_predict` response without any HTTP."""
+    """Returns a canned `_predict` response without any HTTP.
+
+    Keeps the request body so a test can assert what was asked of Aito,
+    not only what was done with the answer.
+    """
 
     def __init__(self, hits):
         self._hits = hits
+        self.last_body: dict | None = None
 
     def _request(self, method, path, json=None, timeout=120.0):
+        self.last_body = json
         return {"hits": self._hits}
 
 
@@ -249,3 +255,56 @@ class TestBaseRateSurvivesExtraction:
             0.9, _why_for("INV-1"))
         base = next(f for f in explanation if f["type"] == "base")
         assert base["base_p"] > 0
+
+
+class TestCandidateDomainIsTheOpenLedger:
+    """The matcher must ask Aito to rank the OPEN invoices, not all of them.
+
+    Without this the candidate domain is every invoice the tenant has ever
+    had -- about 2000 -- and the ~30 that are actually outstanding compete
+    against 1970 rows that were never eligible. The true invoice loses that
+    race whenever the payment quotes no reference number: measured on
+    CUST-0007, accuracy on no-reference payments was 11/19 unscoped and
+    18/19 scoped, while payments that did quote a reference stayed at 21/21.
+
+    The clause uses the linked key `invoice_id.invoice_id`. `$or` on the
+    bare predict target ranks correctly too, but returns `invoice_id: null`
+    on every hit after the first, and the matcher reads that field.
+    """
+
+    def test_open_invoice_ids_are_sent_as_the_candidate_domain(self):
+        client = FakePredictClient([
+            {"invoice_id": "CUST-0000-INV-000001", "vendor": "Acme Oy",
+             "amount": 1000.0, "$p": 0.48, "$why": _why_for("CUST-0000-INV-000001")},
+        ])
+        open_invoices = [
+            {"invoice_id": "CUST-0000-INV-000001", "vendor": "Acme Oy", "amount": 1000.0},
+            {"invoice_id": "CUST-0000-INV-000002", "vendor": "Beta Oy", "amount": 500.0},
+        ]
+
+        match_bank_txn_to_invoice(client, _TXN, open_invoices)
+
+        where = client.last_body["where"]
+        assert where["invoice_id.invoice_id"] == {
+            "$or": ["CUST-0000-INV-000001", "CUST-0000-INV-000002"]
+        }
+
+    def test_limit_covers_every_open_invoice(self):
+        """A fixed cut is what truncated the true invoice out of the ranking."""
+        client = FakePredictClient([])
+        open_invoices = [
+            {"invoice_id": f"CUST-0000-INV-{i:06d}", "vendor": "Acme Oy", "amount": 100.0}
+            for i in range(37)
+        ]
+
+        match_bank_txn_to_invoice(client, _TXN, open_invoices)
+
+        assert client.last_body["limit"] == 37
+
+    def test_no_open_invoices_sends_no_domain_clause(self):
+        """An empty `$or` would filter every candidate away, not all of them."""
+        client = FakePredictClient([])
+
+        match_bank_txn_to_invoice(client, _TXN, [])
+
+        assert "invoice_id.invoice_id" not in client.last_body["where"]

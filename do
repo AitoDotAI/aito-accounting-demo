@@ -371,9 +371,19 @@ cmd_book_capture() {
 
 # Assert the live Aito responses still match what the app assumes.
 # Needs network and credentials; `--v2` checks the v2 env instead of v1.
+# `--v2` comes from AITO_V2_ENV, the same way `./do book` and
+# `./do precompute` take it. After the cutover the tables live in v2 and
+# the v1 client cannot open them -- `_evaluate` and `_relate` answer
+# "failed to open 'invoices'" with a 400 -- so a v1 default makes the
+# merge gate fail for a reason that has nothing to do with the change
+# under test. Unset AITO_V2_ENV to check v1.
 cmd_aito_check() {
   cd "$SCRIPT_DIR"
-  uv run python -u scripts/aito_check.py "$@"
+  local v2_flag=()
+  if [[ -n "${AITO_V2_ENV:-}" && "$*" != *--v2* ]]; then
+    v2_flag=(--v2)
+  fi
+  uv run python -u scripts/aito_check.py "${v2_flag[@]}" "$@"
 }
 
 # Measure payment->invoice matching accuracy against ground truth
@@ -406,7 +416,12 @@ cmd_verify_demo() {
 cmd_check() {
   cmd_test
   cmd_fmt
-  cmd_aito_check
+  # Default the query checks at the environment the demo actually serves,
+  # so a clean checkout does not have to know about the cutover. In a
+  # SUBSHELL: `precompute_store` reads AITO_V2_ENV at import time to pick
+  # its key namespace, so exporting it around `cmd_test` makes the
+  # fallback-file tests look for `v2:`-prefixed keys and fail.
+  ( export AITO_V2_ENV="${AITO_V2_ENV:-master}"; cmd_aito_check )
 }
 
 case "${1:-help}" in
