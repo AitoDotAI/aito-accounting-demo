@@ -132,20 +132,45 @@ convenience, it is one column per access pattern.
 
 **This should be temporary.** Aito indexes a Text column's distinct whole
 values *and* its distinct tokens separately, so `$patterns` has the
-information to propose `vendor = "Re - Copiers Oy"` and simply does not.
-Filed as `td-20260916122259713206`, with the sharper form of the argument:
-the token conjunction is not merely uglier, it is **wrong** where one
-vendor's tokens are a subset of another's —
+information to propose `vendor = "Re - Copiers Oy"`. Filed as
+`td-20260916122259713206`.
+
+### Retested on 2.9.2 (2026-09-18): half fixed, twin stays
+
+The condition form is fixed. `$patterns` on a `Text` column now proposes
+the whole value, so a mined rule carries the exact name and its support is
+the whole-value count (245) rather than the token conjunction's (331):
 
 ```
-vendor      = "Kauko Oy"                  245   the truth
-vendor_text $has "kauko" AND $has "oy"    331   what $patterns mines
-vendor      = "Kauko Group Oy"             86   absorbed silently
+2.9.0   {"$and": [{"vendor": {"$has": "re"}}, {"vendor": {"$has": "copiers"}}, ...]}
+2.9.2   {"$and": [{"vendor": "Re - Copiers Oy"}, {"category": "telecom"}]}
 ```
 
-— so a mined rule's displayed support inflates by 35% and conflates two
-legal entities. When that lands, `vendor_text` should be deleted and
-`vendor` retyped to `Text`.
+So the exit was attempted: `vendor` retyped to `Text`, `vendor_text`
+deleted, invoices reloaded. **Payment matching was indifferent** — the
+settlement-entity control numbers came back byte-identical (Avarn
+0.37871 vs 0.01606, rank 1/19; Tailio 0.57448 vs 0.02337, rank 1/17).
+**Rule mining was not**: 20 candidates fell to 13, because a `Text` relate
+field still surfaces fewer patterns than the equivalent `String` one.
+
+```
+patterns returned, CUST-0007, relate [vendor, category], k=6
+  gl_code 6200   String 2   Text 1
+  gl_code 6100   String 2   Text 1
+  gl_code 4400   String 3   Text 3
+```
+
+The seven rules lost are real ones a user would see —
+`category=insurance AND vendor=Najaco Oy -> gl_code=5300` among them. One
+of them, `amount_band=large AND category=maintenance -> approver=...`,
+carries **no vendor clause at all**, so the `k` budget is being spent
+differently when any relate field is `Text`, crowding out patterns over
+the other fields. That cannot be worked around from here.
+
+So the twin stays, and it now exists for exactly one reason: seven mined
+rules. When a `Text` relate field yields the same pattern set as a
+`String` one, delete `vendor_text` and retype `vendor` — the matching side
+is already proven indifferent.
 
 ## Acceptance criteria
 
