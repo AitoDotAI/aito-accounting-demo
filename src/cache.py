@@ -129,6 +129,18 @@ def set(key: str, value: Any, ttl: int = DEFAULT_TTL) -> None:
         pass
 
 
+def drop_local() -> int:
+    """Drop the in-process copy only, leaving the shared Aito table alone.
+
+    Distinct from `clear()` on purpose: `clear()` DELETEs and recreates
+    `cache_entries`, which other processes are reading. Reloading one
+    container's view must not destroy everyone else's cache.
+    """
+    n = len(_l1)
+    _l1.clear()
+    return n
+
+
 def clear() -> None:
     _l1.clear()
     if _aito is not None:

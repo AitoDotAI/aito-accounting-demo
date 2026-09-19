@@ -12,13 +12,13 @@ import json
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.aito_client import AitoClient, AitoError
-from src import cache, precomputed
+from src import admin_ops, cache, precomputed
 from src.config import load_config
 from src.formfill_service import predict_fields
 from src.invoice_service import predict_batch, compute_metrics
@@ -305,6 +305,26 @@ def healthz():
 
 
 # ── Customer list ─────────────────────────────────────────────────
+
+@app.post("/api/cache/invalidate")
+def cache_invalidate(x_admin_token: str | None = Header(default=None)):
+    """Drop the in-process caches so a rebuilt precompute becomes visible.
+
+    Without this the only way to pick up `./do precompute-v2` output was a
+    redeploy, because L1 is pinned for the process lifetime. The policy and
+    the cache handling live in `src/admin_ops.py`; this is just the route.
+    See ADR 0022.
+    """
+    try:
+        admin_ops.check_admin_token(x_admin_token)
+    except admin_ops.AdminDisabled:
+        raise HTTPException(status_code=404, detail="Not Found") from None
+    except admin_ops.AdminForbidden:
+        raise HTTPException(
+            status_code=401, detail="Invalid or missing X-Admin-Token") from None
+
+    return {"invalidated": True, **admin_ops.drop_in_process_caches()}
+
 
 @app.get("/api/cache/status")
 def cache_status(customer_id: str = Query(...)):

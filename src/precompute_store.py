@@ -202,10 +202,17 @@ def get(name: str) -> Any | None:
     return None
 
 
-def invalidate(name: str | None = None) -> None:
-    """Drop L1 cache for a single name, or everything when name is None."""
+def invalidate(name: str | None = None) -> int:
+    """Drop L1 cache for a single name, or everything when name is None.
+
+    Returns how many entries were dropped, so a caller can report it. L1
+    is pinned for the process lifetime -- a precompute rebuild writes L2
+    and a running container keeps serving the old payload until this is
+    called. See ADR 0022.
+    """
     with _l1_mutex:
         if name is None:
+            n = len(_l1)
             _l1.clear()
-        else:
-            _l1.pop(_NAMESPACE + name, None)
+            return n
+        return 1 if _l1.pop(_NAMESPACE + name, None) is not None else 0
