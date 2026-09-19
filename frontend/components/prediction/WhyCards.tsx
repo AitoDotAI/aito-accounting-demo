@@ -310,6 +310,17 @@ export default function WhyCards({
           padding: "6px 10px", fontSize: 11, color: "var(--text3)",
           borderTop: "1px dashed var(--border)", textAlign: "center",
         }}>
+          {/* Name the number the chain above actually produced, then the
+              step from it to the headline. Without this the panel showed a
+              chain ending at one percentage and a match labelled another,
+              with nothing on screen connecting them. */}
+          {modelP != null && modelP > 0 && (
+            <>
+              <span>Aito&rsquo;s probability </span>
+              <strong>{pct(modelP)}</strong>
+              <span> · </span>
+            </>
+          )}
           {blendNote}{" "}
           <strong style={{ color: "var(--gold-dark)" }}>{pct(confidence)}</strong>
         </div>

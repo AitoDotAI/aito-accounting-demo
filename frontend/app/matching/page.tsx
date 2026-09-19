@@ -191,7 +191,7 @@ export default function MatchingPage() {
                             why={p.explanation}
                             confidence={p.confidence}
                             modelP={p.model_p}
-                            blendNote={"Aito probability blended with amount proximity \u2192"}
+                            blendNote={"blended with how closely the amounts agree \u2192"}
                           />
                         </td>
                       </tr>
