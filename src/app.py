@@ -97,6 +97,15 @@ cache.init(aito)
 # the key namespace, not the connection — `./do precompute --v2`
 # writes `v2:`-prefixed keys that only a v2 process reads.
 from src import precompute_store  # noqa: E402
+
+# Per-scope cache versions, and the poll that acts on them. Without it a
+# running container serves the payloads it read at startup until someone
+# restarts it or calls /api/cache/invalidate -- see ADR 0023.
+from src import cache_versions, cache_watch  # noqa: E402
+
+cache_versions.init(aito)
+if cache_watch.start():
+    print(f"Cache watcher polling every {cache_watch.interval_seconds()}s")
 precompute_store.init(aito)
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent

@@ -202,6 +202,22 @@ def get(name: str) -> Any | None:
     return None
 
 
+def invalidate_view(view: str) -> int:
+    """Drop every customer's L1 entry for one view, e.g. "matching_pairs".
+
+    Keys are `<ns>cust:<customer>:<view>`, so a rebuilt view can be dropped
+    across customers without touching the views that were not rebuilt.
+    Dropping everything instead would make each of the other 19 tenants
+    recompute live at 7-15 s for a change that did not affect them.
+    """
+    suffix = f":{view}"
+    with _l1_mutex:
+        doomed = [k for k in _l1 if k.endswith(suffix)]
+        for k in doomed:
+            del _l1[k]
+        return len(doomed)
+
+
 def invalidate(name: str | None = None) -> int:
     """Drop L1 cache for a single name, or everything when name is None.
 

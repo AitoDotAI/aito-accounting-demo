@@ -122,6 +122,15 @@ def build(
     optimize_collections(client, order)
     print(f"Done. Loaded {total} rows into env '{client._env}'.")
 
+    # Tell running containers that these tables moved, so they drop every
+    # derived view rather than serving predictions computed against data
+    # that no longer exists. A table underlies all of them, so this is the
+    # coarse case on purpose -- see ADR 0023.
+    from src import cache_versions
+    cache_versions.init(client)
+    cache_versions.bump([f"{cache_versions.TABLE_PREFIX}{t}" for t in order])
+    print(f"Bumped cache versions for {len(order)} table(s).")
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build the dataset as v2 collections.")

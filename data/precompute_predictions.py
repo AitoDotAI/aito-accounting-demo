@@ -55,6 +55,14 @@ def load_fixture(name: str) -> list[dict]:
         return json.load(f)
 
 
+# Views actually pushed to Aito this run. Bumped into `cache_versions` at
+# the end so running containers drop exactly these and keep the rest --
+# see ADR 0023. A view that failed to push is deliberately absent: telling
+# containers to reload something that was not written is worse than
+# staying stale, because it costs them a live recompute for nothing.
+_written_views: set[str] = set()
+
+
 def save(customer_id: str, name: str, data: dict) -> int:
     """Write data/precomputed/{customer_id}/{name}.json AND push to the
     Aito precompute store. Returns local file size in bytes.
@@ -76,6 +84,7 @@ def save(customer_id: str, name: str, data: dict) -> int:
         json.dump(data, f, ensure_ascii=False)
     try:
         precompute_store.put(key, data)
+        _written_views.add(name)
     except Exception as e:
         print(f"  {customer_id}/{name}: aito-store push skipped: {e}")
     return path.stat().st_size
@@ -625,6 +634,22 @@ def main() -> None:
         f"in {total_elapsed:.0f}s ({total_elapsed / max(1, completed):.1f}s/customer)."
     )
     print(f"Output: {output_root}/")
+
+    # Tell running containers which views to drop. Best-effort: the
+    # payloads are already written, and failing the run over a cache hint
+    # would be the tail wagging the dog -- a container then picks the
+    # change up on its next restart, which is what happened before.
+    if _written_views:
+        from src import cache_versions
+        # `store_client` (v1), not `client`: cache_versions is a plain
+        # table on master shared by both API generations, exactly like
+        # precompute_entries. What separates v1 from v2 is the key
+        # namespace, not the connection.
+        cache_versions.init(store_client)
+        scopes = [f"{cache_versions.PRECOMPUTE_PREFIX}{v}" for v in sorted(_written_views)]
+        cache_versions.bump(scopes)
+        print(f"Bumped cache versions for {len(scopes)} view(s): "
+              f"{', '.join(sorted(_written_views))}")
 
 
 if __name__ == "__main__":
