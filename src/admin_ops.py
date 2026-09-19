@@ -11,7 +11,7 @@ the routing.
 import hmac
 import os
 
-from src import cache, precompute_store
+from src import cache, cache_versions, precompute_store
 
 
 class AdminDisabled(Exception):
@@ -54,5 +54,34 @@ def drop_in_process_caches() -> dict[str, int]:
     """
     return {
         "precompute_entries_dropped": precompute_store.invalidate(),
+        "cache_entries_dropped": cache.drop_local(),
+    }
+
+
+def apply_version_changes(changed: set[str]) -> dict[str, int]:
+    """Drop the caches a set of changed scopes invalidates. See ADR 0023.
+
+    A changed TABLE underlies every derived view, so it drops everything.
+    A changed PRECOMPUTE VIEW drops only that view, across customers —
+    rebuilding one tenant's rules must not make the other nineteen
+    recompute a matching page that did not change.
+
+    The request cache is dropped whenever anything changed: its keys are
+    view- and customer-shaped but not scope-shaped, and a stale answer
+    there is the same defect by another route.
+    """
+    if not changed:
+        return {"precompute_entries_dropped": 0, "cache_entries_dropped": 0}
+
+    if any(s.startswith(cache_versions.TABLE_PREFIX) for s in changed):
+        dropped = precompute_store.invalidate()
+    else:
+        dropped = sum(
+            precompute_store.invalidate_view(s[len(cache_versions.PRECOMPUTE_PREFIX):])
+            for s in changed
+            if s.startswith(cache_versions.PRECOMPUTE_PREFIX)
+        )
+    return {
+        "precompute_entries_dropped": dropped,
         "cache_entries_dropped": cache.drop_local(),
     }
