@@ -130,7 +130,74 @@ def _extract_why_factors(why: dict | None) -> list[dict]:
     normalizers = [f for f in out if f.get("type") == "normalizer"]
     patterns = [f for f in out if f.get("type") == "pattern"]
     patterns.sort(key=lambda f: abs(f.get("lift", 1) - 1), reverse=True)
-    return base + normalizers + patterns[:5]
+    kept = base + normalizers + patterns[:5]
+
+    # Everything the pruning above removed, as one multiplier, so the chain
+    # the panel prints still equals the probability it is printed under.
+    #
+    # Four filters drop factors: near-1.0 normalizers, near-1.0 lifts,
+    # propositions that only restate the customer scope, and this top-5
+    # truncation. Each is defensible on its own -- a long tail of 1.02x
+    # lifts is noise, not evidence -- but the UI multiplied what survived
+    # and presented the result as an equation. On a live CUST-0000 match
+    # that read:
+    #
+    #   0.003% x 2.85 x 3.23 x 11.14 x 6.44 x 4.10 x 1.86 x 1.32 -> 19.6%
+    #
+    # under a 95% match, because three of Aito's eight lift factors were
+    # not in the product. Aito's own tree reconciles exactly (ratio
+    # 1.0000000000, verified on that same match), so the gap was entirely
+    # ours.
+    #
+    # Emitted as a `normalizer` rather than a new type so every existing
+    # renderer folds it into the model-terms line it already draws.
+    residual = _residual_multiplier(why, kept)
+    if residual is not None:
+        normalizers = normalizers + [residual]
+        kept = base + normalizers + patterns[:5]
+    return kept
+
+
+def _tree_product(node: dict) -> float:
+    """The product of every factor in Aito's `$why` tree.
+
+    Aito's decomposition is complete -- this equals the hit's `$p` to full
+    precision -- so it is the number our pruned chain has to reach.
+    """
+    if node.get("type") == "product":
+        total = 1.0
+        for factor in node.get("factors") or []:
+            total *= _tree_product(factor)
+        return total
+    return float(node.get("value", 1) or 1)
+
+
+def _residual_multiplier(why: dict, kept: list[dict]) -> dict | None:
+    """One factor standing for everything pruning dropped, or None.
+
+    None when the kept factors already account for the tree (within 1%),
+    which is the common case for invoice prediction, where there are few
+    enough factors that nothing is pruned.
+    """
+    full = _tree_product(why)
+    shown = 1.0
+    for f in kept:
+        if f.get("type") == "base":
+            shown *= float(f.get("base_p", 0) or 0)
+        elif f.get("type") == "normalizer":
+            shown *= float(f.get("multiplier", 1) or 1)
+        elif f.get("type") == "pattern":
+            shown *= float(f.get("lift", 1) or 1)
+    if shown <= 0 or full <= 0:
+        return None
+    ratio = full / shown
+    if abs(ratio - 1.0) < 0.01:
+        return None
+    return {
+        "type": "normalizer",
+        "name": "other factors",
+        "multiplier": float(f"{ratio:.4g}"),
+    }
 
 
 def _walk_why_grouped(node: dict, out: list[dict]) -> None:

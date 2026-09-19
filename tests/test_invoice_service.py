@@ -17,6 +17,7 @@ from src.invoice_service import (
     compute_metrics,
     predict_invoice,
     InvoicePrediction,
+    _extract_why_factors,
 )
 
 TEST_CONFIG = Config(
@@ -262,3 +263,75 @@ class TestApproverIsResolvedToAName:
                 raise AssertionError("should not query without a customer_id")
 
         assert tenant_employee_names(ExplodingClient(), "") == {}
+
+
+class TestTheChainEqualsTheProbabilityItIsShownUnder:
+    """A printed equation must balance.
+
+    Four filters prune factors before the panel sees them — near-1.0
+    normalizers, near-1.0 lifts, customer-scope propositions, and a top-5
+    truncation. Each is defensible; multiplying what survived and calling
+    the result the match's probability is not. A live CUST-0000 match
+    printed a chain ending at 19.6% under a 95% match because three of
+    Aito's eight lift factors were missing from the product.
+    """
+
+    def _tree(self, base_p, lifts, normalizer=1.0):
+        return {
+            "type": "product",
+            "factors": [
+                {"type": "baseP", "value": base_p,
+                 "proposition": {"invoice_id": {"$has": "INV-1"}}},
+                {"type": "normalizer", "name": "exclusiveness", "value": normalizer},
+                *[
+                    {"type": "relatedPropositionLift", "value": lift,
+                     "proposition": {"description": {"$has": f"TOK{i}"}}}
+                    for i, lift in enumerate(lifts)
+                ],
+            ],
+        }
+
+    def _chain(self, factors):
+        product = 1.0
+        for f in factors:
+            if f["type"] == "base":
+                product *= f["base_p"]
+            elif f["type"] == "normalizer":
+                product *= f["multiplier"]
+            else:
+                product *= f.get("lift", 1)
+        return product
+
+    def test_a_truncated_chain_still_reaches_the_probability(self):
+        """Eight lifts, five cards: the other three must not vanish."""
+        lifts = [9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0]
+        tree = self._tree(1e-4, lifts, normalizer=2.0)
+        expected = 1e-4 * 2.0
+        for lift in lifts:
+            expected *= lift
+
+        factors = _extract_why_factors(tree)
+
+        assert len([f for f in factors if f["type"] == "pattern"]) == 5
+        assert self._chain(factors) == pytest.approx(expected, rel=0.01)
+
+    def test_pruned_noise_is_carried_too(self):
+        """Lifts within 5% of 1.0 are dropped from the cards as noise, but
+        they are still factors of the model's product."""
+        tree = self._tree(1e-4, [9.0, 1.02, 1.03, 0.98])
+        expected = 1e-4 * 9.0 * 1.02 * 1.03 * 0.98
+
+        factors = _extract_why_factors(tree)
+
+        assert self._chain(factors) == pytest.approx(expected, rel=0.01)
+
+    def test_no_residual_when_nothing_was_pruned(self):
+        """Invoice prediction has few enough factors that the chain is
+        already exact — it must not grow a meaningless 1.0x term."""
+        tree = self._tree(0.46, [3.0, 2.0], normalizer=2.0)
+
+        factors = _extract_why_factors(tree)
+
+        names = [f["name"] for f in factors if f["type"] == "normalizer"]
+        assert names == ["exclusiveness"]      # no "other factors" term
+        assert self._chain(factors) == pytest.approx(0.46 * 2.0 * 3.0 * 2.0, rel=0.01)
