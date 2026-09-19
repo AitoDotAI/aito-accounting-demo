@@ -49,10 +49,41 @@ export default function WhyCards({
   onHoverFactor?: (h: HoverHighlight) => void;
 }) {
   const base = why.find((f) => f.type === "base");
-  const patterns = why.filter((f) => f.type === "pattern");
-  // Aito's own normalisation terms (exclusiveness, rowCap). Real factors of
-  // the model's product; dropping them made the printed chain short.
+  const allPatterns = why.filter((f) => f.type === "pattern");
+  // Aito's own normalisation terms (exclusiveness, rowCap, nameBoost).
   const normalizers = why.filter((f) => f.type === "normalizer");
+
+  // A factor is only worth a card if it changed the answer.
+  //
+  // The panel used to list every factor Aito returned, which meant a
+  // reader looking for the reason found, on one match:
+  //
+  //   MODEL TERM  nameBoost   x 59.19      <- engine internal, no proposition
+  //   PATTERN     x1.057  vendor_name='Holding'
+  //   PATTERN     x1.055  description='HOLDING'
+  //   PATTERN     x1.324  description='Saaja'   <- Finnish for "recipient"
+  //
+  // None of those is a reason. `nameBoost` and `exclusiveness` are terms
+  // of the model's product with no proposition attached, so there is
+  // nothing for a reader to check. A lift of 1.06 is a rounding error
+  // wearing the costume of evidence, and the token it names is usually a
+  // legal suffix or bank boilerplate rather than the vendor.
+  //
+  // So the cards show what a person could verify, and everything else is
+  // folded into one honest line that keeps the arithmetic exact. Nothing
+  // is dropped from the payload -- the API still returns every factor --
+  // and the folded line says how many it stands for.
+  const MATERIAL = 1.15;
+  const isMaterial = (lift: number) => lift >= MATERIAL || lift <= 1 / MATERIAL;
+  const patterns = allPatterns.filter((f) => isMaterial(f.lift ?? 1));
+  const minorPatterns = allPatterns.filter((f) => !isMaterial(f.lift ?? 1));
+
+  // One collapsed multiplier covering the engine's normalisation terms and
+  // the immaterial factors, so `base x ... = confidence` still balances.
+  const foldedMultiplier =
+    normalizers.reduce((acc, n) => acc * (n.multiplier ?? 1), 1) *
+    minorPatterns.reduce((acc, f) => acc * (f.lift ?? 1), 1);
+  const foldedCount = normalizers.length + minorPatterns.length;
   const legacy = why.filter((f) => !f.type && f.field);  // old precomputed JSON
 
   const baseP = base?.base_p ?? 0;
@@ -66,18 +97,20 @@ export default function WhyCards({
   // "COUNTER-EVIDENCE  amount 7812.0  x 0.1" on a payment whose amount
   // matched TO THE CENT, because the same amount also appeared inside a
   // x20 group factor. Calling that counter-evidence is simply wrong.
+  // Built from ALL patterns, not just the ones that earn a card. A field
+  // credited only by a minor factor is still credited; narrowing this to
+  // the displayed set would relabel a correction term as counter-evidence,
+  // which is the defect the paragraph above describes.
   const creditedFields = new Set<string>();
-  patterns.forEach((f) => {
+  allPatterns.forEach((f) => {
     if ((f.lift ?? 1) > 1) {
       (f.propositions ?? []).forEach((p) => creditedFields.add(p.field));
     }
   });
 
   // The chain's own result, including Aito's normalisation terms.
-  const chainProduct = normalizers.reduce(
-    (acc, n) => acc * (n.multiplier ?? 1),
-    lifts.reduce((acc, l) => acc * l, baseP),
-  );
+  const chainProduct =
+    foldedMultiplier * lifts.reduce((acc, l) => acc * l, baseP);
 
   // Does the chain actually account for the model's probability?
   //
@@ -132,24 +165,27 @@ export default function WhyCards({
         </div>
       )}
 
-      {/* Model terms with no proposition of their own: exclusiveness,
-          rowCap, nameBoost. They multiply the chain, so a reader who sees
-          "x 59.6" in the footer needs a line saying what it was. */}
-      {normalizers.map((n, i) => (
-        <div key={`norm-${i}`} style={{
+      {/* One line for everything that multiplied the chain without being a
+          reason: the engine's normalisation terms and any factor too close
+          to 1.0 to have changed the outcome. Named by count rather than by
+          `nameBoost`, which is an engine internal a reader cannot act on. */}
+      {foldedCount > 0 && Math.abs(Math.log10(foldedMultiplier || 1)) > 0.01 && (
+        <div style={{
           background: "var(--surface2)", borderRadius: 4, padding: "6px 10px",
           display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8,
           fontSize: 11, color: "var(--text2)",
         }}>
           <div>
             <span style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px" }}>
-              Model term
+              Model normalisation
             </span>{" "}
-            <code style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{n.name}</code>
+            <span style={{ color: "var(--text3)" }}>
+              {foldedCount} term{foldedCount === 1 ? "" : "s"} with no proposition of their own
+            </span>
           </div>
-          <span style={{ fontWeight: 600 }}>× {formatLift(n.multiplier ?? 1)}×</span>
+          <span style={{ fontWeight: 600 }}>× {formatLift(foldedMultiplier)}×</span>
         </div>
-      ))}
+      )}
 
       {patterns.map((f, i) => {
         const lift = f.lift ?? 1;
@@ -266,9 +302,11 @@ export default function WhyCards({
           {base ? (
             <>
               <span>{pct(baseP)}</span>
-              {normalizers.map((n, i) => (
-                <span key={`n${i}`} title={n.name}> × {formatLift(n.multiplier ?? 1)}</span>
-              ))}
+              {foldedCount > 0 && (
+                <span title={`${foldedCount} normalisation and minor terms`}>
+                  {" "}× {formatLift(foldedMultiplier)}
+                </span>
+              )}
               {lifts.map((lift, i) => (
                 // formatLift, not a local rule: this chain restates the
                 // numbers on the cards above, so both must round alike.
