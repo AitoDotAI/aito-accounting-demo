@@ -142,7 +142,8 @@ reading the predicted field silently loses every candidate but one.
 }
 ```
 
-**Response shape:**
+**Response shape** (v1; on v2 collections `related` and `condition` come
+back with bare values — see the `relate` row of the v1/v2 table below):
 ```json
 {
   "offset": 0,
@@ -224,7 +225,31 @@ amount-conditional rules (capitalization, approval thresholds).
 }
 ```
 
-**Response hit** — `related` is a copy-pasteable `$and` proposition:
+**Response hit.** Shown in the **v1** shape, which wraps every value in
+`$has`. This project's tables are v2 collections, where the engine returns
+values **bare** — measured on `invoices.vendor`, a multi-token `String`:
+
+```json
+{ "related": { "vendor": "Europress Group Oy" },
+  "condition": { "customer_id": "CUST-0007" } }
+```
+
+The `$has` that application code sees comes from `AitoV2Client.relate`
+(`src/aito_v2_client.py`), which re-wraps v2's bare values into the v1
+shape so existing callers keep working. It is **ours, not the engine's**.
+
+**Do not copy a returned proposition into a `where`.** It reads as
+copy-pasteable and the v1 shape invites it, but `$has` on a text column is
+being narrowed to mean exactly one analyzed token, so a multi-token
+`$has` becomes an error rather than a filter. Unwrap to a bare value
+first — which is what `rulemining_service.parse_conjunction` does, and why
+rule replay was unaffected:
+
+```python
+value = pred.get("$has") if isinstance(pred, dict) else pred
+```
+
+The original example, in v1 shape:
 ```json
 {
   "related": { "$and": [
@@ -467,7 +492,7 @@ relatePatterns, fromJoin, fromUnion
 |---|---|---|
 | `predict` | value in `feature` | value in `$value` |
 | `recommend` | column at top level (`article_id`) | `$value` (+ `select`ed columns) |
-| `relate` | `related: {f: {$has: v}}` | `related: {f: v}` |
+| `relate` | `related: {f: {$has: v}}` | `related: {f: v}` — bare, verified |
 | `_evaluate` | metrics at top level | wrapped in `{"kind","data"}`; cases use `$value` |
 | links | explicit | auto-flatten to dotted fields (`customer_id.name`) |
 
