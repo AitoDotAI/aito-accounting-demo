@@ -14,12 +14,8 @@ Run with:
 """
 
 import booktest as bt
-from src.aito_client import AitoClient
-from src.config import load_config
 
-
-def get_client():
-    return AitoClient(load_config())
+from book.aito_env import get_client
 
 
 def _hit_top(result):
@@ -155,7 +151,7 @@ def test_evaluate_latency(t: bt.TestCaseRun):
     t.tln("")
 
     t.h2("CUST-0000 — sample size 50")
-    r = t.imsln(lambda: c._request("POST", "/_evaluate", json={
+    r = t.imsln(lambda: c.evaluate({
         "testSource": {
             "from": "invoices",
             "where": {"customer_id": "CUST-0000"},

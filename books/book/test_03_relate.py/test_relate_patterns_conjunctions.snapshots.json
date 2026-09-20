@@ -1,0 +1,64 @@
+{
+  "httpx": {
+    "0274468cb369f42fc5982a7d6d2b784a9e0519e6": {
+      "request": {
+        "hash": "0274468cb369f42fc5982a7d6d2b784a9e0519e6",
+        "method": "POST",
+        "url": "https://shared.aito.ai/db/aito-accounting-demo/env/v2-demo/api/v2/_query"
+      },
+      "response": {
+        "content": "ewogICJvZmZzZXQiIDogMCwKICAidG90YWwiIDogNSwKICAiaGl0cyIgOiBbIHsKICAgICJyZWxhdGVkIiA6IHsKICAgICAgIiRhbmQiIDogWyB7CiAgICAgICAgImFtb3VudF9iYW5kIiA6ICJsYXJnZSIKICAgICAgfSwgewogICAgICAgICJ2ZW5kb3IiIDogIkVFRSBFbmVyZ3kgRWNvbG9neSBFbmdpbmVlcmluZyBPeSIKICAgICAgfSBdCiAgICB9LAogICAgImNvbmRpdGlvbiIgOiB7CiAgICAgICJhcHByb3ZlciIgOiAiQ1VTVC0wMDAwLUVNUC0wMDA2IgogICAgfSwKICAgICJsaWZ0IiA6IDIuMjQwODA5NzQ4OTEzOTIzLAogICAgImluZm8iIDogMC4yNDczNjg2NzI4MjA5MzMzMywKICAgICJmIiA6IDI5MDQsCiAgICAibiIgOiAxNjAwMC4wCiAgfSwgewogICAgInJlbGF0ZWQiIDogewogICAgICAiJGFuZCIgOiBbIHsKICAgICAgICAiYW1vdW50X2JhbmQiIDogIm1lZGl1bSIKICAgICAgfSwgewogICAgICAgICJ2ZW5kb3IiIDogIkthcmRleCBGaW5sYW5kIE95IgogICAgICB9IF0KICAgIH0sCiAgICAiY29uZGl0aW9uIiA6IHsKICAgICAgImFwcHJvdmVyIiA6ICJDVVNULTAwMDAtRU1QLTAwMDYiCiAgICB9LAogICAgImxpZnQiIDogMC4wMDM5OTczODc5MzY3OTk4NzgsCiAgICAiaW5mbyIgOiAwLjA5NzAyNDI5OTc1MTg3OTc4LAogICAgImYiIDogMTcyMCwKICAgICJuIiA6IDE2MDAwLjAKICB9LCB7CiAgICAicmVsYXRlZCIgOiB7CiAgICAgICIkYW5kIiA6IFsgewogICAgICAgICJhbW91bnRfYmFuZCIgOiAibGFyZ2UiCiAgICAgIH0sIHsKICAgICAgICAidmVuZG9yIiA6ICJEb3R0b3Jlc3NhIE95IgogICAgICB9IF0KICAgIH0sCiAgICAiY29uZGl0aW9uIiA6IHsKICAgICAgImFwcHJvdmVyIiA6ICJDVVNULTAwMDAtRU1QLTAwMDYiCiAgICB9LAogICAgImxpZnQiIDogMi4yMjQzNTM4NTMxNzY2ODIsCiAgICAiaW5mbyIgOiAwLjA1MzI0MDUzMTI4MzkyMjM4NiwKICAgICJmIiA6IDc0MywKICAgICJuIiA6IDE2MDAwLjAKICB9LCB7CiAgICAicmVsYXRlZCIgOiB7CiAgICAgICIkYW5kIiA6IFsgewogICAgICAgICJhbW91bnRfYmFuZCIgOiAibWVkaXVtIgogICAgICB9LCB7CiAgICAgICAgImNhdGVnb3J5IiA6ICJpbnN1cmFuY2UiCiAgICAgIH0sIHsKICAgICAgICAidmVuZG9yIiA6ICJUYWxvdGlsaXQgT3kiCiAgICAgIH0gXQogICAgfSwKICAgICJjb25kaXRpb24iIDogewogICAgICAiYXBwcm92ZXIiIDogIkNVU1QtMDAwMC1FTVAtMDAwNiIKICAgIH0sCiAgICAibGlmdCIgOiAwLjAzMDkzNDkxMzMwNjI2MjU4NiwKICAgICJpbmZvIiA6IDAuMDI3OTE5NTkxMTk5MzkyNjk0LAogICAgImYiIDogNTc5LAogICAgIm4iIDogMTYwMDAuMAogIH0gXQp9",
+        "headers": {
+          "access-control-allow-credentials": "true",
+          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
+          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
+          "access-control-allow-origin": "*",
+          "connection": "keep-alive",
+          "content-length": "1347",
+          "content-type": "application/json",
+          "date": "Tue, 08 Sep 2026 08:39:38 GMT",
+          "permissions-policy": "geolocation=(), microphone=(), camera=()",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "server": "nginx/1.29.1",
+          "strict-transport-security": "max-age=31536000; includeSubDomains",
+          "transfer-encoding": "chunked",
+          "x-aitoai-response-time": "1695.98",
+          "x-content-type-options": "nosniff, nosniff",
+          "x-frame-options": "DENY, DENY",
+          "x-xss-protection": "1; mode=block"
+        },
+        "statusCode": 200
+      }
+    },
+    "50fdb289b048618d86922153a6eea81829868da0": {
+      "request": {
+        "hash": "50fdb289b048618d86922153a6eea81829868da0",
+        "method": "POST",
+        "url": "https://shared.aito.ai/db/aito-accounting-demo/env/v2-demo/api/v2/_query"
+      },
+      "response": {
+        "content": "ewogICJvZmZzZXQiIDogMCwKICAidG90YWwiIDogMywKICAiaGl0cyIgOiBbIHsKICAgICJyZWxhdGVkIiA6IHsKICAgICAgIiRhbmQiIDogWyB7CiAgICAgICAgImNhdGVnb3J5IiA6ICJzb2Z0d2FyZSIKICAgICAgfSwgewogICAgICAgICJ2ZW5kb3IiIDogIlRNVC1Tb2Z0d2FyZSBUZWNobm9sb2dpZXMgT3kiCiAgICAgIH0sIHsKICAgICAgICAiYW1vdW50X2JhbmQiIDogImxhcmdlIgogICAgICB9IF0KICAgIH0sCiAgICAiY29uZGl0aW9uIiA6IHsKICAgICAgImdsX2NvZGUiIDogIjE2MDAiCiAgICB9LAogICAgImxpZnQiIDogMjkuNTkwNjg1NjYwMDQ0NzM4LAogICAgImluZm8iIDogMC4wNTA5NTQzNzA5MjE0MTE4NywKICAgICJmIiA6IDE2NiwKICAgICJuIiA6IDE2MDAwLjAKICB9LCB7CiAgICAicmVsYXRlZCIgOiB7CiAgICAgICIkYW5kIiA6IFsgewogICAgICAgICJjYXRlZ29yeSIgOiAibWFpbnRlbmFuY2UiCiAgICAgIH0sIHsKICAgICAgICAiYW1vdW50X2JhbmQiIDogImxhcmdlIgogICAgICB9LCB7CiAgICAgICAgInZlbmRvciIgOiAiV1NQIFN1dW5uaXR0ZWx1a29ydGVzIE95IgogICAgICB9IF0KICAgIH0sCiAgICAiY29uZGl0aW9uIiA6IHsKICAgICAgImdsX2NvZGUiIDogIjE2MDAiCiAgICB9LAogICAgImxpZnQiIDogMjkuNDMyNTExNjg0NTMwMDEzLAogICAgImluZm8iIDogMC4wMzcyNzk0OTc4NjgzNDQ5NiwKICAgICJmIiA6IDEyNCwKICAgICJuIiA6IDE2MDAwLjAKICB9LCB7CiAgICAicmVsYXRlZCIgOiB7CiAgICAgICIkYW5kIiA6IFsgewogICAgICAgICJjYXRlZ29yeSIgOiAic29mdHdhcmUiCiAgICAgIH0sIHsKICAgICAgICAiYW1vdW50X2JhbmQiIDogImxhcmdlIgogICAgICB9LCB7CiAgICAgICAgInZlbmRvciIgOiAiUm9pbWEgSW50ZWxsaWdlbmNlIE95IgogICAgICB9IF0KICAgIH0sCiAgICAiY29uZGl0aW9uIiA6IHsKICAgICAgImdsX2NvZGUiIDogIjE2MDAiCiAgICB9LAogICAgImxpZnQiIDogMjkuMzcwMDQ3NjAwNDYwNjQ0LAogICAgImluZm8iIDogMC4wMzU1ODQwODk0MjI5Mjc0MiwKICAgICJmIiA6IDExOSwKICAgICJuIiA6IDE2MDAwLjAKICB9IF0KfQ==",
+        "headers": {
+          "access-control-allow-credentials": "true",
+          "access-control-allow-headers": "Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token",
+          "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH, CONNECT",
+          "access-control-allow-origin": "*",
+          "connection": "keep-alive",
+          "content-length": "1087",
+          "content-type": "application/json",
+          "date": "Tue, 08 Sep 2026 08:39:36 GMT",
+          "permissions-policy": "geolocation=(), microphone=(), camera=()",
+          "referrer-policy": "strict-origin-when-cross-origin",
+          "server": "nginx/1.29.1",
+          "strict-transport-security": "max-age=31536000; includeSubDomains",
+          "transfer-encoding": "chunked",
+          "x-aitoai-response-time": "1651.36",
+          "x-content-type-options": "nosniff, nosniff",
+          "x-frame-options": "DENY, DENY",
+          "x-xss-protection": "1; mode=block"
+        },
+        "statusCode": 200
+      }
+    }
+  }
+}

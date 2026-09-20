@@ -67,7 +67,7 @@ export default function PredictedField({
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
           readOnly={readOnly}
-          placeholder={isPredicted ? "" : `Enter ${label.toLowerCase()}`}
+          placeholder={isPredicted ? "" : label.toLowerCase()}
         />
         {isPredicted && whyFactors && whyFactors.length > 0 && (
           <WhyTooltip label={value} factors={whyFactors} confidence={confidence} />

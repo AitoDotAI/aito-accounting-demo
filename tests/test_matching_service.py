@@ -11,6 +11,7 @@ from src.aito_client import AitoClient
 from src.config import Config
 from src.matching_service import (
     _amount_match_score,
+    _build_explanation,
     match_bank_txn_to_invoice,
     MatchPair,
 )
@@ -145,3 +146,165 @@ class TestMatchPair:
         assert d["confidence"] == 0.95
         assert d["status"] == "matched"
         assert "explanation" in d
+
+
+# ── Regressions from the 2026-09-04 live demo (ADR 0018) ────────────
+#
+# All three returned a 200 with a plausible-looking panel, so only an
+# assertion on the CONTENT of the explanation catches them.
+
+
+class FakePredictClient:
+    """Returns a canned `_predict` response without any HTTP.
+
+    Keeps the request body so a test can assert what was asked of Aito,
+    not only what was done with the answer.
+    """
+
+    def __init__(self, hits):
+        self._hits = hits
+        self.last_body: dict | None = None
+
+    def _request(self, method, path, json=None, timeout=120.0):
+        self.last_body = json
+        return {"hits": self._hits}
+
+
+def _why_for(invoice_id: str, lift: float = 8.0) -> dict:
+    """A $why tree shaped like the one Aito returns for a predicted link."""
+    return {
+        "type": "product",
+        "factors": [
+            {"type": "baseP", "value": 7.8e-06,
+             "proposition": {"invoice_id": {"$has": invoice_id}}},
+            {"type": "relatedPropositionLift", "value": lift,
+             "proposition": {"description": {"$has": "ACME"}}},
+        ],
+    }
+
+
+_TXN = {
+    "txn_id": "CUST-0000-TXN-000001",
+    "description": "ACME OY VIITE 12345",
+    "amount": 1000.0,
+    "bank": "Nordea",
+    "customer_id": "CUST-0000",
+}
+
+
+class TestExplanationBelongsToTheMatchedInvoice:
+    """The defect that reached a live demo: another invoice's explanation.
+
+    When Aito ranks an invoice that is not in the open ledger, the matcher
+    substitutes a same-vendor invoice whose amount fits. It used to keep
+    Aito's `$why` from the invoice it ranked, so the panel showed a base
+    rate for an id that appeared nowhere on screen and labelled the
+    payment's own description as counter-evidence.
+    """
+
+    def test_direct_match_keeps_aitos_explanation(self):
+        client = FakePredictClient([
+            {"invoice_id": "INV-1", "vendor": "ACME Oy", "amount": 1000.0,
+             "$p": 0.9, "$why": _why_for("INV-1")},
+        ])
+        pair = match_bank_txn_to_invoice(
+            client, _TXN, [{"invoice_id": "INV-1", "vendor": "ACME Oy", "amount": 1000.0}])
+
+        assert pair.invoice_id == "INV-1"
+        base = next(f for f in pair.explanation if f["type"] == "base")
+        assert base["target_value"] == "INV-1", "explanation must describe the matched invoice"
+
+    def test_substituted_match_does_not_borrow_the_other_invoices_why(self):
+        # Aito ranks INV-9 (absent from the ledger); we pair INV-2, same
+        # vendor, whose amount fits the payment.
+        client = FakePredictClient([
+            {"invoice_id": "INV-9", "vendor": "ACME Oy", "amount": 250.0,
+             "$p": 0.4, "$why": _why_for("INV-9")},
+        ])
+        pair = match_bank_txn_to_invoice(
+            client, _TXN, [{"invoice_id": "INV-2", "vendor": "ACME Oy", "amount": 1000.0}])
+
+        assert pair.invoice_id == "INV-2"
+        targets = [f.get("target_value") for f in pair.explanation if f["type"] == "base"]
+        assert "INV-9" not in targets, \
+            "the substituted match must not present INV-9's explanation as its own"
+
+    def test_substituted_match_says_it_was_substituted(self):
+        client = FakePredictClient([
+            {"invoice_id": "INV-9", "vendor": "ACME Oy", "amount": 250.0,
+             "$p": 0.4, "$why": _why_for("INV-9")},
+        ])
+        pair = match_bank_txn_to_invoice(
+            client, _TXN, [{"invoice_id": "INV-2", "vendor": "ACME Oy", "amount": 1000.0}])
+
+        rendered = " ".join(
+            p["value"] for f in pair.explanation for p in f.get("propositions", []))
+        assert "INV-9" in rendered and "same vendor" in rendered, \
+            "the panel should say the pairing came from the vendor, naming what Aito ranked"
+
+
+class TestBaseRateSurvivesExtraction:
+    def test_a_tiny_base_rate_is_not_flattened_to_zero(self):
+        """A link-target base rate is ~1/128000 and was rounded to 0.0.
+
+        That is what made the popup read "0% x 0.7 = 58%": the factor
+        chain started from a literal zero.
+        """
+        explanation = _build_explanation(
+            _TXN, {"invoice_id": "INV-1", "vendor": "ACME Oy", "amount": 1000.0},
+            0.9, _why_for("INV-1"))
+        base = next(f for f in explanation if f["type"] == "base")
+        assert base["base_p"] > 0
+
+
+class TestCandidateDomainIsTheOpenLedger:
+    """The matcher must ask Aito to rank the OPEN invoices, not all of them.
+
+    Without this the candidate domain is every invoice the tenant has ever
+    had -- about 2000 -- and the ~30 that are actually outstanding compete
+    against 1970 rows that were never eligible. The true invoice loses that
+    race whenever the payment quotes no reference number: measured on
+    CUST-0007, accuracy on no-reference payments was 11/19 unscoped and
+    18/19 scoped, while payments that did quote a reference stayed at 21/21.
+
+    The clause uses the linked key `invoice_id.invoice_id`. `$or` on the
+    bare predict target ranks correctly too, but returns `invoice_id: null`
+    on every hit after the first, and the matcher reads that field.
+    """
+
+    def test_open_invoice_ids_are_sent_as_the_candidate_domain(self):
+        client = FakePredictClient([
+            {"invoice_id": "CUST-0000-INV-000001", "vendor": "Acme Oy",
+             "amount": 1000.0, "$p": 0.48, "$why": _why_for("CUST-0000-INV-000001")},
+        ])
+        open_invoices = [
+            {"invoice_id": "CUST-0000-INV-000001", "vendor": "Acme Oy", "amount": 1000.0},
+            {"invoice_id": "CUST-0000-INV-000002", "vendor": "Beta Oy", "amount": 500.0},
+        ]
+
+        match_bank_txn_to_invoice(client, _TXN, open_invoices)
+
+        where = client.last_body["where"]
+        assert where["invoice_id.invoice_id"] == {
+            "$or": ["CUST-0000-INV-000001", "CUST-0000-INV-000002"]
+        }
+
+    def test_limit_covers_every_open_invoice(self):
+        """A fixed cut is what truncated the true invoice out of the ranking."""
+        client = FakePredictClient([])
+        open_invoices = [
+            {"invoice_id": f"CUST-0000-INV-{i:06d}", "vendor": "Acme Oy", "amount": 100.0}
+            for i in range(37)
+        ]
+
+        match_bank_txn_to_invoice(client, _TXN, open_invoices)
+
+        assert client.last_body["limit"] == 37
+
+    def test_no_open_invoices_sends_no_domain_clause(self):
+        """An empty `$or` would filter every candidate away, not all of them."""
+        client = FakePredictClient([])
+
+        match_bank_txn_to_invoice(client, _TXN, [])
+
+        assert "invoice_id.invoice_id" not in client.last_body["where"]

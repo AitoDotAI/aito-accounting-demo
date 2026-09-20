@@ -10,10 +10,14 @@ from src.aito_client import AitoClient, AitoError
 from src.config import Config
 from src.invoice_service import (
     REVIEW_THRESHOLD,
+    _extract_alternatives,
+    _names_from_hits,
+    tenant_employee_names,
     check_rules,
     compute_metrics,
     predict_invoice,
     InvoicePrediction,
+    _extract_why_factors,
 )
 
 TEST_CONFIG = Config(
@@ -191,3 +195,143 @@ class TestComputeMetrics:
         assert d["gl_code"] == "4400"
         assert d["gl_label"] == "Supplies"
         assert d["source"] == "aito"
+
+
+class TestApproverIsResolvedToAName:
+    """`approver` stores an employee_id and links to `employees`.
+
+    It used to store a NAME, which could not link and — because 42% of
+    employee names are shared between tenants — pooled every same-named
+    approver's history into one value. The candidate set is now confined
+    server-side by `approver.customer_id`, and the id the model returns
+    is resolved to a person for display.
+    """
+
+    def test_the_predicted_id_is_shown_as_a_person_not_a_key(self):
+        hits = [{"feature": "CUST-0000-EMP-0156", "$p": 0.91}]
+        names = {"CUST-0000-EMP-0156": "Matti Niemi"}
+
+        alts = _extract_alternatives(hits, names, prefix="AP / ",
+                                     label_replaces_value=True)
+
+        assert alts[0]["display"] == "AP / Matti Niemi"
+        # The id stays the machine-readable value: it is what an override
+        # is recorded against, and it is unique where a name is not.
+        assert alts[0]["value"] == "CUST-0000-EMP-0156"
+
+    def test_a_gl_code_still_shows_its_code_alongside_the_label(self):
+        # The two label maps are not interchangeable: an accountant works
+        # with the GL code itself, so it is shown as well as its meaning.
+        alts = _extract_alternatives([{"feature": "4400", "$p": 0.9}],
+                                     {"4400": "Office supplies"})
+
+        assert alts[0]["display"] == "4400 \u2013 Office supplies"
+
+    def test_an_unresolvable_id_falls_back_to_the_id(self):
+        # An employee who has left is absent from the roster but still
+        # appears in history. Showing the raw id is ugly; showing nothing
+        # would drop a real alternative.
+        alts = _extract_alternatives([{"feature": "CUST-0000-EMP-9999", "$p": 0.5}],
+                                     {"CUST-0000-EMP-0156": "Matti Niemi"},
+                                     prefix="AP / ", label_replaces_value=True)
+
+        assert alts[0]["display"] == "AP / CUST-0000-EMP-9999"
+
+    def test_the_name_rides_along_on_the_hit(self):
+        # `approver` links to employees, so a predict returns employee
+        # ROWS. The name arrives with the prediction and no second lookup
+        # is needed.
+        hits = [{"feature": "CUST-0000-EMP-0001", "name": "Juha Laitinen", "$p": 0.9},
+                {"feature": "CUST-0000-EMP-0002", "name": "Mikko Nieminen", "$p": 0.08}]
+
+        assert _names_from_hits(hits) == {
+            "CUST-0000-EMP-0001": "Juha Laitinen",
+            "CUST-0000-EMP-0002": "Mikko Nieminen",
+        }
+
+    def test_hits_without_a_name_fall_back_to_the_roster(self):
+        # An older deploy, or a target that is not a link. Returning {}
+        # rather than a half-map is what lets the caller tell the
+        # difference and fetch instead.
+        assert _names_from_hits([{"feature": "CUST-0000-EMP-0001", "$p": 0.9}]) == {}
+
+    def test_names_are_not_fetched_without_a_tenant(self):
+        # A prediction with no customer_id is not tenant-scoped, so there
+        # is no roster to resolve against and no round trip worth making.
+        class ExplodingClient:
+            def search(self, *a, **k):
+                raise AssertionError("should not query without a customer_id")
+
+        assert tenant_employee_names(ExplodingClient(), "") == {}
+
+
+class TestTheChainEqualsTheProbabilityItIsShownUnder:
+    """A printed equation must balance.
+
+    Four filters prune factors before the panel sees them — near-1.0
+    normalizers, near-1.0 lifts, customer-scope propositions, and a top-5
+    truncation. Each is defensible; multiplying what survived and calling
+    the result the match's probability is not. A live CUST-0000 match
+    printed a chain ending at 19.6% under a 95% match because three of
+    Aito's eight lift factors were missing from the product.
+    """
+
+    def _tree(self, base_p, lifts, normalizer=1.0):
+        return {
+            "type": "product",
+            "factors": [
+                {"type": "baseP", "value": base_p,
+                 "proposition": {"invoice_id": {"$has": "INV-1"}}},
+                {"type": "normalizer", "name": "exclusiveness", "value": normalizer},
+                *[
+                    {"type": "relatedPropositionLift", "value": lift,
+                     "proposition": {"description": {"$has": f"TOK{i}"}}}
+                    for i, lift in enumerate(lifts)
+                ],
+            ],
+        }
+
+    def _chain(self, factors):
+        product = 1.0
+        for f in factors:
+            if f["type"] == "base":
+                product *= f["base_p"]
+            elif f["type"] == "normalizer":
+                product *= f["multiplier"]
+            else:
+                product *= f.get("lift", 1)
+        return product
+
+    def test_a_truncated_chain_still_reaches_the_probability(self):
+        """Eight lifts, five cards: the other three must not vanish."""
+        lifts = [9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0]
+        tree = self._tree(1e-4, lifts, normalizer=2.0)
+        expected = 1e-4 * 2.0
+        for lift in lifts:
+            expected *= lift
+
+        factors = _extract_why_factors(tree)
+
+        assert len([f for f in factors if f["type"] == "pattern"]) == 5
+        assert self._chain(factors) == pytest.approx(expected, rel=0.01)
+
+    def test_pruned_noise_is_carried_too(self):
+        """Lifts within 5% of 1.0 are dropped from the cards as noise, but
+        they are still factors of the model's product."""
+        tree = self._tree(1e-4, [9.0, 1.02, 1.03, 0.98])
+        expected = 1e-4 * 9.0 * 1.02 * 1.03 * 0.98
+
+        factors = _extract_why_factors(tree)
+
+        assert self._chain(factors) == pytest.approx(expected, rel=0.01)
+
+    def test_no_residual_when_nothing_was_pruned(self):
+        """Invoice prediction has few enough factors that the chain is
+        already exact — it must not grow a meaningless 1.0x term."""
+        tree = self._tree(0.46, [3.0, 2.0], normalizer=2.0)
+
+        factors = _extract_why_factors(tree)
+
+        names = [f["name"] for f in factors if f["type"] == "normalizer"]
+        assert names == ["exclusiveness"]      # no "other factors" term
+        assert self._chain(factors) == pytest.approx(0.46 * 2.0 * 3.0 * 2.0, rel=0.01)

@@ -11,6 +11,7 @@ routing doubles as an anomaly detector.
 from dataclasses import dataclass
 
 from src.aito_client import AitoClient, AitoError
+from src.employee_directory import resolve, tenant_employee_names
 from src.invoice_service import GL_LABELS
 
 
@@ -70,7 +71,14 @@ def scan_invoice(client: AitoClient, invoice: dict) -> AnomalyFlag | None:
 
     try:
         gl_result = client.predict("invoices", where, "gl_code")
-        approver_result = client.predict("invoices", where, "approver")
+        # `approver.customer_id` confines the candidate employees to this
+        # tenant; without it the candidates are every employee in the
+        # instance. `approver` stores an employee_id, so the prediction
+        # comes back as a key and is resolved to a person below.
+        approver_where = dict(where)
+        if invoice.get("customer_id"):
+            approver_where["approver.customer_id"] = invoice["customer_id"]
+        approver_result = client.predict("invoices", approver_where, "approver")
     except AitoError:
         return None
 
@@ -80,7 +88,10 @@ def scan_invoice(client: AitoClient, invoice: dict) -> AnomalyFlag | None:
     gl_p = gl_top["$p"] if gl_top else 0.0
     approver_p = approver_top["$p"] if approver_top else 0.0
     gl_predicted = gl_top["feature"] if gl_top else "?"
-    approver_predicted = approver_top["feature"] if approver_top else "?"
+    approver_predicted = resolve(
+        tenant_employee_names(client, invoice.get("customer_id", "")),
+        approver_top["feature"] if approver_top else None,
+    ) or "?"
 
     # Anomaly score: 1 - max confidence across predicted fields
     max_p = max(gl_p, approver_p)

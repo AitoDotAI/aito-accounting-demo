@@ -8,6 +8,8 @@ made and what response shapes come back.
 Aito API docs: https://aito.ai/docs/api/
 """
 
+import os
+import threading
 from contextvars import ContextVar
 from typing import Any
 
@@ -16,12 +18,65 @@ import httpx
 from src.config import Config
 
 
+# Cap concurrent in-flight Aito calls process-wide. Aito has 8
+# server-side workers; keeping us at 4 for normal calls leaves
+# headroom for other clients on the shared instance.
+#
+# `_evaluate` is special: it loads test/train splits and per-row
+# predictions server-side and is the memory-heavy path that tipped
+# 1 M-scale Aito into 504 storms even with our 4-call cap. Its own
+# semaphore (size 1) serializes it without blocking the other
+# operations — net cap is 4 + 1 = 5 in-flight, with at most one
+# heavy call.
+#
+# Both limits configurable via env: AITO_INFLIGHT_LIMIT (default 4)
+# and AITO_EVALUATE_INFLIGHT_LIMIT (default 1).
+_AITO_INFLIGHT_LIMIT = int(os.environ.get("AITO_INFLIGHT_LIMIT", "4"))
+_AITO_EVALUATE_LIMIT = int(os.environ.get("AITO_EVALUATE_INFLIGHT_LIMIT", "1"))
+_aito_inflight_semaphore = threading.Semaphore(_AITO_INFLIGHT_LIMIT)
+_aito_evaluate_semaphore = threading.Semaphore(_AITO_EVALUATE_LIMIT)
+
+
+def _semaphore_for(path: str) -> threading.Semaphore:
+    """Pick the right concurrency cap for an Aito path.
+
+    `/_evaluate` is memory-heavy server-side; we keep it on its
+    own (size-1) semaphore so it doesn't compete with normal
+    queries and never has more than one in flight.
+    """
+    if path == "/_evaluate" or path.endswith("/_evaluate"):
+        return _aito_evaluate_semaphore
+    return _aito_inflight_semaphore
+
+
+# User-facing query paths — the ones we surface in the latency
+# badge / ticker. Writes, schema ops, file uploads, and jobs API
+# calls are excluded so the displayed numbers reflect what a real
+# end-user actually waits for (a prediction, search, or recommend),
+# not background admin like cache writes or audit logs.
+_LATENCY_REPORTED_PREFIXES = (
+    "/_search", "/_predict", "/_relate", "/_recommend", "/_match", "/_evaluate",
+    # v2 routes nearly every query through the unified endpoint; without
+    # it the topbar badge reads zero for the whole demo on v2.
+    "/_query",
+)
+
+
+def _path_is_user_facing(path: str) -> bool:
+    return any(path.startswith(p) or path.endswith(p) for p in _LATENCY_REPORTED_PREFIXES)
+
+
 # Per-request Aito-call accumulator. Set by the FastAPI middleware
 # at the start of each HTTP request; read at the end so the response
 # can carry X-Aito-Ms / X-Aito-Calls headers. Frontend uses these
 # to render a persistent latency badge in the topbar — the demo's
 # answer to "is the predictive layer actually fast?"
-aito_call_log: ContextVar[list[float] | None] = ContextVar("aito_call_log", default=None)
+# Each entry is (path, ms) so the middleware can surface a
+# per-operation breakdown to the frontend, not just a total. The
+# topbar badge uses the breakdown to render "_predict 28 ms" lines
+# as queries fly — visceral proof for CTOs reading the demo's
+# latency claims.
+aito_call_log: ContextVar[list[tuple[str, float]] | None] = ContextVar("aito_call_log", default=None)
 
 
 class AitoError(Exception):
@@ -50,6 +105,15 @@ class AitoClient:
         self._breaker_failures: int = 0
         self._breaker_open_until: float = 0.0
         self._breaker_last_error: str = ""
+        # Pooled `httpx.Client` keeps the TCP+TLS connection alive
+        # across requests. `httpx.request(...)` (used previously)
+        # creates a fresh connection per call, paying ~150 ms of
+        # TLS handshake on every request — which on a shared Aito
+        # instance dominates the per-call wall-clock (~280 ms total
+        # vs ~110 ms steady-state with pooling). The per-call
+        # `timeout` argument on `_request` still overrides the
+        # client default for long-running operations like `optimize`.
+        self._client = httpx.Client(headers=self._headers)
 
     # Circuit-breaker tuning: production hits intermittent gateway 504s
     # when Aito tables cold-load (~12s for help_impressions on a fresh
@@ -71,16 +135,29 @@ class AitoClient:
     def _url(self, path: str) -> str:
         return f"{self._base_url}/api/v1{path}"
 
-    def _request(self, method: str, path: str, json: dict | None = None) -> Any:
+    def _request(
+        self,
+        method: str,
+        path: str,
+        json: dict | None = None,
+        timeout: float | None = 120.0,
+    ) -> Any:
         """Make an HTTP request to Aito and return the parsed JSON response.
 
         Includes:
         - One retry on transient failures (5xx or connection error) with
           200ms backoff. Idempotent operations only — POST is also
           retried because Aito's _predict / _relate / _search are pure.
-        - Circuit breaker: after 3 consecutive failures the breaker
-          opens for 30 seconds; subsequent calls fail-fast with a
-          helpful AitoError instead of waiting for timeouts.
+        - Circuit breaker: after N consecutive failures the breaker
+          opens; subsequent calls fail-fast.
+        - Process-wide concurrency cap (`_aito_inflight_semaphore`)
+          so multiple ThreadPoolExecutors can't pile more than
+          `AITO_INFLIGHT_LIMIT` calls into Aito at once.
+
+        `timeout` defaults to 120 s. Pass a larger value (or None for
+        no client-side cap) for inherently long calls — `optimize`
+        on a multi-million-row table can take several minutes
+        immediately after a bulk ingest.
 
         Raises AitoError on non-2xx status, connection failure, or
         when the circuit breaker is open.
@@ -100,13 +177,18 @@ class AitoClient:
         for attempt in range(2):  # original + 1 retry
             t0 = _time.monotonic()
             try:
-                response = httpx.request(
-                    method,
-                    self._url(path),
-                    headers=self._headers,
-                    json=json,
-                    timeout=120.0,
-                )
+                # Cap concurrent in-flight requests to leave headroom
+                # for Aito's 8-worker pool and avoid the queue-induced
+                # memory pressure that produced the 1 M-scale 504 storm.
+                # _evaluate gets its own size-1 semaphore so the heavy
+                # path is serialized without blocking lighter ops.
+                with _semaphore_for(path):
+                    response = self._client.request(
+                        method,
+                        self._url(path),
+                        json=json,
+                        timeout=timeout,
+                    )
             except httpx.HTTPError as exc:
                 last_exc = AitoError(f"Aito request failed: {method} {path}: {exc}")
                 if attempt == 0:
@@ -134,10 +216,23 @@ class AitoClient:
             # Success — reset breaker
             self._breaker_failures = 0
             # Record latency for the topbar badge (if a request-scoped
-            # log was set up by the middleware).
+            # log was set up by the middleware). Tuple form lets the
+            # frontend break down by Aito operation.
+            #
+            # Prefer Aito's `x-aitoai-response-time` header (server-side
+            # execution time in ms) over wall-clock — wall-clock includes
+            # network RTT, TLS, queueing, and our own semaphore wait,
+            # which makes the demo's "is the predictive layer fast"
+            # claim look worse than it is. Fall back to wall-clock when
+            # the header is missing.
             log = aito_call_log.get()
-            if log is not None:
-                log.append((_time.monotonic() - t0) * 1000.0)
+            if log is not None and _path_is_user_facing(path):
+                server_ms_header = response.headers.get("x-aitoai-response-time")
+                try:
+                    ms = float(server_ms_header) if server_ms_header else (_time.monotonic() - t0) * 1000.0
+                except ValueError:
+                    ms = (_time.monotonic() - t0) * 1000.0
+                log.append((path, ms))
             break
 
         return response.json()
@@ -147,14 +242,25 @@ class AitoClient:
         return self._request("GET", "/schema")
 
     def check_connectivity(self) -> bool:
-        """Return True if the Aito instance is reachable and authenticated."""
+        """Return True if the Aito instance is reachable and authenticated.
+
+        Uses a tiny `_search` instead of `/schema` because `/schema` on a
+        degraded instance can hang for the full client timeout while
+        rebuilding its in-memory representation, while a `_search ... limit:1`
+        on a small table still responds within a few seconds.
+        """
         try:
-            self.get_schema()
+            self._request(
+                "POST", "/_search",
+                json={"from": "customers", "limit": 1},
+            )
             return True
         except AitoError:
             return False
 
-    def predict(self, table: str, where: dict, predict_field: str) -> dict:
+    def predict(self, table: str, where: dict, predict_field: str,
+                based_on: list[str] | None = None,
+                extra_select: list[str] | None = None) -> dict:
         """Run a _predict query.
 
         Example:
@@ -176,6 +282,12 @@ class AitoClient:
         # `highlight` Aito only returns propositions like
         # {description: {$match: "monthly"}} -- with it, the response
         # also tells you which exact span matched.
+        # `based_on` and `extra_select` only mean anything when the target
+        # is a LINK: the hits are then rows of the linked table, so the
+        # model can generalise over their columns (a Director signs large
+        # invoices) and those columns can be read straight off the hit
+        # instead of resolved afterwards. Passing either for a plain
+        # column target is an error, so callers opt in per field.
         query = {
             "from": table,
             "where": where,
@@ -183,9 +295,12 @@ class AitoClient:
             "select": [
                 "$p",
                 "feature",
+                *(extra_select or []),
                 {"$why": {"highlight": {"posPreTag": "<mark>", "posPostTag": "</mark>"}}},
             ],
         }
+        if based_on:
+            query["basedOn"] = based_on
         return self._request("POST", "/_predict", json=query)
 
     def relate(self, table: str, where: dict, relate_field: str) -> dict:
@@ -222,6 +337,109 @@ class AitoClient:
         }
         return self._request("POST", "/_relate", json=query)
 
+    def relate_patterns(
+        self,
+        table: str,
+        target: dict,
+        candidate_fields: list[str],
+        where_filter: dict | None = None,
+        k: int = 8,
+        limit: int = 8,
+    ) -> dict:
+        """Mine AND-conjunction rules (`A & B → X`) with `_relate` + `$patterns`.
+
+        Unlike `relate()` (which scores single features against a
+        condition), this discovers multi-field conjunctions that predict
+        the `target` proposition — server-side, in one call.
+
+        Args:
+            target: the prediction target, e.g. {"gl_code": "6200"}. It is
+                both pinned in `where` and repeated as the `$related.to`
+                narrowing goal.
+            candidate_fields: fields the conjunctions may be built from.
+            where_filter: constraints that scope the *population* but are
+                NOT the prediction target — e.g. {"customer_id": "acme"}
+                for multi-tenancy. These go in a nested `from`, NOT the
+                `where`. Merging them into `where` breaks $patterns: it
+                then conditions on the filter field (a linked customer_id
+                dominates as the condition) and mines the *global* table,
+                so the support counts come back un-scoped. A nested
+                `from` filters the row population first, then $patterns
+                conditions purely on the target. (Verified live — see
+                ADR 0014.)
+            k: `$related` focus cap — top-k fields most related to the
+                target are kept before mining. Smaller = faster/narrower.
+                This is the cost/latency knob; NOT a result-row limit.
+            limit: max rule rows returned (that's the outer `limit`).
+
+        Each hit's `related` is a ready-to-reuse `$and` proposition, and
+        `condition` echoes the target. Because the target is the
+        condition here (not the feature), the support stats invert vs.
+        `relate()`:
+            - precision = fs.fOnCondition / fs.f      (rule LHS → target)
+            - coverage  = fs.fOnCondition / fs.fCondition  (share of target)
+
+        See docs/adr/0014-pattern-rule-discovery.md and the cheatsheet's
+        "$patterns" section.
+        """
+        # Scope the population with a nested `from` (not the where) so
+        # $patterns conditions purely on `target`.
+        from_clause: Any = (
+            {"from": table, "where": where_filter} if where_filter else table
+        )
+        query = {
+            "from": from_clause,
+            "where": target,
+            "relate": {
+                "$patterns": {
+                    "$related": {
+                        "relate": candidate_fields,
+                        "k": k,
+                        "to": target,
+                    }
+                }
+            },
+            "select": ["related", "condition", "lift", "fs", "ps"],
+            "orderBy": "lift",
+            "limit": limit,
+        }
+        return self._request("POST", "/_relate", json=query)
+
+    def relate_features(
+        self,
+        table: str,
+        population_where: dict,
+        target: dict,
+        relate_fields: list[str],
+    ) -> dict:
+        """Relate features to a target *within a sub-population* — the
+        diagnostic behind "why does this rule have exceptions?".
+
+        `population_where` scopes the rows (a rule's clauses); `target` is
+        the rule's output (e.g. {"gl_code": "1600"}). The relate condition
+        is the `$on` proposition "target GIVEN population" — i.e. the
+        output, conditioned on the rule firing. Each hit reports a
+        `relate_fields` value and its `lift` toward the target:
+            - lift > 1 → the value goes with *agreement* (rule holds)
+            - lift < 1 → the value marks the *exceptions*
+        `fs.fOnCondition / fs.f` is the exact agree-count for that value.
+
+        `$on` on the flat table (vs. scoping with a nested `from`) is ~50×
+        faster here — Aito hits the indexed table directly instead of
+        materializing a subquery (verified: 138 ms vs 7 s). Same result.
+
+        See docs/adr/0015-rule-diagnostics.md.
+        """
+        query = {
+            "from": table,
+            # "target GIVEN the rule's clauses" — a conditional proposition.
+            "where": {"$on": [target, population_where]},
+            "relate": relate_fields,
+            "select": ["related", "lift", "fs"],
+            "orderBy": "lift",
+        }
+        return self._request("POST", "/_relate", json=query)
+
     def match(self, table: str, where: dict, match_field: str, limit: int = 5) -> dict:
         """Run a _match query to find records related to a context.
 
@@ -248,6 +466,60 @@ class AitoClient:
             "limit": limit,
         }
         return self._request("POST", "/_match", json=query)
+
+    def evaluate(self, body: dict, timeout: float | None = 600.0) -> dict:
+        """Run a `_evaluate` cross-validation and return its metrics.
+
+        `body` is the full evaluation request (`testSource` + `evaluate`
+        + optional `select`). Exists so callers don't reach for the
+        private `_request`, and so the v1 and v2 clients expose the same
+        `evaluate()` entry point — `AitoV2Client.evaluate` normalizes v2's
+        envelope to this shape.
+        """
+        return self._request("POST", "/_evaluate", json=body, timeout=timeout)
+
+    def recommend(
+        self,
+        table: str,
+        where: dict,
+        recommend_field: str,
+        goal: dict,
+        select: list | None = None,
+        limit: int = 5,
+        based_on: list | None = None,
+    ) -> dict:
+        """Rank the values of a link field by P(goal), given `where`.
+
+        `recommend_field` is a link, so `select` may name the LINKED
+        row's columns and they resolve per candidate — which is how the
+        help drawer gets rendered articles back from one call.
+
+        `based_on=[]` switches off attribute-based generalization over
+        the linked entity. That is a real speed lever on the
+        related-articles query and not a default worth guessing at, so
+        it is passed through rather than assumed.
+        """
+        query: dict = {
+            "from": table,
+            "where": where,
+            "recommend": recommend_field,
+            "goal": goal,
+            "limit": limit,
+        }
+        if based_on is not None:
+            query["basedOn"] = based_on
+        if select is not None:
+            query["select"] = select
+        return self._request("POST", "/_recommend", json=query)
+
+    def insert_batch(self, table: str, rows: list[dict]) -> dict:
+        """Append rows to a table.
+
+        Exists so callers don't reach for the private `_request`, and so
+        both clients expose the same write entry point — `/data/{t}/batch`
+        is the one insert path that is identical on v1 and v2.
+        """
+        return self._request("POST", f"/data/{table}/batch", json=rows)
 
     def search(self, table: str, where: dict, limit: int = 10) -> dict:
         """Run a _search query to retrieve matching rows.

@@ -6,15 +6,24 @@ data/precomputed/{customer_id}/{name}.json. The API serves these
 files directly — no runtime Aito calls except for interactive Form
 Fill.
 
+Runs against either API generation. `--v2` computes through the v2
+client instead, and everything it writes is namespaced (Aito keys get a
+`v2:` prefix, files land under data/precomputed/v2/) because a
+projection is only valid for the generation that produced it — serving
+a v1-derived number from a v2 deployment is a wrong answer that looks
+completely well-formed. See src/precompute_store.py.
+
 Usage:
     ./do load-data                                              # upload to Aito first
     python data/precompute_predictions.py                       # all customers
     python data/precompute_predictions.py --customers CUST-0000 # just one
     python data/precompute_predictions.py --limit 5             # first 5 customers
+    python data/precompute_predictions.py --v2                  # against AITO_V2_ENV
 """
 
 import argparse
 import json
+import os
 import random
 import sys
 import time
@@ -39,12 +48,19 @@ from src.quality_service import (  # noqa: E402
 random.seed(42)
 
 DATA_DIR = Path(__file__).parent
-PRECOMPUTED_DIR = DATA_DIR / "precomputed"
 
 
 def load_fixture(name: str) -> list[dict]:
     with open(DATA_DIR / f"{name}.json") as f:
         return json.load(f)
+
+
+# Views actually pushed to Aito this run. Bumped into `cache_versions` at
+# the end so running containers drop exactly these and keep the rest --
+# see ADR 0023. A view that failed to push is deliberately absent: telling
+# containers to reload something that was not written is worse than
+# staying stale, because it costs them a live recompute for nothing.
+_written_views: set[str] = set()
 
 
 def save(customer_id: str, name: str, data: dict) -> int:
@@ -56,14 +72,19 @@ def save(customer_id: str, name: str, data: dict) -> int:
     - Aito store: source of truth for running containers; refreshes
       on every precompute run without rebuilding the docker image.
     """
-    out_dir = PRECOMPUTED_DIR / customer_id
-    out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / f"{name}.json"
+    from src import precompute_store
+
+    key = precompute_store.per_customer_key(customer_id, name)
+    # Ask the store where its bootstrap file goes rather than building
+    # the path here — under --v2 it is a different subtree, and two
+    # places computing it independently is how they drift apart.
+    path = precompute_store.bootstrap_path(key)
+    path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
         json.dump(data, f, ensure_ascii=False)
     try:
-        from src import precompute_store
-        precompute_store.put(precompute_store.per_customer_key(customer_id, name), data)
+        precompute_store.put(key, data)
+        _written_views.add(name)
     except Exception as e:
         print(f"  {customer_id}/{name}: aito-store push skipped: {e}")
     return path.stat().st_size
@@ -173,6 +194,7 @@ def precompute_one_customer(
     customer_id: str,
     invoices_for_customer: list[dict],
     lite: bool = False,
+    skip_evaluate: bool = False,
 ) -> dict[str, int]:
     """Run all precomputes for a single customer, return {name: bytes_written}.
 
@@ -218,14 +240,29 @@ def precompute_one_customer(
         sizes["rules_candidates"] = save(
             customer_id, "rules_candidates", precompute_rules(client, customer_id),
         )
-        sizes["prediction_accuracy"] = save(
-            customer_id, "prediction_accuracy",
-            precompute_prediction_accuracy(client, customer_id),
-        )
-        sizes["rule_performance"] = save(
-            customer_id, "rule_performance",
-            precompute_rule_performance_for_customer(client, customer_id),
-        )
+        # _evaluate is the memory-heavy call on the Aito server side
+        # — it loads test/train splits + computes per-row predictions
+        # and is what tipped the 1 M-scale instance into 504s. We
+        # only run it for the headline customer (CUST-0000) by
+        # default; the long tail gets the empty stub. Override with
+        # --include-evaluate-for-tail if you really want full numbers
+        # everywhere and have a beefier instance.
+        if skip_evaluate:
+            sizes["prediction_accuracy"] = save(
+                customer_id, "prediction_accuracy", EMPTY_PREDICTION_ACCURACY,
+            )
+            sizes["rule_performance"] = save(
+                customer_id, "rule_performance", EMPTY_RULE_PERFORMANCE,
+            )
+        else:
+            sizes["prediction_accuracy"] = save(
+                customer_id, "prediction_accuracy",
+                precompute_prediction_accuracy(client, customer_id),
+            )
+            sizes["rule_performance"] = save(
+                customer_id, "rule_performance",
+                precompute_rule_performance_for_customer(client, customer_id),
+            )
     return sizes
 
 
@@ -278,13 +315,17 @@ def precompute_help_related(
         for cid, art, rel in pool.map(fetch, jobs):
             out.setdefault(cid, {})[art] = rel
 
-    PRECOMPUTED_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = PRECOMPUTED_DIR / "help_related.json"
+    from src import precompute_store
+
+    # No re-init here: main() already wired the store to the v1 client,
+    # and re-initializing with `client` would rebind it to the v2 client
+    # under --v2 — pointing precompute_entries writes at an env that
+    # doesn't hold that table.
+    out_path = precompute_store.bootstrap_path("help_related")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as f:
         json.dump(out, f, ensure_ascii=False)
     try:
-        from src import precompute_store
-        precompute_store.init(client)
         precompute_store.put("help_related", out)
     except Exception as e:
         print(f"  help_related: aito-store push skipped: {e}")
@@ -324,16 +365,18 @@ def precompute_landing(client: AitoClient, vendor_limit: int = 8, tenants_per_ve
             if tpl is not None:
                 templates[key] = tpl
 
+    from src import precompute_store
+
     payload = {"vendors": vendors, "templates": templates}
-    PRECOMPUTED_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = PRECOMPUTED_DIR / "landing.json"
+    out_path = precompute_store.bootstrap_path("landing")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as f:
         json.dump(payload, f, ensure_ascii=False)
     # Also push to the Aito-backed precompute store so deployed
     # containers pick up the new payload without a docker rebuild.
+    # (Store init happens once in main() — see the note in
+    # precompute_help_related for why it must not be repeated here.)
     try:
-        from src import precompute_store
-        precompute_store.init(client)
         precompute_store.put("landing", payload)
     except Exception as e:
         print(f"  landing: aito-store push skipped: {e}")
@@ -358,20 +401,81 @@ def main() -> None:
              "precompute (no rule mining, no _evaluate, empty rule replay). "
              "Default 0 = full precompute for everyone.",
     )
+    parser.add_argument(
+        "--evaluate-for", default="CUST-0000",
+        help="Comma-separated customer ids that get full _evaluate-based "
+             "prediction_accuracy + rule_performance precompute. The "
+             "_evaluate call is the memory-heavy server-side path that "
+             "tipped 1 M-scale Aito into 504 storms; running it for every "
+             "customer is what produced the 2-customer cliff. Default: only "
+             "the headline tenant (CUST-0000). Pass an empty string to skip "
+             "for everyone, or `all` to opt back into the slow behaviour.",
+    )
+    parser.add_argument(
+        "--v2", action="store_true",
+        help="Compute through the Aito v2 API in $AITO_V2_ENV instead of v1. "
+             "Outputs are namespaced (v2: keys, data/precomputed/v2/), so this "
+             "never overwrites the v1 bootstrap files checked into git.",
+    )
     args = parser.parse_args()
 
     config = load_config()
-    client = AitoClient(config)
+    # The store always talks v1: `precompute_entries` is an ordinary
+    # table on master, not part of a v2 env branch. Only the *query*
+    # client changes with --v2. See src/precompute_store.py.
+    store_client = AitoClient(config)
+    if args.v2:
+        # Same interpretation the app uses, so a cutover's final state
+        # (AITO_V2_ENV=master, meaning v2 with no /env/ segment) computes
+        # against the same place the app will read. Passing "master"
+        # through as an env name would build /env/master/ and 400.
+        from src.aito_v2_client import AitoV2Client, resolve_env
+
+        use_v2, target = resolve_env(os.environ.get("AITO_V2_ENV"))
+        if not use_v2:
+            print("--v2 needs AITO_V2_ENV set (an env name, or 'master' for "
+                  "v2 against master). Build an env with: ./do v2-build",
+                  file=sys.stderr)
+            sys.exit(2)
+        client = AitoV2Client(config.aito_api_url, config.aito_api_key, env=target)
+        print(f"Computing against Aito v2 — {target or 'master (unscoped)'}")
+    else:
+        client = store_client
 
     # Initialize the Aito-backed precompute store once. Every
     # precompute_one_customer / precompute_landing / precompute_help_related
     # call below will push outputs into precompute_entries via save() /
     # precompute_store.put().
     from src import precompute_store
-    precompute_store.init(client)
+    precompute_store.init(store_client)
 
-    if not client.check_connectivity():
-        print("Error: Cannot connect to Aito. Run ./do load-data first.", file=sys.stderr)
+    # The store reads AITO_V2_ENV at import to pick its key namespace, so
+    # a --v2 run with the variable unset would compute v2 answers and file
+    # them under the v1 keys. Refuse rather than corrupt the v1 store.
+    if args.v2 and precompute_store.namespace() != "v2:":
+        print("--v2 requires AITO_V2_ENV to be set in the environment before "
+              "import, so the precompute store namespaces its keys.", file=sys.stderr)
+        sys.exit(2)
+
+    # Connectivity probe — degraded but not down is OK; the
+    # per-customer retry loop below will absorb transient failures.
+    # We only abort if we can't connect at all over multiple tries.
+    connectivity_ok = False
+    for attempt in range(3):
+        if client.check_connectivity():
+            connectivity_ok = True
+            break
+        wait = 30 * (attempt + 1)
+        print(
+            f"Aito connectivity probe failed (attempt {attempt + 1}/3); "
+            f"sleeping {wait}s before retry...",
+            file=sys.stderr,
+        )
+        time.sleep(wait)
+        client._breaker_failures = 0
+        client._breaker_open_until = 0.0
+    if not connectivity_ok:
+        print("Error: Cannot connect to Aito after 3 attempts. Run ./do load-data first.", file=sys.stderr)
         sys.exit(1)
 
     customers = load_fixture("customers")
@@ -386,7 +490,16 @@ def main() -> None:
     for inv in all_invoices:
         by_customer.setdefault(inv["customer_id"], []).append(inv)
 
-    PRECOMPUTED_DIR.mkdir(exist_ok=True)
+    # The output root depends on the namespace, so ask the store for it:
+    # a hard-coded data/precomputed would, under --v2, point at the v1
+    # tree and make `--skip-existing` skip customers whose v2 precompute
+    # has never been written.
+    def customer_dir(customer_id: str):
+        return precompute_store.bootstrap_path(
+            precompute_store.per_customer_key(customer_id, "invoices_pending")).parent
+
+    output_root = customer_dir("_probe").parent
+    output_root.mkdir(parents=True, exist_ok=True)
     expected_files = {
         "invoices_pending.json", "matching_pairs.json", "rules_candidates.json",
         "anomalies_scan.json", "quality_overview.json",
@@ -397,9 +510,12 @@ def main() -> None:
         before = len(customers)
         customers = [
             c for c in customers
-            if not (PRECOMPUTED_DIR / c["customer_id"]).is_dir()
-            or set((PRECOMPUTED_DIR / c["customer_id"]).iterdir()) and
-               not expected_files.issubset({p.name for p in (PRECOMPUTED_DIR / c["customer_id"]).iterdir()})
+            # An existing-but-incomplete directory is reprocessed, and so
+            # is an empty one — the previous form treated an empty dir as
+            # done and skipped it.
+            if not customer_dir(c["customer_id"]).is_dir()
+            or not expected_files.issubset(
+                {p.name for p in customer_dir(c["customer_id"]).iterdir()})
         ]
         print(f"Skip existing: {before - len(customers)} done, {len(customers)} remaining")
 
@@ -424,18 +540,67 @@ def main() -> None:
     t0 = time.time()
     completed = 0
 
+    # Backoff-retry for transient Aito failures during heavy
+    # precompute traffic.
+    #
+    # At 1 M-row scale, one customer's precompute fan-out
+    # (mine_rules + match_all + scan_all + compute_prediction_quality
+    # + compute_rule_performance) overloads shared.aito.ai enough to
+    # produce 504s. The client's circuit breaker then opens, every
+    # call for the next ~10 s fails fast with status_code=503, and
+    # the rest of the precompute writes empty stubs.
+    #
+    # Retry strategy: on AitoError, sleep, reset the breaker, and
+    # retry the whole customer. Three attempts with 60 / 120 / 240 s
+    # backoff gives Aito ~7 min to recover. Idempotent — save()
+    # overwrites the previous attempt's files and Aito-store rows.
+    PRECOMPUTE_MAX_ATTEMPTS = 3
+    PRECOMPUTE_BACKOFF = [60, 120, 240]
+
+    # Allow `--evaluate-for=all` to opt back into running _evaluate
+    # everywhere, otherwise restrict to the listed ids.
+    if args.evaluate_for.strip().lower() == "all":
+        evaluate_for_set: set[str] | None = None  # None = run for everyone
+    else:
+        evaluate_for_set = {c.strip() for c in args.evaluate_for.split(",") if c.strip()}
+
+    def _attempt_once(idx: int, cid: str, invs: list[dict], lite: bool, skip_evaluate: bool) -> dict:
+        # Reset the breaker to clear any sticky 503 from a previous
+        # customer's failure.
+        client._breaker_failures = 0
+        client._breaker_open_until = 0.0
+        return precompute_one_customer(client, cid, invs, lite=lite, skip_evaluate=skip_evaluate)
+
     def run_one(idx_customer: tuple[int, dict]) -> tuple[int, str, dict, int, float, bool]:
         idx, customer = idx_customer
         cid = customer["customer_id"]
         invs = by_customer.get(cid, [])
         lite = args.lite_threshold > 0 and len(invs) < args.lite_threshold
+        skip_evaluate = evaluate_for_set is not None and cid not in evaluate_for_set
         t_cust = time.time()
-        try:
-            sizes = precompute_one_customer(client, cid, invs, lite=lite)
-            return idx, cid, sizes, len(invs), time.time() - t_cust, lite
-        except Exception as e:
-            print(f"  [{idx}/{len(customers)}] {cid}: ERROR {e}", file=sys.stderr)
-            return idx, cid, {}, len(invs), time.time() - t_cust, lite
+        last_err: Exception | None = None
+        for attempt in range(PRECOMPUTE_MAX_ATTEMPTS):
+            try:
+                sizes = _attempt_once(idx, cid, invs, lite, skip_evaluate)
+                if attempt > 0:
+                    print(f"  [{idx}/{len(customers)}] {cid}: succeeded on attempt {attempt + 1}", flush=True)
+                return idx, cid, sizes, len(invs), time.time() - t_cust, lite
+            except Exception as e:
+                last_err = e
+                if attempt + 1 < PRECOMPUTE_MAX_ATTEMPTS:
+                    backoff = PRECOMPUTE_BACKOFF[attempt]
+                    print(
+                        f"  [{idx}/{len(customers)}] {cid}: attempt {attempt + 1} failed "
+                        f"({type(e).__name__}: {e}); sleeping {backoff}s then retrying...",
+                        file=sys.stderr, flush=True,
+                    )
+                    time.sleep(backoff)
+        print(
+            f"  [{idx}/{len(customers)}] {cid}: all {PRECOMPUTE_MAX_ATTEMPTS} attempts FAILED; "
+            f"last error: {last_err}",
+            file=sys.stderr, flush=True,
+        )
+        return idx, cid, {}, len(invs), time.time() - t_cust, lite
 
     def _print_row(idx: int, cid: str, n_inv: int, kb: float, elapsed: float, lite: bool, tier: str = "") -> None:
         suffix = " [lite]" if lite else ""
@@ -468,7 +633,23 @@ def main() -> None:
         f"\nDone. {total_bytes / 1024:.0f} KB across {completed} customers "
         f"in {total_elapsed:.0f}s ({total_elapsed / max(1, completed):.1f}s/customer)."
     )
-    print(f"Output: {PRECOMPUTED_DIR}/")
+    print(f"Output: {output_root}/")
+
+    # Tell running containers which views to drop. Best-effort: the
+    # payloads are already written, and failing the run over a cache hint
+    # would be the tail wagging the dog -- a container then picks the
+    # change up on its next restart, which is what happened before.
+    if _written_views:
+        from src import cache_versions
+        # `store_client` (v1), not `client`: cache_versions is a plain
+        # table on master shared by both API generations, exactly like
+        # precompute_entries. What separates v1 from v2 is the key
+        # namespace, not the connection.
+        cache_versions.init(store_client)
+        scopes = [f"{cache_versions.PRECOMPUTE_PREFIX}{v}" for v in sorted(_written_views)]
+        cache_versions.bump(scopes)
+        print(f"Bumped cache versions for {len(scopes)} view(s): "
+              f"{', '.join(sorted(_written_views))}")
 
 
 if __name__ == "__main__":

@@ -26,6 +26,10 @@ class MatchPair:
     confidence: float
     status: str  # "matched", "suggested", "unmatched"
     explanation: list[dict] = field(default_factory=list)
+    # Aito's own $p for this invoice, distinct from `confidence`, which
+    # blends it with amount proximity. The panel needs both: the factor
+    # chain is a decomposition of THIS number, not of the blend.
+    model_p: float = 0.0
 
     def to_dict(self) -> dict:
         return {
@@ -37,6 +41,7 @@ class MatchPair:
             "bank_amount": self.bank_amount,
             "bank_name": self.bank_name,
             "confidence": round(self.confidence, 2),
+            "model_p": self.model_p,
             "status": self.status,
             "explanation": self.explanation,
         }
@@ -83,10 +88,49 @@ def match_bank_txn_to_invoice(
     # $why with `highlight` returns the matched description tokens
     # already wrapped in <mark> tags (Aito's text analyzer marks
     # whichever spans of the bank description carried the signal).
+    # `customer_id` in `where` is EVIDENCE about the transaction; it does not
+    # restrict which invoices Aito may rank. Without the linked-path scope the
+    # candidate universe is every invoice in the instance, so a CUST-0002
+    # payment gets ranked against CUST-0000's invoices -- measured at 17
+    # foreign candidates in the top 5 over 8 payments. `invoice_id.customer_id`
+    # scopes the candidate domain through the link instead, which is the
+    # tenant boundary this page needs. It also happens to cut latency ~6x and
+    # the probability's under-confidence ~48x, but the boundary is the reason.
+    #
+    # `vendor_name` rides on the bank transaction and was not being passed.
+    # Four of five wrong assignments in a 640-invoice evaluation picked an
+    # invoice from the WRONG VENDOR while the description named the right
+    # one, so the field the bank already gives us was the missing evidence.
+    customer_id = txn.get("customer_id")
+    where = {"description": txn["description"], "amount": txn["amount"]}
+    if customer_id is not None:
+        where["customer_id"] = customer_id
+        where["invoice_id.customer_id"] = customer_id
+    if txn.get("vendor_name"):
+        where["vendor_name"] = txn["vendor_name"]
+
+    # Rank the OPEN LEDGER, not the whole invoice table.
+    #
+    # The question this page asks is "which outstanding invoice does this
+    # payment settle?" -- roughly 30 candidates. Without this clause Aito
+    # ranks all ~2000 of the tenant's invoices and we filter to the open
+    # ones afterwards, so the true invoice has to beat 1970 rows that were
+    # never eligible. It frequently does not: a payment quoting no
+    # reference number left CUST-0007-INV-000006 out of the top 20
+    # entirely, and the matcher settled on a different vendor at p=0.023.
+    # Scoped to the ledger the same payment ranks it FIRST at p=0.482.
+    #
+    # Use the linked key `invoice_id.invoice_id`, not the bare target
+    # `invoice_id`. Both rank correctly, but `$or` on the predict target
+    # itself returns `invoice_id: null` on every hit after the first --
+    # the matcher reads that field, so it would silently drop candidates.
+    if open_ids:
+        where["invoice_id.invoice_id"] = {"$or": sorted(open_ids)}
+
     try:
         result = client._request("POST", "/_predict", json={
             "from": "bank_transactions",
-            "where": {k: v for k, v in [("customer_id", txn.get("customer_id")), ("description", txn["description"]), ("amount", txn["amount"])] if v is not None},
+            "where": where,
             "predict": "invoice_id",
             "select": [
                 "$p",
@@ -95,48 +139,68 @@ def match_bank_txn_to_invoice(
                 "amount",
                 {"$why": {"highlight": {"posPreTag": "<mark>", "posPostTag": "</mark>"}}},
             ],
-            # `limit` constrains how many candidates Aito has to mark
-            # up. With highlight enabled on a Text field, scoring +
-            # marking 20 candidates was running >120s on long bank
-            # descriptions; 5 keeps the per-call budget bounded.
-            "limit": 5,
+            # Every open invoice, because the candidate domain is now the
+            # ledger itself. A fixed cut here is what truncated the true
+            # invoice out of the ranking when the domain was all 2000.
+            "limit": max(len(open_ids), 1),
         })
     except AitoError:
         return None
 
-    # Find the best open invoice from Aito's predictions
-    best_score = 0.0
-    best_invoice = None
-    best_p = 0.0
-    best_why = None
+    # Direct hits and same-vendor substitutes are scored SEPARATELY, and a
+    # direct hit always wins.
+    #
+    # They used to compete on one number, with the substitute weighting
+    # amount 0.6 against a direct hit's 0.5. Because Aito's $p for a link
+    # target is ~1e-3 while an amount score is ~1, the amount term decided
+    # everything -- and a substitute from the wrong vendor with a marginally
+    # closer amount beat the invoice Aito had ranked FIRST:
+    #
+    #   direct    INV-000146 Pukaron   0.00116*0.5 + 0.95*0.5 = 0.4756
+    #   substitute INV-000171 Kardex   0.00015*0.4 + 0.95*0.6 = 0.5701  won
+    #
+    # Aito was right and the arithmetic threw it away. A substitute is a
+    # fallback for when Aito ranked nothing we hold, never an improvement
+    # on something it did.
+    best_direct: tuple[float, dict, float, dict | None] | None = None
+    best_sub: tuple[float, dict, float, str] | None = None
 
     for hit in result.get("hits", []):
         inv_id = hit.get("invoice_id")
         vendor = hit.get("vendor")
         aito_p = hit.get("$p", 0)
 
-        # Direct match: Aito returned an open invoice
+        # Direct match: Aito returned an open invoice.
         if inv_id in open_ids:
             amt_score = _amount_match_score(open_by_id[inv_id]["amount"], txn["amount"])
             combined = aito_p * 0.5 + amt_score * 0.5
-            if combined > best_score:
-                best_score = combined
-                best_invoice = open_by_id[inv_id]
-                best_p = aito_p
-                best_why = hit.get("$why")
+            if best_direct is None or combined > best_direct[0]:
+                best_direct = (combined, open_by_id[inv_id], aito_p, hit.get("$why"))
             continue
 
-        # Indirect match: Aito returned the right vendor but different invoice.
-        # Check if we have an open invoice from this vendor with matching amount.
+        # Indirect: Aito ranked a different invoice from the same vendor, so
+        # we substitute an open one from that vendor whose amount fits.
+        #
+        # Aito's `$why` explains the invoice Aito ranked, NOT the one we
+        # substitute, so it must not be carried over -- doing so rendered one
+        # invoice's explanation under another invoice's match, with the base
+        # rate naming an id that appeared nowhere on screen.
+        # `_build_explanation` describes the substitution instead.
         if vendor and vendor in open_by_vendor:
             for inv in open_by_vendor[vendor]:
                 amt_score = _amount_match_score(inv["amount"], txn["amount"])
                 combined = aito_p * 0.4 + amt_score * 0.6
-                if combined > best_score:
-                    best_score = combined
-                    best_invoice = inv
-                    best_p = aito_p
-                    best_why = hit.get("$why")
+                if best_sub is None or combined > best_sub[0]:
+                    best_sub = (combined, inv, aito_p, inv_id)
+
+    best_ranked_id: str | None = None
+    if best_direct is not None:
+        best_score, best_invoice, best_p, best_why = best_direct
+    elif best_sub is not None:
+        best_score, best_invoice, best_p, best_ranked_id = best_sub
+        best_why = None
+    else:
+        best_score, best_invoice, best_p, best_why = 0.0, None, 0.0, None
 
     if best_invoice is None:
         return None
@@ -152,7 +216,7 @@ def match_bank_txn_to_invoice(
         return None
 
     # Build explanation showing what drove the match
-    explanation = _build_explanation(txn, best_invoice, best_p, best_why)
+    explanation = _build_explanation(txn, best_invoice, best_p, best_why, best_ranked_id)
 
     return MatchPair(
         invoice_id=best_invoice["invoice_id"],
@@ -163,12 +227,19 @@ def match_bank_txn_to_invoice(
         bank_amount=txn["amount"],
         bank_name=txn["bank"],
         confidence=best_score,
+        model_p=best_p,
         status=status,
         explanation=explanation,
     )
 
 
-def _build_explanation(txn: dict, invoice: dict, aito_p: float, aito_why: dict | None = None) -> list[dict]:
+def _build_explanation(
+    txn: dict,
+    invoice: dict,
+    aito_p: float,
+    aito_why: dict | None = None,
+    ranked_invoice_id: str | None = None,
+) -> list[dict]:
     """Pass through Aito $why factors in the grouped shape so the
     matching page can render the same WhyCards UI as Invoice
     Processing -- pattern cards with text-token highlights and lift
@@ -178,8 +249,28 @@ def _build_explanation(txn: dict, invoice: dict, aito_p: float, aito_why: dict |
     txn and invoice amounts disagree by >= 5% (worth flagging as a
     warning); exact/near-exact amounts would double-count Aito's own
     $why on the amount field.
+
+    `ranked_invoice_id` is set when this match is a same-vendor
+    SUBSTITUTE: Aito ranked that invoice, we are pairing a different one
+    because its amount fits better. There is no Aito `$why` for the
+    invoice we chose, so we state the substitution rather than borrowing
+    the explanation of the invoice Aito did rank — which is a different
+    invoice, and reads as gibberish under this one.
     """
     factors: list[dict] = list(_extract_why_factors(aito_why)) if aito_why else []
+
+    if ranked_invoice_id is not None:
+        factors.append({
+            "type": "pattern",
+            "lift": 1.0,
+            "propositions": [
+                {"field": "vendor", "value": invoice["vendor"]},
+                {"field": "matched via", "value":
+                    f"same vendor — Aito ranked {ranked_invoice_id}, "
+                    f"this invoice's amount fits the payment better"},
+            ],
+            "highlights": [],
+        })
 
     # Big-disagreement warning. Modelled as a pattern card with a
     # single proposition and lift = 1.0 noted in propositions[0].value
@@ -196,35 +287,90 @@ def _build_explanation(txn: dict, invoice: dict, aito_p: float, aito_why: dict |
     return factors
 
 
-def match_all(client: AitoClient, customer_id: str | None = None) -> dict:
-    """Match bank transactions to invoices for a customer."""
-    # Fetch bank transactions and open invoices from Aito
+def match_all(
+    client: AitoClient,
+    customer_id: str | None = None,
+    payment_count: int = 8,
+    ledger_decoys: int = 30,
+) -> dict:
+    """Assign each incoming payment to an invoice in the open ledger.
+
+    The direction matters and used to be backwards. A payment arrives and
+    has to be assigned to an invoice; an invoice with no payment is simply
+    unpaid, which is not a failure. Previously this fetched some payments
+    and some *unrelated* invoices, matched what it could, and then listed
+    every leftover invoice as "unmatched" — so a working matcher reported
+    "5 matched, 15 unmatched" and read as 25% accurate. Those 15 invoices
+    were never anyone's payment target; their payments had not been
+    fetched at all.
+
+    Now the ledger is built to contain the fetched payments' own invoices
+    plus decoys, and only payments can be unmatched.
+
+    Building the ledger uses `bank_transactions.invoice_id`, the fixture's
+    ground-truth link, purely to decide WHICH invoices are outstanding —
+    a real deployment reads that from its AP ledger instead. The matcher
+    itself never sees the link: it gets `description` and `amount` only,
+    and has to re-derive the pairing.
+    """
     try:
         where = {"customer_id": customer_id} if customer_id else {}
-        txn_result = client.search("bank_transactions", where, limit=10)
-        inv_result = client.search("invoices", where, limit=20)
+        txn_result = client.search("bank_transactions", where, limit=payment_count)
+        payments = txn_result.get("hits", [])
+        if not payments:
+            raise AitoError("no bank transactions for this customer")
+
+        # The invoices these payments settle — the ledger must contain
+        # them, or the task is unanswerable rather than hard.
+        target_ids = sorted({t["invoice_id"] for t in payments if t.get("invoice_id")})
+        target_rows = client.search(
+            "invoices", {**where, "invoice_id": {"$or": target_ids}}, limit=len(target_ids),
+        ).get("hits", []) if target_ids else []
+
+        # Decoys, so choosing the right invoice is a real discrimination.
+        decoy_rows = client.search("invoices", where, limit=ledger_decoys).get("hits", [])
     except AitoError:
-        return {"pairs": [], "metrics": {"matched": 0, "suggested": 0, "unmatched": 0, "total": 0, "avg_confidence": 0, "match_rate": 0}}
+        return {"pairs": [], "metrics": {"matched": 0, "suggested": 0, "unmatched": 0,
+                                         "total": 0, "avg_confidence": 0, "match_rate": 0}}
 
-    bank_txns = [{"txn_id": t.get("transaction_id"), "description": t["description"], "amount": t["amount"], "bank": t.get("bank", ""), "customer_id": customer_id} for t in txn_result["hits"]]
-    open_invoices = [{"invoice_id": inv["invoice_id"], "vendor": inv["vendor"], "amount": inv["amount"]} for inv in inv_result["hits"]]
+    ledger: dict[str, dict] = {}
+    for row in target_rows + decoy_rows:
+        ledger.setdefault(row["invoice_id"], {
+            "invoice_id": row["invoice_id"],
+            "vendor": row["vendor"],
+            "amount": row["amount"],
+        })
 
-    matched_invoices: dict[str, MatchPair] = {}
-    remaining = list(open_invoices)
+    bank_txns = [{
+        "txn_id": t.get("transaction_id"),
+        "description": t["description"],
+        "amount": t["amount"],
+        "bank": t.get("bank", ""),
+        "customer_id": customer_id,
+        # Carried, or `match_bank_txn_to_invoice` reads None and silently
+        # drops the vendor evidence it is written to use. Without it the
+        # true invoice falls out of Aito's top 20 entirely -- measured on
+        # CUST-0000-INV-000011: rank 1 with vendor_name, not ranked at all
+        # without -- and the matcher then substitutes a same-vendor invoice
+        # and explains itself with "Aito ranked <some other invoice>".
+        "vendor_name": t.get("vendor_name"),
+    } for t in payments]
 
-    for txn in bank_txns[:8]:  # limit for response time
+    pairs: list[MatchPair] = []
+    remaining = list(ledger.values())
+    for txn in bank_txns:
         pair = match_bank_txn_to_invoice(client, txn, remaining)
-        if pair and pair.invoice_id not in matched_invoices:
-            matched_invoices[pair.invoice_id] = pair
+        if pair is not None:
+            pairs.append(pair)
+            # One invoice settles one payment.
             remaining = [inv for inv in remaining if inv["invoice_id"] != pair.invoice_id]
-
-    pairs = list(matched_invoices.values())
-    # Add unmatched invoices
-    for inv in open_invoices:
-        if inv["invoice_id"] not in matched_invoices:
-            pairs.append(MatchPair(invoice_id=inv["invoice_id"], invoice_vendor=inv["vendor"], invoice_amount=inv["amount"], bank_txn_id=None, bank_description=None, bank_amount=None, bank_name=None, confidence=0.0, status="unmatched"))
-            if len(pairs) >= 20:
-                break
+        else:
+            pairs.append(MatchPair(
+                invoice_id="", invoice_vendor="", invoice_amount=0.0,
+                bank_txn_id=txn["txn_id"], bank_description=txn["description"],
+                bank_amount=txn["amount"], bank_name=txn["bank"],
+                confidence=0.0, status="unmatched",
+            ))
 
     matched = sum(1 for p in pairs if p.status == "matched")
     suggested = sum(1 for p in pairs if p.status == "suggested")
@@ -239,6 +385,7 @@ def match_all(client: AitoClient, customer_id: str | None = None) -> dict:
             "suggested": suggested,
             "unmatched": unmatched,
             "total": len(pairs),
+            "ledger_size": len(ledger),
             "avg_confidence": round(avg_conf, 2),
             "match_rate": round((matched + suggested) / len(pairs), 2) if pairs else 0,
         },

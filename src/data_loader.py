@@ -57,18 +57,51 @@ SCHEMAS = {
             "customer_id": {"type": "String", "nullable": False, "link": "customers.customer_id"},
             "vendor_business_id": {"type": "String", "nullable": False, "link": "corporate_entities.business_id"},
             "vendor": {"type": "String", "nullable": False},
+            # The SAME name, tokenized. Two features want this column with
+            # two different types and cannot both be served by one.
+            #
+            # Rule mining needs String: on a Text column `$patterns` returns
+            # the vendor decomposed into per-token clauses --
+            # `vendor $has "re" AND vendor $has "copiers"` in place of
+            # `vendor = "Re - Copiers Oy"` -- which is not a business rule,
+            # and parse_conjunction drops it. Retyping `vendor` alone took
+            # CUST-0007 from 20 mined rules to 0.
+            #
+            # Payment matching needs Text: the engine uses a linked table's
+            # column as a feature only if it is tokenized. With `vendor` as
+            # String, a bank line naming a settlement entity carries ZERO
+            # signal -- $p for the right invoice is identical to five
+            # decimals whether the payment names the vendor's own factoring
+            # house or an unrelated one. Tokenized, the same comparison
+            # moves it from rank 19 to rank 1. See ADR 0021.
+            "vendor_text": {"type": "Text", "nullable": False},
             "vendor_country": {"type": "String", "nullable": False},
             "category": {"type": "String", "nullable": False},
             "amount": {"type": "Decimal", "nullable": False},
+            # Derived at intake from `amount` (small/medium/large). A
+            # categorical band lets rule discovery mine amount-conditional
+            # rules — e.g. capitalization and approval-escalation
+            # thresholds — which $patterns can't express over raw Decimal.
+            "amount_band": {"type": "String", "nullable": False},
             "gl_code": {"type": "String", "nullable": False},
             "cost_centre": {"type": "String", "nullable": False},
-            "approver": {"type": "String", "nullable": False},
+            "approver": {"type": "String", "nullable": False, "link": "employees.employee_id"},
             "processor": {"type": "String", "nullable": False, "link": "employees.employee_id"},
-            "vat_pct": {"type": "Int", "nullable": False},
+            # A tax CODE, not a quantity: "0" / "14" / "24" / "25.5", a
+            # `predict` target alongside gl_code. Int could not hold the
+            # 25.5% standard rate Finland moved to on 2024-09-01.
+            "vat_pct": {"type": "String", "nullable": False},
             "payment_method": {"type": "String", "nullable": False},
             "due_days": {"type": "Int", "nullable": False},
             "description": {"type": "Text", "nullable": False},
             "invoice_date": {"type": "String", "nullable": False},
+            # The reference the vendor printed on this invoice (a Finnish
+            # `viite`, or an ISO 11649 `RF` for foreign creditors). A
+            # payment can only quote a reference that exists here first —
+            # see `invoice_reference` in data/generate_fixtures.py. Text,
+            # not String, so the analyzer tokenizes it the same way the
+            # bank description's copy is tokenized and the two can match.
+            "reference": {"type": "Text", "nullable": False},
             "routed": {"type": "Boolean", "nullable": False},
             "routed_by": {"type": "String", "nullable": False},
         },
@@ -163,7 +196,7 @@ SCHEMAS = {
             "rule_name": {"type": "String", "nullable": False},
             "vendor": {"type": "String", "nullable": False},
             "gl_code": {"type": "String", "nullable": False},
-            "approver": {"type": "String", "nullable": False},
+            "approver": {"type": "String", "nullable": False, "link": "employees.employee_id"},
             "support_match": {"type": "Int", "nullable": False},
             "support_total": {"type": "Int", "nullable": False},
             "support_ratio": {"type": "Decimal", "nullable": False},
@@ -212,17 +245,45 @@ def upload_data(client: AitoClient, table_name: str, records: list[dict]) -> Non
 def optimize_table(client: AitoClient, table_name: str) -> None:
     """Optimize an Aito table for faster query performance.
 
-    Aito's optimize endpoint compacts the table's index, which speeds up
-    _predict, _relate, and _evaluate queries. Should be run after bulk
-    uploads when the table won't change for a while.
+    Compacts the table's index — speeds up _predict, _relate, and
+    _evaluate. Critical after bulk ingest: without it, a fresh
+    1 M-row table answers `_search limit:1` in 25 s instead of
+    250 ms.
+
+    Uses the **jobs-based** endpoint (POST /jobs/data/{table}/optimize)
+    so the call doesn't race the still-running ingest jobs. The sync
+    POST /data/{table}/optimize used to time out client-side at
+    120 s when called immediately after a 1 M-row bulk ingest, with
+    the loader's best-effort try/except swallowing the error and
+    leaving the table un-optimized.
+
+    Best-effort: if the job submit / poll fails, log loudly and move
+    on — the data is still correct, just slow.
     """
-    print(f"  Optimizing '{table_name}'...")
+    import time as _time
+    print(f"  Optimizing '{table_name}' (jobs-based)...")
+    t0 = _time.monotonic()
     try:
-        # Aito's optimize endpoint requires an empty JSON body
-        client._request("POST", f"/data/{table_name}/optimize", json={})
+        job = client._request(
+            "POST", f"/jobs/data/{table_name}/optimize", json={},
+        )
+        job_id = job.get("id")
+        if not job_id:
+            raise AitoError(f"optimize job submit returned no id: {job}")
+
+        # Poll until the job finishes. /jobs/{id} returns finishedAt
+        # once the optimize is done; absent until then.
+        while True:
+            status = client._request("GET", f"/jobs/{job_id}", timeout=60)
+            if status.get("finishedAt"):
+                break
+            _time.sleep(2)
+        elapsed = _time.monotonic() - t0
+        print(f"    optimized in {elapsed:.1f}s (job {job_id[:8]})")
     except AitoError as exc:
-        # Optimize is best-effort — don't fail upload if it errors
-        print(f"    optimize warning: {exc}")
+        elapsed = _time.monotonic() - t0
+        print(f"    !! optimize FAILED for '{table_name}' after {elapsed:.1f}s: {exc}")
+        print(f"    !! queries against '{table_name}' will be slow until you re-run optimize.")
 
 
 def delete_table(client: AitoClient, table_name: str) -> None:

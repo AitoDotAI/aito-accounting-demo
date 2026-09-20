@@ -5,12 +5,8 @@ and that support ratios are meaningful.
 """
 
 import booktest as bt
-from src.config import load_config
-from src.aito_client import AitoClient
 
-
-def get_client():
-    return AitoClient(load_config())
+from book.aito_env import get_client
 
 
 @bt.snapshot_httpx()
@@ -36,6 +32,77 @@ def test_relate_vendor_to_gl(t: bt.TestCaseRun):
 
     t.tln("")
     t.tln("Support ratios are exact counts from this customer's data.")
+
+
+@bt.snapshot_httpx()
+def test_relate_patterns_conjunctions(t: bt.TestCaseRun):
+    """Discover AND-conjunction rules with $patterns, for two targets.
+
+    Mines from INPUTS only (vendor, category, vendor_country,
+    amount_band) — never from outputs like approver — and shows both an
+    output target: gl_code (incl. the capitalization rule) and approver
+    (incl. the amount escalation). Sanity-checks each response: `related`
+    is an $and of inputs, `condition` echoes the target, fOnCondition <= f.
+
+    Note: $patterns' `fs` are smoothed model ESTIMATES (often fractional),
+    used only to discover the conjunctions. The service recomputes exact
+    support with _search counts before display — see rulemining_service.
+    """
+    c = get_client()
+    inputs = ["vendor", "category", "vendor_country", "amount_band"]
+
+    t.h1("Conjunction rule discovery: $patterns (CUST-0000)")
+    t.tln("")
+
+    # (target_field, target_value): a capitalization GL and the senior
+    # signer. The approver is addressed by employee_id — the same person
+    # the test used to name, now stored as the link key so the value is
+    # unique across tenants. See docs/notes/approver-pools-other-tenants-evidence.md.
+    for field, value in [("gl_code", "1600"), ("approver", "CUST-0000-EMP-0006")]:
+        result = c.relate_patterns(
+            "invoices",
+            target={field: value},
+            candidate_fields=inputs,
+            where_filter={"customer_id": "CUST-0000"},
+            k=8,
+            limit=4,
+        )
+        t.tln(f"  {field} = {value}:")
+        for hit in result["hits"]:
+            # Customer scoping via nested `from` means the condition is
+            # reliably the target field — the fs roles depend on it.
+            assert field in hit["condition"], hit["condition"]
+            # v1 returns `fs` here; v2's $patterns does not, and silently
+            # ignores it if selected. The counts are discovery-time
+            # estimates the service never uses, so their absence is not a
+            # failure -- but do not invent a substitute from v2's
+            # top-level `f`/`n`, whose roles are not the same.
+            fs = hit.get("fs")
+            f_on = f = None
+            if fs:
+                f_on, f = int(fs["fOnCondition"]), int(fs["f"])
+                assert f_on <= f, fs  # LHS AND target <= LHS
+                if f_on < 3:
+                    continue  # too rare, or an anti-correlated candidate
+            related = hit["related"]
+            terms = related["$and"] if "$and" in related else [related]
+            parts = []
+            for term in terms:
+                for fld, pred in term.items():
+                    # Inputs only — assert no output leaked into a clause.
+                    assert fld in inputs, f"non-input clause field: {fld}"
+                    # v1 wraps the value as {"$has": v}; v2 returns it bare.
+                    value = pred["$has"] if isinstance(pred, dict) else pred
+                    parts.append(f'{fld}="{value}"')
+            if fs:
+                precision = f_on / f if f else 0.0
+                support = f"  (~{f_on}/{f} est, {precision:.0%})"
+            else:
+                support = ""
+            t.iln(f"    {' AND '.join(parts)}{support}  lift={hit['lift']:.1f}")
+        t.tln("")
+    t.tln("Counts above are $patterns' smoothed estimates; the service uses")
+    t.tln("exact _search counts for the displayed support.")
 
 
 @bt.snapshot_httpx()

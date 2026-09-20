@@ -1,9 +1,26 @@
 # Aito performance findings (May 2026)
 
-Two slow paths surfaced while making the deployed demo (accounting.aito.ai)
-fast enough for sales walkthroughs. Captured here so the core team can
-file/fix what's worth fixing and so future iterations of this repo don't
-regress around the workarounds.
+Slow paths and API gaps surfaced while making the deployed demo
+(accounting.aito.ai) fast enough for sales walkthroughs and credible
+for a CTO read. Captured here so the core team can file/fix what's
+worth fixing and so future iterations of this repo don't regress
+around the workarounds.
+
+**Flag summary (full detail below).** Sorted by impact on the demo:
+
+| # | Issue | Repro impact | Workaround |
+|---|---|---|---|
+| 1 | `where: {linkedColumn: X}` expands all linked-entity fields as priors | 2.3 s vs 325 ms (7×) on `_recommend` | use explicit `linkedColumn.keyField: X` |
+| 2 | First query against any table costs ~12 s of cold load | First user pays full table-load latency | startup warmup + precompute store |
+| 3 | No documented row-delete API | `cache_entries` leaked 186 stale rows; precompute table accumulates dupes | none — reads use `limit:1`, so behaviour is correct but tables grow unbounded |
+| 4 | Boolean column rejects truthy non-bool (`1`, `"true"`) | Caught us during a bisect; clear error | pass `True`/`False` exactly |
+| 5 | `_search` `limit:0` count is ~1 s on cold table | `/api/help/stats` 2.1 s cold, 14 ms warm | included in startup warmup |
+| 6 | Cache `set` has no upsert primitive | 2× round-trip per write (delete + insert) | combine with #3 — delete is 404 anyway, so we're effectively just inserting |
+| 7 | `httpx.request(...)` per call repeats TLS handshake every request | ~110 ms steady-state vs ~280 ms per call (~3× faster after fix) | Pooled `httpx.Client` held on `AitoClient` instance |
+
+Items 1, 2, 4 are documented in detail in the original sections.
+Items 3, 5, 6 are new flags from the May 2 deploy iteration —
+captured below in §3. Item 7 (May 2026) is documented in §4.
 
 ---
 
@@ -154,6 +171,166 @@ demo's "first impression" feel.
 
 A warm-on-deploy hook, or simply faster lazy-load of small tables.
 14k rows shouldn't take 12 s to become queryable.
+
+---
+
+## 3. No documented row-delete API; cache tables accumulate dupes
+
+### Symptom
+
+`cache_entries` table on the deployed Aito had **321 rows for 135
+distinct keys** — 186 stale duplicates accumulated over the demo's
+lifetime. Same shape ready to happen on `precompute_entries`.
+
+### Cause
+
+`src/cache.py::set()` and `src/precompute_store.py::put()` both
+implement upsert as delete-then-insert:
+
+```python
+client._request("POST", f"/data/{TABLE}/delete", json={
+    "from": TABLE, "where": {"key": key}
+})
+client._request("POST", f"/data/{TABLE}", json={...})
+```
+
+The delete call returns **HTTP 404** —
+`The requested table {TABLE}/delete does not exist`. The error is
+swallowed by the surrounding try/except, every insert succeeds,
+and a stale row is left behind on every write.
+
+Verified the URL pattern doesn't exist with several variants:
+
+```text
+POST   /data/precompute_entries/delete       → 404
+POST   /data/precompute_entries/_delete      → 404
+POST   /_delete                               → 404
+DELETE /data/precompute_entries (with body)  → 405 method not supported
+```
+
+No `$id` / `_id` / `$row` field is queryable in `_search select`,
+so we can't even target individual rows for deletion. There's
+also no internal row identifier we can use to build a delete
+payload.
+
+### Workaround
+
+None on the read side — `precompute_store.get()` and `cache.get()`
+both use `limit:1` and the row content is identical, so behaviour
+is correct. But the tables grow without bound.
+
+`data/dedupe_precompute_entries.py` is checked in but blocked on
+the missing delete API. It currently runs in dry-run mode only.
+
+### What we'd hope from core
+
+- A documented row-delete REST endpoint, ideally `POST /data/{table}/_delete`
+  with a `where` body identical to `_search`.
+- Or a native upsert primitive — `POST /data/{table}` with an
+  optional `upsertOn: ["key"]` shape — so the application doesn't
+  need to manage delete-then-insert at all.
+
+---
+
+## 4. Boolean columns reject truthy non-bool values
+
+### Symptom
+
+While bisecting a separate slow path, tried passing `goal: {clicked: 1}`
+and `goal: {clicked: "true"}` to `_recommend`. Both rejected with
+clear errors:
+
+```
+"field 'clicked' of type Boolean cannot be '1' of type Int"
+"field 'clicked' of type Boolean cannot be '"true"' of type String"
+```
+
+### Why it matters
+
+This is correct, defensible behaviour — Aito's strict typing
+caught us being sloppy. Worth flagging because some Python or JS
+frameworks ship JSON payloads with `true` serialized as `1` /
+`"true"` depending on the toolchain, and the failure mode is
+*successful HTTP 400 with no hits*, not a silent slow path.
+
+### What we'd hope from core
+
+Nothing — strict typing is the right call. Just noting it.
+
+---
+
+## 4. `httpx.request(...)` per call repeats TLS handshake every request
+
+### Symptom
+
+Every `_recommend` / `_search` / `_predict` call paid 200-300 ms of
+"network overhead" on top of Aito's server-side time. Same code path
+on a shared instance, same payloads, same client process — the
+overhead repeated per call.
+
+### Diagnosis
+
+Aito returns its server-side execution time in the
+`x-aitoai-response-time` response header. Splitting client wall-clock
+against that header isolated the network/proxy cost cleanly:
+
+```
+requests.post() — fresh connection each call:
+  #1: client=1533ms  server=1300ms  net=232ms
+  #2: client=219ms   server=37ms    net=182ms
+  #3: client=196ms   server=36ms    net=160ms
+
+requests.Session() — pooled keep-alive connection:
+  #1: client=249ms   server=38ms    net=211ms   ← TLS handshake
+  #2: client=99ms    server=42ms    net=57ms    ← pooled
+  #3: client=92ms    server=35ms    net=57ms
+```
+
+Pooled connection ⇒ network overhead drops from ~200 ms to **~57 ms**
+(pure RTT). The 150 ms difference is the TLS handshake, paid once on
+the first call and then never again.
+
+`src/aito_client.py` was using `httpx.request(...)` — a top-level
+helper that opens a fresh `httpx.Client` (and a fresh TCP+TLS
+connection) per call. Every call paid the handshake.
+
+### Workaround
+
+Hold a single `httpx.Client` on the `AitoClient` instance and use
+its `.request(...)` method. Per-call `timeout` override still works.
+The circuit-breaker, retry, and per-path semaphore around the call
+are unchanged.
+
+```python
+class AitoClient:
+    def __init__(self, config):
+        # ...existing fields...
+        self._client = httpx.Client(headers=self._headers)
+
+    def _request(self, method, path, json=None, timeout=120.0):
+        # ...breaker / retry / semaphore unchanged...
+        response = self._client.request(
+            method, self._url(path), json=json, timeout=timeout,
+        )
+```
+
+Measured against the live shared Aito instance after the fix:
+~280 ms client-side per call → **~110 ms steady-state** (~3× faster,
+identical request payloads).
+
+### Cross-demo applicability
+
+Same bug existed in `aito-erp-demo/src/aito_client.py` and
+`aito-ecommerce-demo/src/aito_client.py`; both fixed in parallel
+PRs. `aito-demo` (JS) is fine — `fetch()` in modern Node pools via
+the global undici agent.
+
+### What we'd hope from core
+
+Nothing API-side — this is purely a client-side fix. But the official
+Python SDK (when it exists) should default to a pooled client, and
+the docs' Python examples should not show `httpx.request(...)` per
+call.
 
 ---
 

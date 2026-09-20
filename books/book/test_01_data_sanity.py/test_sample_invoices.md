@@ -2,16 +2,16 @@
 
 
 
-## Customer CUST-0000 (2000 invoices)
+## Customer CUST-0000 (16000 invoices)
 
-  Security Venture Oy                 €    914.00  GL=5100  Building maintenance - scheduled
-  Kiinteistö Oy Törmäniityntie 14     € 31,534.50  GL=6100  Laptop purchase - new hire
-  Oy Design-Lite Ltd                  €  8,494.00  GL=4400  Packaging materials - bulk order
+  Kardex Finland Oy                   €  1,853.80  GL=4400  Raw materials procurement - production
+  Inside Restaurant Service Oy        € 13,354.00  GL=6100  Compute resources - on-demand
+  Oy Botnia-Foto Ab                   €  1,756.00  GL=6100  Printer - department Procurement
 
 
-## Customer CUST-0254 (16 invoices)
+## Customer CUST-0254 (125 invoices)
 
-  Service Restaurants Oy Oulu         €  4,274.50  GL=4100  Lunch service - corporate dining
-  Filfil Catering Oy                  €  3,123.50  GL=5100  Security service - 6156
-  Keysight Technologies Finland Oy    € 10,696.00  GL=6100  Software upgrade - version 2.7
+  Advanced Software Technology Scandinavia Oy €  9,278.84  GL=5100  Waste management - monthly
+  Come&Stay Oy                        €  3,462.21  GL=6100  SaaS subscription - 18 seats
+  Infoline Oy                         € 10,663.50  GL=4400  Wholesale order - retail products 1883
 

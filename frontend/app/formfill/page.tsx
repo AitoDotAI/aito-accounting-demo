@@ -67,7 +67,7 @@ interface TemplateResponse {
     gl_label: string | null;
     approver: string | null;
     cost_centre: string | null;
-    vat_pct: number | null;
+    vat_pct: string | null;
     payment_method: string | null;
     due_days: number | null;
     category: string | null;
@@ -356,17 +356,22 @@ export default function FormFillPage() {
 
               <div className="field-group">
                 <div className="field-label">Vendor name</div>
-                <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <input
                     className="field-input"
                     value={userValues.vendor || ""}
                     onChange={(e) => handleChange("vendor", e.target.value)}
                     placeholder="Type or select vendor"
-                    style={{ flex: 1 }}
+                    /* flex-basis 180 ensures the text input is always wide
+                       enough to show its placeholder; flex-grow lets it
+                       expand into any extra space. flex-wrap on the parent
+                       drops the Quick-pick select underneath when the row
+                       is too narrow to fit both side-by-side. */
+                    style={{ flex: "1 1 180px", minWidth: 0 }}
                   />
                   <select
                     className="field-input"
-                    style={{ width: 140, cursor: "pointer" }}
+                    style={{ flex: "0 0 auto", width: 110, cursor: "pointer" }}
                     value=""
                     onChange={(e) => e.target.value && handleVendorSelect(e.target.value)}
                   >

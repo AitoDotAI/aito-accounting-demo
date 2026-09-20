@@ -9,14 +9,10 @@ import uuid
 
 import booktest as bt
 
-from src.aito_client import AitoClient
-from src.config import load_config
+from book.aito_env import get_client
+
 from src.formfill_service import predict_template
 from src.quality_service import mine_rules_for_customer
-
-
-def get_client():
-    return AitoClient(load_config())
 
 
 @bt.snapshot_httpx()

@@ -1,8 +1,8 @@
 # Vendor resolution: _predict vendor_name
 
 
-  SECURITY VENTURE OY       -> Security Venture Oy       [ok]
-  KIINTEISTÖ OY TÖRMÄNIITYN -> Security Venture Oy       [MISS]
-  AB TRANSPORT HELGE KULL O -> Security Venture Oy       [MISS]
-  EEE ENERGY ECOLOGY ENGINE -> Security Venture Oy       [MISS]
-  SECURITY VENTURE OY       -> Security Venture Oy       [ok]
+  KARDEX FINLAND  Saaja  VI -> Kardex Finland Oy         [ok]
+  OY BOTNIA-FOTO AB VANTAA  -> Oy Botnia-Foto Ab         [ok]
+  AVARN SECURITY OY  Saaja  -> Avarn Security Oy         [ok]
+  SECURITY VENTURE OY VIITE -> Security Venture Oy       [ok]
+  AVARN SECURITY 15072025 V -> Avarn Security Oy         [ok]

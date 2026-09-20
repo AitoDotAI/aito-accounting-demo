@@ -36,10 +36,10 @@
 
 ## Top 4 candidates
 
-  p=0.352  [internal] [own-internal  ] Cost centre rules at Tornio Retail Oy Ab
-  p=0.350  [internal] [own-internal  ] Quarter-end close at Tornio Retail Oy Ab
-  p=0.332  [internal] [own-internal  ] Approval policy: invoices over €10,000
-  p=0.319  [internal] [own-internal  ] Override policy at Tornio Retail Oy Ab
+  p=0.462  [internal] [own-internal  ] Cost centre rules at Tornio Retail Oy Ab
+  p=0.433  [internal] [own-internal  ] Quarter-end close at Tornio Retail Oy Ab
+  p=0.417  [internal] [own-internal  ] Override policy at Tornio Retail Oy Ab
+  p=0.315  [app     ] [global        ] Form Fill: confirming vs overriding predictions
 
 ok
 ok

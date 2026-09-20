@@ -110,23 +110,33 @@ return the linked invoice row — no second query, no manual join.
 
 [→ Implementation](src/matching_service.py) | [Use case guide](docs/use-cases/03-payment-matching.md) | [ADR](docs/adr/0007-payment-matching.md)
 
-### 4. 🧠 Rule mining — discover patterns + drill into compounds
+### 4. 🧠 Rule mining — discover multi-field conjunction rules
 
 ![Rule Mining](screenshots/04-rulemining.png)
 
 ```json
 {
-  "from": "invoices",
-  "where": {"customer_id": "CUST-0000", "category": "telecom"},
-  "relate": "gl_code"
+  "from": {"from": "invoices", "where": {"customer_id": "CUST-0000"}},
+  "where": {"gl_code": "1600"},
+  "relate": {"$patterns": {"$related": {
+    "relate": ["vendor", "category", "vendor_country", "amount_band"],
+    "k": 8, "to": {"gl_code": "1600"}
+  }}}
 }
 ```
 
-Each candidate row expands into a chained `_relate` for compound
-patterns: `category=telecom & gl_code=6200 → approver=Timo Järvinen
-(701/8000, 15.8× lift)`. The poor-man's pattern proposition.
+`$patterns` mines the AND-rules a human would write — for each output an
+AP clerk codes (`gl_code` **and** `approver`), from intake **inputs
+only**, so the rules actually fire at routing time. It finds amount
+thresholds: `vendor="Bronex Software Oy" AND amount_band="large" → GL
+1600 (Capital Equipment)` (capitalization) and `vendor="Avarn Security
+Oy" AND amount_band="large" → approver Markku Heikkinen` (escalation).
+Support is the exact historical count (recomputed with `_search`, since
+`$patterns`' own `fs` are estimates), so it matches the drill-down to the
+invoice. Tenant scoping is a nested `from`; `$related` bounds the mining
+cost.
 
-[→ Implementation](src/rulemining_service.py) | [Use case guide](docs/use-cases/04-rule-mining.md) | [ADR](docs/adr/0006-rule-mining.md)
+[→ Implementation](src/rulemining_service.py) | [Use case guide](docs/use-cases/04-rule-mining.md) | [ADR](docs/adr/0014-pattern-rule-discovery.md)
 
 ### 5. 🚨 Anomaly detection — inverse prediction
 
@@ -278,6 +288,32 @@ uv sync
 # Open http://localhost:8200
 ```
 
+### Running against the Aito v2 API
+
+The demo also runs on Aito's **v2 API** (unified `_query`, collections, and
+first-class environments) in a branched environment, alongside the v1 build:
+
+```bash
+./do v2-build          # build the dataset as v2 collections in env `v2-demo`
+./do precompute-v2     # compute the read views through v2 (~5-8 min per tenant)
+./do dev-v2            # serve the demo against v2
+```
+
+Unset `AITO_V2_ENV` (or just `./do dev`) for the v1 path — it is unchanged, and
+no v2 code runs unless the variable is set. Every predictive feature runs on v2
+except the help drawer, which is still wired to v1. See
+[ADR 0017](docs/adr/0017-aito-v2-migration.md) for the migration, the
+[cheatsheet's v2 section](docs/aito-cheatsheet.md) for what changes between the
+APIs, and [the UI verification report](docs/verification/aito-v2-ui.md) for what
+was checked.
+
+`precompute-v2` is worth the wait: v2 will not serve the shipped precompute
+(it is v1-derived, so the numbers would not be v2's), and without a v2 pass the
+first load of a heavy view computes live — 15 s to 4½ min. It writes to its own
+namespace, so the v1 output is untouched. Precompute the tenants you plan to
+show rather than all 255, and confirm with `./do verify-demo`, which flags any
+step slow enough to look broken.
+
 The Next.js frontend is served from FastAPI on `localhost:8200` —
 single port, no CORS issues.
 
@@ -321,7 +357,8 @@ low confidence on novel vendors.
 | Operator | What it does | Used in |
 |----------|--------------|---------|
 | `_predict` | Predict a field value from context | Invoice processing, Form Fill, Anomaly detection, Matching |
-| `_relate` | Discover statistical patterns with support and lift | Rule mining, override analysis, mined rules per customer, sub-pattern drill |
+| `_relate` | Discover statistical patterns with support and lift | Rule mining, override analysis, mined rules per customer |
+| `_relate` + `$patterns` | Mine multi-field AND-conjunction rules server-side | Rule mining (conjunction discovery) |
 | `_recommend` | Goal-oriented ranking over an impressions table | Help drawer (CTR ranking) and "users who read this also read" |
 | `_evaluate` | Cross-validation accuracy on a held-out sample | Quality / Predictions matrix |
 | `_search` | Retrieve records | Aggregate metrics, customer/vendor lookup |
@@ -391,8 +428,11 @@ Development:
   ./do demo                Open the demo in browser
 
 Testing:
-  ./do test                Unit tests (pytest, 85 tests)
+  ./do test                Unit tests (pytest, 116 tests)
+  ./do aito-check          Assert every Aito query against live data (--v2)
+  ./do verify-demo         Walk the demo path against a running server
   ./do book                Booktest snapshots (live Aito)
+  ./do check               Pre-merge gate: test + fmt + aito-check
 
 Deployment:
   ./do docker-build        Build the deployable image
@@ -417,6 +457,7 @@ Deployment:
 | [0011](docs/adr/0011-precomputed-views.md) | Precomputed JSON for hosted demo |
 | [0012](docs/adr/0012-single-table-multitenancy.md) | Single-table multi-tenancy |
 | [0013](docs/adr/0013-help-drawer-recommend.md) | Help drawer ranked by `_recommend` |
+| [0014](docs/adr/0014-pattern-rule-discovery.md) | Pattern Rule Discovery — `$patterns` conjunction mining |
 
 ## Learn more
 

@@ -5,12 +5,8 @@ record counts, and the schema links work.
 """
 
 import booktest as bt
-from src.config import load_config
-from src.aito_client import AitoClient
 
-
-def get_client():
-    return AitoClient(load_config())
+from book.aito_env import get_client
 
 
 @bt.snapshot_httpx()

@@ -123,9 +123,13 @@ readable and well-structured, not minimal-LOC. Specifically:
 
 ### 4. Verification
 
-Run `./do verify <feature>`. This invokes the adversary agent — a
-separate CC instance with Playwright whose job is to **find failures**,
-not confirm success. See the adversary section below.
+Run the adversary pass — a separate CC instance with Playwright whose
+job is to **find failures**, not confirm success. See the adversary
+section below. `./do verify <feature>` is **not implemented yet**; today
+the pass is driven by hand and writes the same report.
+
+Then run `./do check` (tests + `aito-check`) and, with the app running,
+`./do verify-demo`.
 
 Review the verification report before merging.
 
@@ -147,8 +151,10 @@ always.
 
 ## Adversary verification
 
-`./do verify <feature>` runs a separate agent with Playwright tasked
-with **breaking** the feature, not confirming it.
+The adversary pass runs a separate agent with Playwright tasked with
+**breaking** the feature, not confirming it. (Intended as
+`./do verify <feature>`; that command does not exist yet, so the pass is
+run manually.)
 
 The adversary gets:
 - The ADR acceptance criteria
@@ -188,10 +194,13 @@ All common workflows live in `./do`. Run `./do help` for the full list.
 Core commands:
 - `./do dev` — start the app in development mode
 - `./do test` — run the test suite
-- `./do verify <feature>` — adversary Playwright verification
-- `./do verify-demo` — end-to-end demo path check
+- `./do verify <feature>` — adversary Playwright verification *(not
+  implemented — run the pass by hand for now)*
+- `./do verify-demo` — end-to-end demo path check, against a running app
 - `./do aito-check` — Aito query sanity checks
-- `./do check` — all of the above (the pre-merge gate)
+- `./do check` — the pre-merge gate: `test` + `fmt` + `aito-check`.
+  `verify-demo` is deliberately outside it, since it needs a running
+  server and so would make the gate unrunnable from a clean checkout.
 - `./do demo` — run the demo from a clean state
 - `./do fmt` — format code
 

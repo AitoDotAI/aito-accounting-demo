@@ -13,10 +13,12 @@ each value.
 from dataclasses import dataclass, field
 
 from src.aito_client import AitoClient, AitoError
+from src.employee_directory import resolve, tenant_employee_names
 
 REVIEW_THRESHOLD = 0.50
 
 GL_LABELS = {
+    "1600": "Capital Equipment",
     "4100": "COGS",
     "4400": "Materials & Supplies",
     "4500": "Office Expenses",
@@ -30,18 +32,53 @@ GL_LABELS = {
 }
 
 
-def _extract_alternatives(hits: list[dict], label_map: dict | None = None, prefix: str = "") -> list[dict]:
+# `approver` holds an employee_id and links to `employees`, so a predict
+# on it enumerates candidates from the linked table and
+# `approver.customer_id` confines them to this tenant. That replaces an
+# earlier stop-gap which filtered the alternatives list to values the
+# tenant had used before.
+#
+# The stop-gap could not have been made correct. Approver was stored as a
+# NAME, and 42% of employee names are shared between tenants, so a name
+# the tenant genuinely uses still pooled every same-named approver's
+# history: only 12 of the 645 rows behind "Matti Niemi" were CUST-0000's.
+# Filtering the list hid foreign names while leaving the statistics behind
+# a familiar one contaminated. See
+# docs/notes/approver-pools-other-tenants-evidence.md.
+#
+# gl_code and cost_centre are deliberately NOT scoped this way: a chart of
+# accounts is a shared vocabulary, and a GL the tenant has not used yet is
+# a legitimate suggestion rather than a leak.
+def _names_from_hits(hits: list[dict]) -> dict[str, str]:
+    """employee_id -> name, read off the predict hits themselves.
+
+    A predict on a linked field returns rows of the linked table, so the
+    name arrives with the prediction. Empty when the hits carry no `name`
+    — an older deploy, or a target that is not a link — and the caller
+    falls back to fetching the roster.
+    """
+    return {h["feature"]: h["name"]
+            for h in hits if h.get("feature") and h.get("name")}
+
+
+def _extract_alternatives(hits: list[dict], label_map: dict | None = None, prefix: str = "",
+                          label_replaces_value: bool = False) -> list[dict]:
     """Extract top-3 alternatives from Aito _predict hits.
 
     Each alternative includes the value, display label, confidence,
     and $why explanation factors.
+
+    `label_replaces_value` distinguishes the two kinds of label map. A GL
+    code is shown ALONGSIDE its meaning ("4400 - Office supplies") because
+    the code is what an accountant works with. An employee_id is an
+    internal key nobody wants to read, so its name replaces it outright.
     """
     alts = []
     for hit in hits[:3]:
         value = hit.get("feature", "")
         display = value
         if label_map and value in label_map:
-            display = f"{value} \u2013 {label_map[value]}"
+            display = label_map[value] if label_replaces_value else f"{value} \u2013 {label_map[value]}"
         if prefix:
             display = f"{prefix}{display}"
 
@@ -90,9 +127,77 @@ def _extract_why_factors(why: dict | None) -> list[dict]:
     # Order: base first, then patterns by descending |lift - 1|. Top 5
     # so a noisy long tail of small lifts doesn't fill the popup.
     base = [f for f in out if f.get("type") == "base"]
+    normalizers = [f for f in out if f.get("type") == "normalizer"]
     patterns = [f for f in out if f.get("type") == "pattern"]
     patterns.sort(key=lambda f: abs(f.get("lift", 1) - 1), reverse=True)
-    return base + patterns[:5]
+    kept = base + normalizers + patterns[:5]
+
+    # Everything the pruning above removed, as one multiplier, so the chain
+    # the panel prints still equals the probability it is printed under.
+    #
+    # Four filters drop factors: near-1.0 normalizers, near-1.0 lifts,
+    # propositions that only restate the customer scope, and this top-5
+    # truncation. Each is defensible on its own -- a long tail of 1.02x
+    # lifts is noise, not evidence -- but the UI multiplied what survived
+    # and presented the result as an equation. On a live CUST-0000 match
+    # that read:
+    #
+    #   0.003% x 2.85 x 3.23 x 11.14 x 6.44 x 4.10 x 1.86 x 1.32 -> 19.6%
+    #
+    # under a 95% match, because three of Aito's eight lift factors were
+    # not in the product. Aito's own tree reconciles exactly (ratio
+    # 1.0000000000, verified on that same match), so the gap was entirely
+    # ours.
+    #
+    # Emitted as a `normalizer` rather than a new type so every existing
+    # renderer folds it into the model-terms line it already draws.
+    residual = _residual_multiplier(why, kept)
+    if residual is not None:
+        normalizers = normalizers + [residual]
+        kept = base + normalizers + patterns[:5]
+    return kept
+
+
+def _tree_product(node: dict) -> float:
+    """The product of every factor in Aito's `$why` tree.
+
+    Aito's decomposition is complete -- this equals the hit's `$p` to full
+    precision -- so it is the number our pruned chain has to reach.
+    """
+    if node.get("type") == "product":
+        total = 1.0
+        for factor in node.get("factors") or []:
+            total *= _tree_product(factor)
+        return total
+    return float(node.get("value", 1) or 1)
+
+
+def _residual_multiplier(why: dict, kept: list[dict]) -> dict | None:
+    """One factor standing for everything pruning dropped, or None.
+
+    None when the kept factors already account for the tree (within 1%),
+    which is the common case for invoice prediction, where there are few
+    enough factors that nothing is pruned.
+    """
+    full = _tree_product(why)
+    shown = 1.0
+    for f in kept:
+        if f.get("type") == "base":
+            shown *= float(f.get("base_p", 0) or 0)
+        elif f.get("type") == "normalizer":
+            shown *= float(f.get("multiplier", 1) or 1)
+        elif f.get("type") == "pattern":
+            shown *= float(f.get("lift", 1) or 1)
+    if shown <= 0 or full <= 0:
+        return None
+    ratio = full / shown
+    if abs(ratio - 1.0) < 0.01:
+        return None
+    return {
+        "type": "normalizer",
+        "name": "other factors",
+        "multiplier": float(f"{ratio:.4g}"),
+    }
 
 
 def _walk_why_grouped(node: dict, out: list[dict]) -> None:
@@ -140,7 +245,41 @@ def _walk_why_grouped(node: dict, out: list[dict]) -> None:
             if isinstance(cond, dict) and "$has" in cond:
                 target_value = str(cond["$has"])
                 break
-        out.append({"type": "base", "base_p": round(base_p, 4), "target_value": target_value})
+        # Do NOT round to a fixed number of decimals. A GL-code base rate
+        # is ~0.46 and survives, but predicting a link target such as
+        # `invoice_id` has a base rate near 1/128000 — round(…, 4) turns
+        # that into exactly 0.0, so the popup showed "0%" and the factor
+        # chain started from a literal zero. Significant figures keep both
+        # readable; the UI decides how to render a very small value.
+        out.append({
+            "type": "base",
+            "base_p": float(f"{base_p:.4g}"),
+            "target_value": target_value,
+        })
+    elif t in ("normalizer", "calibration", "composition"):
+        # Model terms that multiply the chain but carry no proposition:
+        # `normalizer` (exclusiveness, trueFalseExclusiveness), `calibration`
+        # (rowCap), and `composition` (nameBoost).
+        #
+        # All three were dropped, and the chain the UI printed was short by
+        # their product. `composition:nameBoost` is the one that mattered:
+        # it is new in 2.8.1, carries 28.4x on the payment-matching row that
+        # exposed this, and its absence is why the panel showed 3.5% under a
+        # 99.7% match. With every term included the tree reconciles exactly
+        # --  base 2.384e-05 x ... x 28.378 = 0.9974318446 = $p, ratio
+        # 1.0000000000 -- so $why IS a complete decomposition and the walk
+        # was the incomplete part.
+        #
+        # Emit unknown multiplier types rather than skipping them: a factor
+        # we do not recognise is exactly the kind we cannot afford to drop
+        # silently, which is how 2.8.1 broke this in the first place.
+        value = float(node.get("value", 1) or 1)
+        if abs(value - 1.0) >= 0.05:
+            out.append({
+                "type": "normalizer",
+                "name": str(node.get("name") or t),
+                "multiplier": float(f"{value:.4g}"),
+            })
     elif t == "relatedPropositionLift":
         lift = float(node.get("value", 0) or 0)
         # Drop noise: lifts close to 1.0 contribute nothing.
@@ -171,11 +310,28 @@ def _walk_why_grouped(node: dict, out: list[dict]) -> None:
             html = h.get("highlight", "")
             if not html:
                 continue
+            # An "highlight" with no <mark> in it is the whole field value
+            # with nothing marked -- it says which field matched but not
+            # WHICH PART, so it is strictly less informative than the
+            # proposition we already have. Aito returns these for some
+            # tokens (`PVM`, `RELAX`), and rendering them produced several
+            # cards showing the identical full description with different
+            # lifts, which reads as a duplicate rather than as different
+            # evidence. Fall through to the proposition instead.
+            if "<mark>" not in html:
+                continue
             highlights.append({"field": field, "html": html})
 
         out.append({
             "type": "pattern",
-            "lift": round(lift, 2),
+            # Significant figures, not decimal places — for the same reason
+            # as base_p above. A strong counter-evidence factor can have a
+            # lift of 3.4e-06 ("this evidence makes the value essentially
+            # impossible"); round(_, 2) turns that into 0.0, which renders
+            # as "x 0.0" and zeroes the whole multiplicative chain. The
+            # magnitude is the information here, so keep it and let the UI
+            # decide how to show a very small one.
+            "lift": float(f"{lift:.4g}"),
             "propositions": propositions,
             "highlights": highlights,
         })
@@ -188,19 +344,31 @@ def _walk_why_grouped(node: dict, out: list[dict]) -> None:
 
 
 def _collect_props(prop: dict, out: list[dict]) -> None:
-    if "$and" in prop:
-        for sub in prop["$and"]:
-            _collect_props(sub, out)
-        return
+    """Flatten a $why proposition into {field, value} pairs.
+
+    Handles both API generations. v1 wraps every value in an operator
+    (`{vendor: {$has: "Kesko"}}`) and groups conjunctions under `$and`;
+    v2 returns the bare value (`{vendor: "Kesko"}`) and groups under
+    `$group`. Both are accepted, so one explanation UI serves both --
+    without this, every v2 factor collects nothing and the popup
+    silently degrades to the base rate alone.
+    """
+    for grouping in ("$and", "$group"):
+        if grouping in prop:
+            for sub in prop[grouping]:
+                _collect_props(sub, out)
+            return
     for field_name, cond in prop.items():
-        if not isinstance(cond, dict):
-            continue
-        # $has = exact value match (categorical fields)
-        if "$has" in cond:
-            out.append({"field": field_name, "value": str(cond["$has"])})
-        # $match = text token match (Text fields)
-        elif "$match" in cond:
-            out.append({"field": field_name, "value": str(cond["$match"])})
+        if isinstance(cond, dict):
+            # $has = exact value match (categorical fields)
+            if "$has" in cond:
+                out.append({"field": field_name, "value": str(cond["$has"])})
+            # $match = text token match (Text fields)
+            elif "$match" in cond:
+                out.append({"field": field_name, "value": str(cond["$match"])})
+        elif cond is not None:
+            # v2: the proposition carries the value directly.
+            out.append({"field": field_name, "value": str(cond)})
 
 
 @dataclass
@@ -217,7 +385,7 @@ class InvoicePrediction:
     confidence: float
     invoice_date: str | None = None
     due_days: int | None = None
-    vat_pct: int | None = None
+    vat_pct: str | None = None
     vendor_country: str | None = None
     category: str | None = None
     description: str | None = None
@@ -298,7 +466,13 @@ def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None 
 
     rule_match = check_rules(invoice, rules=rules)
     if rule_match:
-        gl_code, approver, rule_name = rule_match
+        gl_code, approver_id, rule_name = rule_match
+        # Mined rules store the employee_id, same as the invoices they
+        # were mined from, so this path needs the same resolution as the
+        # predicted one.
+        approver = resolve(
+            tenant_employee_names(client, invoice.get("customer_id", "")), approver_id,
+        ) or approver_id
         # Mined-rule explanations look like a single pattern card with
         # one proposition (the rule name) and lift 1.0 — same grouped
         # shape as Aito _predict $why factors so the renderer is uniform.
@@ -326,7 +500,7 @@ def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None 
             source="rule",
             confidence=0.99,
             gl_alternatives=[{"value": gl_code, "display": f"{gl_code} \u2013 {gl_label}", "confidence": 0.99, "why": rule_why}],
-            approver_alternatives=[{"value": approver, "display": f"AP / {approver}", "confidence": 0.99, "why": rule_why}],
+            approver_alternatives=[{"value": approver_id, "display": f"AP / {approver}", "confidence": 0.99, "why": rule_why}],
         )
 
     where = {"vendor": vendor, "amount": amount}
@@ -342,7 +516,23 @@ def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None 
 
     try:
         gl_result = client.predict("invoices", where, "gl_code")
-        approver_result = client.predict("invoices", where, "approver")
+        # `approver.customer_id` confines the candidate employees to this
+        # tenant. Without it the candidate set is every employee in the
+        # instance, exactly as payment matching ranked over every invoice.
+        approver_where = dict(where)
+        if invoice.get("customer_id"):
+            approver_where["approver.customer_id"] = invoice["customer_id"]
+        # `approver` is a link, so the hits are employee rows: `basedOn`
+        # lets the model generalise over the person's role and department
+        # (the fixture escalates invoices over 10k to a senior signer, and
+        # that is learnable as ROLE rather than as a list of names), and
+        # selecting `name` means the person comes back with the prediction
+        # instead of needing a second lookup.
+        approver_result = client.predict(
+            "invoices", approver_where, "approver",
+            based_on=["role", "department"],
+            extra_select=["name", "role", "department"],
+        )
     except AitoError:
         return InvoicePrediction(
             invoice_id=invoice_id,
@@ -371,7 +561,13 @@ def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None 
 
     gl_code = gl_top["feature"] if gl_top else None
     gl_conf = gl_top["$p"] if gl_top else 0.0
-    approver_name = approver_top["feature"] if approver_top else None
+    # The model predicts an employee_id; the page shows a person. `name`
+    # rides along on the hit because approver links to employees, so the
+    # roster is only needed for hits that somehow lack it.
+    employee_names = _names_from_hits(approver_hits) or tenant_employee_names(
+        client, invoice.get("customer_id", "")
+    )
+    approver_name = resolve(employee_names, approver_top["feature"] if approver_top else None)
     approver_conf = approver_top["$p"] if approver_top else 0.0
 
     overall_conf = min(gl_conf, approver_conf)
@@ -395,7 +591,10 @@ def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None 
         source=source,
         confidence=overall_conf,
         gl_alternatives=_extract_alternatives(gl_hits, GL_LABELS),
-        approver_alternatives=_extract_alternatives(approver_hits, prefix="AP / "),
+        approver_alternatives=_extract_alternatives(
+            approver_hits, employee_names, prefix="AP / ",
+            label_replaces_value=True,
+        ),
     )
 
 

@@ -74,14 +74,35 @@ export default function EvaluationsPage() {
   const [live, setLive] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
+  // Client-side timeout race so the page surfaces a real error
+  // state instead of spinning forever when the backend takes too
+  // long to respond. Bumped via reloadKey so the Retry button can
+  // restart the request without changing customer.
+  const [reloadKey, setReloadKey] = useState(0);
+
   useEffect(() => {
     setData(null);
     setLive(false);
     setError(null);
+    let cancelled = false;
+    const timeoutId = setTimeout(() => {
+      if (!cancelled) {
+        cancelled = true;
+        setError(new Error(
+          "The evaluation didn't return within 30 s. " +
+          "_evaluate is the heaviest call this demo makes — " +
+          "it may still complete in the background; click Retry to try again."
+        ));
+      }
+    }, 30000);
+
     apiFetch<EvaluationsResponse>(`/api/quality/evaluations?customer_id=${customerId}`)
-      .then((d) => { setData(d); setLive(true); })
-      .catch((e) => setError(e));
-  }, [customerId]);
+      .then((d) => { if (!cancelled) { setData(d); setLive(true); } })
+      .catch((e) => { if (!cancelled) setError(e); })
+      .finally(() => { clearTimeout(timeoutId); });
+
+    return () => { cancelled = true; clearTimeout(timeoutId); };
+  }, [customerId, reloadKey]);
 
   return (
     <>
@@ -105,7 +126,12 @@ export default function EvaluationsPage() {
             answer (higher = more confident calibration).
           </div>
 
-          {error && <ErrorState error={error} />}
+          {error && (
+            <ErrorState
+              error={error}
+              onRetry={() => setReloadKey((k) => k + 1)}
+            />
+          )}
 
           {data && (
             <div className="card">

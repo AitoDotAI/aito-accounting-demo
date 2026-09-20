@@ -49,10 +49,102 @@ GL_CODES = {
     "consulting": ("5400", "Professional Services"),
 }
 
+# Capitalization: for capex-prone categories, large purchases land on the
+# balance-sheet capital account instead of the normal expense GL. This is
+# a real accounting rule (a €15k server is an asset; a €200 cable is an
+# expense) and gives rule discovery a genuine multi-field INPUT rule:
+# `category=it_equipment AND amount_band=large -> 1600`. The threshold is
+# the same €10k as the approval escalation below, so both show cleanly.
+CAPEX_GL = ("1600", "Capital Equipment")
+CAPEX_CATEGORIES = {"it_equipment", "software", "maintenance"}
+
+# amount_band thresholds (EUR). Derived from `amount` at intake, so it is
+# a legitimate prediction input. `large` (>= 10k) is both the
+# capitalization boundary and the approver escalation boundary.
+AMOUNT_BAND_SMALL_MAX = 1_000.0
+AMOUNT_BAND_LARGE_MIN = 10_000.0
+
+
+def amount_band(amount: float) -> str:
+    """Bucket an invoice amount into small / medium / large."""
+    if amount < AMOUNT_BAND_SMALL_MAX:
+        return "small"
+    if amount >= AMOUNT_BAND_LARGE_MIN:
+        return "large"
+    return "medium"
+
+
+# ── VAT ───────────────────────────────────────────────────────────
+# Finland raised the standard VAT rate from 24% to 25.5% on 2024-09-01,
+# which falls inside this dataset's window (2024-05 .. 2026-04). Modelling
+# the change is what makes `vat_pct` worth predicting at all: the correct
+# rate depends on the INVOICE DATE, so a model has to pick up a regulatory
+# change that nobody encoded as a rule. Held flat at 24%, the field was a
+# constant — 98.7% one value — and prediction scored exactly its own base
+# rate, which reads as "the model learned nothing".
+VAT_STANDARD_BEFORE = "24"
+VAT_STANDARD_FROM = "25.5"
+VAT_RATE_CHANGE_DATE = date(2024, 9, 1)
+# Foodstuffs and restaurant services sit in the reduced band, unchanged by
+# the 2024 rise. Insurance is exempt, not zero-rated, but 0 is how it
+# lands on the invoice line.
+VAT_REDUCED_CATEGORIES = {"food_bev"}
+VAT_REDUCED = "14"
+VAT_EXEMPT_CATEGORIES = {"insurance"}
+
+
+def vat_pct_for(category: str, invoice_date_iso: str) -> str:
+    """The VAT rate on an invoice line, by category and issue date.
+
+    A string, because this is a tax CODE and not a quantity: it takes a
+    handful of discrete values, it is a `predict` target alongside
+    gl_code and approver, and 25.5 does not fit the Int the column used
+    to be. Nothing arithmetic is done with it.
+    """
+    if category in VAT_EXEMPT_CATEGORIES:
+        return "0"
+    if category in VAT_REDUCED_CATEGORIES:
+        return VAT_REDUCED
+    issued = date.fromisoformat(invoice_date_iso)
+    return VAT_STANDARD_FROM if issued >= VAT_RATE_CHANGE_DATE else VAT_STANDARD_BEFORE
+
+
 COST_CENTRES = {
     "Finance": "CC-100", "Operations": "CC-200", "Sales": "CC-300",
     "IT": "CC-400", "HR": "CC-500", "Procurement": "CC-600",
 }
+
+# Which department OWNS the spend, by what was bought. A cost centre is a
+# property of the expense, not of whoever keyed it: a telecom bill lands
+# on IT's cost centre no matter which clerk processed it.
+#
+# It used to be COST_CENTRES[processor.department] — the AP clerk's own
+# department. Since invoices are only processed by Finance and
+# Procurement staff, that produced exactly two cost centres out of six,
+# split ~50/50, and INDEPENDENT of the invoice: every category divided
+# evenly between them. Predicting it from vendor/amount/category was
+# therefore predicting noise, and scored *below* the base rate.
+CATEGORY_DEPARTMENT = {
+    "telecom": "IT", "it_equipment": "IT", "software": "IT", "cloud": "IT",
+    "supplies": "Procurement", "office": "Procurement",
+    "logistics": "Operations", "facilities": "Operations", "maintenance": "Operations",
+    "food_bev": "HR",
+    "insurance": "Finance",
+    "consulting": "Sales",
+}
+# Not every invoice hits its category's usual owner — a laptop bought for
+# the sales team is cross-charged to Sales. Keeping a minority of those
+# makes the field learnable rather than a lookup, the same shape as
+# gl_code (~95% from category, with the capitalization exception).
+COST_CENTRE_CROSS_CHARGE_RATE = 0.12
+
+
+def cost_centre_for(category: str, rng: random.Random) -> str:
+    """The cost centre an invoice is booked to, from what was bought."""
+    department = CATEGORY_DEPARTMENT.get(category, "Operations")
+    if rng.random() < COST_CENTRE_CROSS_CHARGE_RATE:
+        department = rng.choice(DEPARTMENTS)
+    return COST_CENTRES[department]
 
 PAYMENT_METHODS = ["SEPA Credit Transfer", "SEPA Credit Transfer", "SEPA Credit Transfer", "Credit Card", "Wire Transfer"]
 
@@ -266,6 +358,24 @@ def rf_reference(rng: random.Random) -> str:
     return f"RF{check:02d} " + " ".join(digits[i:i+4] for i in range(0, len(digits), 4))
 
 
+def invoice_reference(vendor_country: str, rng: random.Random) -> str:
+    """The reference the VENDOR prints on the invoice it issues.
+
+    In Finnish B2B an invoice essentially always carries one: a domestic
+    creditor issues a `viite` (mod-10), a foreign one an ISO 11649 `RF`
+    reference. The payer then quotes it back when paying.
+
+    The direction matters and used to be inverted here: references were
+    invented on the payment side, so 95% of payments quoted a creditor
+    reference that no invoice had ever carried, and none of the digits
+    appeared anywhere on the target invoice. A payer cannot quote a
+    reference the creditor never issued.
+    """
+    if vendor_country == "FI":
+        return f"VIITE {finnish_reference(rng)}"
+    return rf_reference(rng)
+
+
 def vendor_to_bank_desc(vendor_name: str, rng: random.Random) -> str:
     """Convert a vendor name to a bank-statement-style description.
 
@@ -319,36 +429,35 @@ def format_bank_description(
 
     if bank == "OP Bank":
         # OP: vendor / VIITE / PVM, all-caps, " / " separator, ~70 char cap
-        parts = [vendor_part, ref]
+        parts = [vendor_part] + ([ref] if ref else [])
         if pvm:
             parts.append(f"PVM {pvm}")
         out = " / ".join(parts)
     elif bank == "Nordea":
         # Nordea: vendor with date stamp inline; viite either prefixed
         # "Viite:" or appended; mixed-case-ish but mostly upper
-        if "VIITE" in ref:
-            ref_part = ref.replace("VIITE ", "Viite: ")
-        else:
-            ref_part = ref
-        out = f"{vendor_part} {pvm_long} {ref_part}"
+        ref_part = ref.replace("VIITE ", "Viite: ") if "VIITE" in ref else ref
+        out = f"{vendor_part} {pvm_long} {ref_part}".rstrip()
     elif bank == "Aktia":
         # Aktia exports use tab-like separation with field codes
-        out = f"{vendor_part}\t{pvm}\tref={ref}"
+        out = f"{vendor_part}\t{pvm}\tref={ref}" if ref else f"{vendor_part}\t{pvm}"
     elif bank == "Danske Bank":
         # Danske: leading bank code, then vendor, then pretty short
-        out = f"DB-FIN {vendor_part[:25]} {ref}"
+        out = f"DB-FIN {vendor_part[:25]} {ref}".rstrip()
     elif bank == "S-Pankki":
         # S-Pankki: prefer compact form, often drops viite if RF given
-        if ref.startswith("RF"):
+        if not ref:
+            out = f"{vendor_part} / {pvm}"
+        elif ref.startswith("RF"):
             out = f"{vendor_part} {ref}"
         else:
             out = f"{vendor_part} {ref} / {pvm}"
     elif bank == "Handelsbanken":
         # Handelsbanken: more verbose, includes saaja/maksaja text
-        out = f"{vendor_part}  Saaja  {ref}  {pvm}"
+        out = f"{vendor_part}  Saaja  {ref}  {pvm}" if ref else f"{vendor_part}  Saaja  {pvm}"
     else:
         # Default — generic OP-like
-        out = f"{vendor_part} / {ref} / PVM {pvm}"
+        out = f"{vendor_part} / {ref} / PVM {pvm}" if ref else f"{vendor_part} / PVM {pvm}"
 
     # Bank-specific line-length caps
     cap = 70 if bank in ("Nordea", "Aktia", "Handelsbanken") else 60
@@ -519,6 +628,66 @@ def generate_employees(customer: dict) -> list[dict]:
     return employees
 
 
+# ── Settlement entities ───────────────────────────────────────────
+
+# Finnish finance houses that buy receivables. When a vendor factors its
+# invoices, the money is collected by one of these and the bank line
+# carries THEIR name, not the vendor's.
+FACTORING_HOUSES = [
+    "Ropo Capital Oy",
+    "Intrum Oy",
+    "Svea Ekonomi Ab",
+    "Aktiv Kapital Finland Oy",
+    "Duetto Group Oy",
+]
+
+# Legal-entity suffixes a trade name settles under.
+_LEGAL_STEMS = [
+    "Holding", "Group", "Invest", "Partners", "Capital", "Varainhallinta",
+]
+
+# How often the bank line names someone other than the billed vendor.
+SETTLEMENT_ENTITY_SHARE = 0.20
+
+
+def settlement_entity_for(entity: dict) -> dict | None:
+    """The company whose name appears on the bank line, when it is not the
+    vendor's own.
+
+    An AP clerk meets this constantly: the invoice says one company and
+    the payment moves under another, because the vendor bills under a
+    trade name, or has factored the receivable, or belongs to a group
+    whose parent collects. The name that arrives is not in the vendor
+    master, so nothing can look it up — only this tenant's payment
+    history connects the two.
+
+    Seeded on `business_id` rather than drawn from the caller's rng ON
+    PURPOSE. Taking draws from the shared per-customer stream would shift
+    every value after it and rewrite all 128,000 invoices for a change
+    that only touches bank transactions. Keyed here, `invoices`
+    regenerates byte-identical.
+
+    Returns None for the ~80% of vendors that settle under their own name.
+    """
+    rng = random.Random(f"settlement:{entity['business_id']}")
+    if rng.random() >= SETTLEMENT_ENTITY_SHARE:
+        return None
+
+    name = entity["name"]
+    kind = rng.choice(["legal_entity", "factoring", "group_treasury"])
+
+    if kind == "factoring":
+        return {"name": rng.choice(FACTORING_HOUSES), "kind": kind}
+
+    # Both remaining kinds keep the vendor's distinguishing first word and
+    # change everything after it, which is what makes them hard: a human
+    # sees the connection, string similarity mostly does not.
+    stem = name.split()[0].rstrip(",")
+    if kind == "group_treasury":
+        return {"name": f"{stem} {rng.choice(['Group', 'Holding'])} Oyj", "kind": kind}
+    return {"name": f"{stem} {rng.choice(_LEGAL_STEMS)} Oy", "kind": kind}
+
+
 # ── Vendor assignment per customer ────────────────────────────────
 
 def assign_vendors_to_customer(customer: dict, entities: list[dict], rng: random.Random) -> list[dict]:
@@ -568,8 +737,16 @@ def assign_vendors_to_customer(customer: dict, entities: list[dict], rng: random
             "gl_code": gl_code,
             "amount_mean": rng.uniform(200, 20000),
             "amount_std_ratio": rng.uniform(0.2, 0.6),
-            "vat_pct": 24 if cat != "insurance" else 0,
+            # No vat_pct here: the rate depends on the invoice's own date,
+            # not on the vendor. See vat_pct_for().
+            #
+            # Payment method IS vendor-level — it is set up once with the
+            # vendor's bank details and does not change per invoice.
+            "payment_method": rng.choice(PAYMENT_METHODS),
             "due_days": rng.choice([14, 14, 30, 30, 30, 45]),
+            # None for most vendors; a dict for the ~20% whose payments
+            # arrive under another company's name. See settlement_entity_for.
+            "settlement_entity": settlement_entity_for(entity),
         })
 
     return vendors
@@ -656,8 +833,17 @@ def generate_invoices_for_customer(
         else:
             approver = category_to_approver[vdef["category"]]
 
-        # Occasional GL anomaly (2%)
+        band = amount_band(amount)
+
+        # Capitalization split: large capex-category purchases book to the
+        # capital account, not the category's expense GL. This is the only
+        # place gl_code depends on more than the vendor/category — it's
+        # what makes `category=X AND amount_band=large -> 1600` a real
+        # rule rather than a redundant conjunction.
         gl_code = vdef["gl_code"]
+        if vdef["category"] in CAPEX_CATEGORIES and band == "large":
+            gl_code = CAPEX_GL[0]
+        # Occasional GL anomaly (2%)
         if rng.random() < 0.02:
             gl_code = rng.choice(list(set(v[0] for v in GL_CODES.values())))
 
@@ -666,18 +852,36 @@ def generate_invoices_for_customer(
             "customer_id": cid,
             "vendor_business_id": vdef["business_id"],
             "vendor": vdef["name"],
+            # Same string, carried twice on purpose -- see the schema note
+            # in src/data_loader.py. One copy is an atomic symbol for rule
+            # mining, the other is tokenized so payment matching can use it.
+            "vendor_text": vdef["name"],
             "vendor_country": vdef["country"],
             "category": vdef["category"],
             "amount": amount,
+            "amount_band": band,
             "gl_code": gl_code,
-            "cost_centre": COST_CENTRES.get(processor["department"], "CC-100"),
-            "approver": approver["name"],
+            "cost_centre": cost_centre_for(vdef["category"], rng),
+            # The employee_id, not the name: names are not unique across
+            # tenants (42% of them are shared), so storing the name pooled
+            # every same-named approver's history into one value. The id is
+            # tenant-prefixed, so it links and its statistics stay this
+            # customer's own. Resolved back to a name for display.
+            "approver": approver["employee_id"],
             "processor": processor["employee_id"],
-            "vat_pct": vdef["vat_pct"],
-            "payment_method": rng.choice(PAYMENT_METHODS),
+            "vat_pct": vat_pct_for(vdef["category"], inv_date),
+            # Master data, not a per-invoice choice: a vendor is set up once
+            # with bank details and a payment method, and every invoice from
+            # them is paid the same way. Randomising it per invoice had the
+            # same vendor paid by card, SEPA and wire across 1,800 invoices.
+            "payment_method": vdef["payment_method"],
             "due_days": vdef["due_days"],
             "description": desc,
             "invoice_date": inv_date,
+            # The vendor's own reference, printed on the invoice. A payer
+            # can only quote a reference the creditor issued, so this has
+            # to exist before any payment can carry it.
+            "reference": invoice_reference(vdef["country"], rng),
             "routed": routed,
             "routed_by": routed_by,
         }
@@ -685,15 +889,21 @@ def generate_invoices_for_customer(
 
         # Bank transaction for ~60% of routed invoices
         if routed and rng.random() < 0.60:
-            vendor_part = vendor_to_bank_desc(vdef["name"], rng)
-            # Reference number style: Finnish viite (75%), RF reference (20%), free-text note (5%)
-            ref_choice = rng.random()
-            if ref_choice < 0.75:
-                ref = f"VIITE {finnish_reference(rng)}"
-            elif ref_choice < 0.95:
-                ref = rf_reference(rng)
-            else:
-                ref = f"LASKU {rng.randint(2024, 2026)}-{rng.randint(1000, 9999)}"
+            # The name the BANK carries, which is the vendor's own unless
+            # the receivable is settled by someone else. The invoice keeps
+            # `vdef["name"]` either way -- that asymmetry is the feature.
+            settlement = vdef.get("settlement_entity")
+            settling_name = settlement["name"] if settlement else vdef["name"]
+            vendor_part = vendor_to_bank_desc(settling_name, rng)
+            # The payer quotes the INVOICE's reference, or quotes nothing.
+            #
+            # This split is the point of the whole matching feature. When
+            # the reference is quoted, reconciliation is a lookup and no
+            # model is needed — and the demo should say so. The ~35% that
+            # arrive without one are what actually occupies an AP clerk,
+            # and are the case Aito is being asked to solve from vendor,
+            # amount and date.
+            ref = invoice["reference"] if rng.random() < 0.65 else ""
 
             bank = rng.choice(BANKS)
             bank_desc = format_bank_description(
@@ -705,7 +915,7 @@ def generate_invoices_for_customer(
                 "transaction_id": f"{cid}-TXN-{len(bank_txns):06d}",
                 "customer_id": cid,
                 "description": bank_desc,
-                "vendor_name": vdef["name"],
+                "vendor_name": settling_name,
                 "amount": round(amount + amt_diff, 2),
                 "bank": bank,
                 "invoice_id": invoice["invoice_id"],
@@ -718,8 +928,9 @@ def generate_invoices_for_customer(
                 predicted = gl_code
                 corrected = rng.choice([c for c in set(v[0] for v in GL_CODES.values()) if c != predicted])
             elif field == "approver":
-                predicted = approver["name"]
-                corrected = rng.choice([a["name"] for a in approvers if a["name"] != predicted]) if len(approvers) > 1 else predicted
+                predicted = approver["employee_id"]
+                corrected = rng.choice([a["employee_id"] for a in approvers
+                                        if a["employee_id"] != predicted]) if len(approvers) > 1 else predicted
             else:
                 predicted = invoice["cost_centre"]
                 corrected = rng.choice([v for v in COST_CENTRES.values() if v != predicted])
