@@ -9,7 +9,8 @@ import { useTour } from "@/lib/tour-context";
 interface TopBarProps {
   breadcrumb: string;
   title: string;
-  subtitle?: string;
+  /** Plain string or React node — pages use the node form to inline a spinner. */
+  subtitle?: React.ReactNode;
   actions?: React.ReactNode;
   live?: boolean;
 }

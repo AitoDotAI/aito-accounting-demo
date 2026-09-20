@@ -373,3 +373,10 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 
 /* SPINNER (rule diagnostic loading) */
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* INLINE SPINNER — used by the shared <Spinner/> in components/ui. Kept
+   separate from the rule-diagnostic keyframe above: the same animation,
+   but different consumers, and merging them would couple two unrelated
+   views to one class name. */
+.ui-spinner{display:inline-block;border:2px solid var(--border);border-top-color:var(--gold-mid);border-radius:50%;animation:ui-spin .7s linear infinite;flex-shrink:0;vertical-align:-1px}
+@keyframes ui-spin{to{transform:rotate(360deg)}}
