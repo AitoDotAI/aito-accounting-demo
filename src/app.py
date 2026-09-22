@@ -22,6 +22,7 @@ from src import admin_ops, cache, precomputed
 from src.config import load_config
 from src.formfill_service import predict_fields
 from src.invoice_service import predict_batch, compute_metrics
+from src.bankfeed_service import code_all
 from src.matching_service import match_all
 from src.rulemining_service import mine_rules
 from src.anomaly_service import scan_all
@@ -648,6 +649,25 @@ def matching_pairs(customer_id: str = Query(...)):
     if cached:
         return cached
     result = match_all(v2_client, customer_id=customer_id)
+    cache.set(cache_key, result, ttl=_ttl(300))
+    return result
+
+
+@app.get("/api/bankfeed/lines")
+def bankfeed_lines(customer_id: str = Query(...)):
+    """Statement lines that settle no invoice, each with a proposed GL code.
+
+    The other half of Payment Matching: that page assumes an invoice
+    exists, and a real feed is full of lines where none does. See ADR 0024.
+    """
+    pre = precomputed.load(customer_id, "bankfeed_lines")
+    if pre is not None:
+        return pre
+    cache_key = f"bankfeed:{_V2}{customer_id}"
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+    result = code_all(v2_client, customer_id=customer_id)
     cache.set(cache_key, result, ttl=_ttl(300))
     return result
 

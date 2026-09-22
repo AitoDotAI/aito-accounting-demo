@@ -131,6 +131,56 @@ target.** Both rank identically, but `$or` on the target itself returns
 `invoice_id: null` on every hit after the first, with a 200 — so a client
 reading the predicted field silently loses every candidate but one.
 
+## Pattern: Coding a bank line with no invoice
+
+**Query** — predict a field on the table you are already in, when there is
+no link to traverse:
+
+```json
+{
+  "from": "bank_transactions",
+  "where": {
+    "customer_id": "CUST-0000",
+    "description": "KORTTIMAKSUT TILITYS  19.04.25",
+    "amount": 4703.86,
+    "amount_band": "medium"
+  },
+  "predict": "gl_code",
+  "select": ["$value", "$p", "$why"]
+}
+```
+
+**Send the band, not only the amount.** Aito conditions on a categorical
+`amount_band`, not on a raw `Decimal`. Measured: without the band, the
+same counterparty returns its most common code whatever the size —
+`KORTTIMAKSUT TILITYS` came back `4100` at both €120 and €4800, where the
+truth flips at the small/medium boundary. With it, €120 codes `4500` and
+€4800 codes `4100`. Nothing errors either way, which is what makes it
+worth an assertion in `aito-check`.
+
+A corollary for fixture design: a rule whose threshold does not coincide
+with a band boundary is **unlearnable**, and the model will fall back to
+the majority code rather than fail. Ours put the threshold at the
+boundary once that was measured.
+
+**Reaching the linked table instead** — `fromJoin` predicts a column of
+another table through the link:
+
+```json
+{
+  "from": "bank_transactions",
+  "fromJoin": {"table": "invoices", "base": "invoice_id",
+               "target": "invoice_id", "as": "inv"},
+  "where": {"customer_id": "CUST-0000", "description": "KARDEX FINLAND  Saaja"},
+  "predict": "inv.gl_code"
+}
+```
+
+Address the joined columns **through the alias** — `inv.gl_code`. A bare
+`gl_code` returns `Field not found: gl_code`. Verified: 90% accuracy
+predicting an invoice's GL code from a synthesised statement line on two
+tenants, against baselines of 46% and 25%.
+
 ## Pattern: Rule mining with `_relate`
 
 **Query:**

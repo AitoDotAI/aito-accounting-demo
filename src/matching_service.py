@@ -315,7 +315,18 @@ def match_all(
     """
     try:
         where = {"customer_id": customer_id} if customer_id else {}
-        txn_result = client.search("bank_transactions", where, limit=payment_count)
+        # Only lines that settle an invoice. Since ADR 0024 the feed also
+        # carries bank charges, card settlements, tax and payroll, which
+        # settle nothing — without this clause they arrive here, match
+        # nothing by construction, and the page reports them as failures
+        # of the matcher. They are coded on the Bank Feed view instead.
+        #
+        # This reads `invoice_id` for selection, which is the same
+        # fixture-link compromise the ledger already makes below: a real
+        # deployment separates settlement lines from expense lines in its
+        # bank reconciliation, not by peeking at the answer.
+        txn_where = {**where, "invoice_id": {"$exists": True}}
+        txn_result = client.search("bank_transactions", txn_where, limit=payment_count)
         payments = txn_result.get("hits", [])
         if not payments:
             raise AitoError("no bank transactions for this customer")

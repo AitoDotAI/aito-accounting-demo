@@ -317,6 +317,36 @@ def check_evaluate_baseline_is_scoped(client) -> str:
     return f"accuracy {accuracy:.2f} vs baseline {baseline:.2f} on {samples} rows"
 
 
+def check_bank_feed_codes_uninvoiced_lines(client) -> str:
+    """A statement line with no invoice gets a GL code, with the band sent.
+
+    Asserts the `amount_band` clause specifically. Aito will not condition
+    on a raw Decimal, and without the band the coder silently degrades to
+    the counterparty's most common code — a card settlement returned 4100
+    at both EUR 120 and EUR 4800, where the truth flips at the
+    small/medium boundary. Nothing errors when that happens, so only an
+    assertion catches it. See ADR 0024.
+    """
+    from src.bankfeed_service import code_all
+
+    result = code_all(client, CUSTOMER)
+    lines = result.get("lines", [])
+    require(lines, f"bank feed produced no coded lines for {CUSTOMER}")
+
+    for line in lines:
+        require(line.get("gl_code"), f"{line.get('txn_id')} coded to an empty GL")
+        p = line.get("confidence", 0)
+        require(0 <= p <= 1, f"{line.get('txn_id')} confidence {p} outside [0,1]")
+        require(line.get("gl_label") != line.get("gl_code"),
+                f"GL {line.get('gl_code')} has no label — GL_LABELS is missing it, "
+                "so the page shows a bare number")
+
+    graded = [ln for ln in lines if ln.get("explanation")]
+    require(graded, "no line carried a $why explanation")
+    return (f"{len(lines)} uninvoiced lines coded, "
+            f"{result['metrics']['coded']} above review threshold")
+
+
 def check_payment_matching_ranks(client) -> str:
     """Bank-transaction → invoice matching produces a ranked candidate.
 
@@ -374,6 +404,7 @@ CHECKS: list[Callable[[object], str]] = [
     check_on_diagnostic_shows_exceptions,
     check_evaluate_baseline_is_scoped,
     check_payment_matching_ranks,
+    check_bank_feed_codes_uninvoiced_lines,
     check_help_is_tenant_scoped,
 ]
 

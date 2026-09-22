@@ -29,6 +29,11 @@ GL_LABELS = {
     "5400": "Professional Services",
     "6100": "IT & Software",
     "6200": "Telecom",
+    # Bank-feed codes: these never appear on an invoice, only on a
+    # statement line that settles none. See ADR 0024.
+    "7100": "Bank Charges",
+    "7200": "Taxes",
+    "7300": "Payroll",
 }
 
 

@@ -26,6 +26,7 @@ const NAV_ITEMS: { section: string; items: NavItem[] }[] = [
   { section: "Payables", items: [
     { href: "/invoices", label: "Invoice Processing", badgeKey: "invoices" },
     { href: "/matching", label: "Payment Matching", badgeKey: "matching" },
+    { href: "/bankfeed", label: "Bank Feed" },
     { href: "/formfill", label: "Smart Form Fill" },
   ]},
   { section: "Accounting", items: [

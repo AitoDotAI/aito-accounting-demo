@@ -1,7 +1,7 @@
 # 0024. Code a payment from the bank line, with no invoice
 
 **Date:** 2026-09-22
-**Status:** proposed
+**Status:** blocked — see *What stopped it*
 
 ## Context
 
@@ -118,6 +118,40 @@ useful rather than a dead end.
 `docs/demo-script.md` gains the beat that follows naturally from the
 matching demo: "and these ones have no invoice at all — Aito codes them
 from what you did last time."
+
+## What stopped it
+
+Building decision 1 uncovered an engine bug, and the feature cannot ship
+until it is resolved.
+
+`bank_transactions.invoice_id` is declared `nullable: true` and has been
+since the table was created — but until now every row carried a value. A
+line that settles nothing has no invoice, so it uses that null, which is
+the entire point of the feature. Loading those rows makes `_predict` on
+that link return **500 NoSuchElementException** as soon as text evidence
+is in the `where` — i.e. on exactly the query Payment Matching runs.
+
+Controlled across three environments, identical schema in the first two,
+the only difference being whether any row's link is null:
+
+```
+v2-nullctl    67,892 rows, no null invoice_id    OK,  p=0.0787
+v2-bankfeed   79,866 rows, 11,974 null (15%)     500, NoSuchElementException
+env.master    67,892 rows, no null               OK,  p=0.0787
+```
+
+Three things are needed together — a link target, text evidence, and one
+null link. Drop any one and it answers. Filed as
+`td-20260922122135114887`; `env.master` was never touched and
+accounting.aito.ai is unaffected.
+
+The workaround is a second table, so the link never holds a null. That
+splits one bank feed across two tables in the project that exists to
+teach people how to model for Aito — the same forced denormalisation as
+the `vendor` / `vendor_text` twin in ADR 0021. It is not obviously wrong
+(a settlement and an expense really are different rows), but it should be
+a decision taken on the modelling merits, not because a null crashes a
+query.
 
 ## Out of scope
 

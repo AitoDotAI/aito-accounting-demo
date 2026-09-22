@@ -628,6 +628,98 @@ def generate_employees(customer: dict) -> list[dict]:
     return employees
 
 
+# ── Bank lines with no invoice ────────────────────────────────────
+
+# A real bank feed is not only invoice settlements. These are the lines an
+# AP clerk codes by hand because no invoice ever arrives for them: the bank
+# takes its own fees, a card settlement lands as one lump, utilities and
+# rent go out on direct debit, and tax and payroll are transfers.
+#
+# Each carries the GL code a human would assign, which is what makes the
+# Bank Feed view measurable rather than merely plausible -- the same role
+# `invoice_id` plays for payment matching. See ADR 0024.
+#
+# `counterparty` is what the statement names; it is deliberately NOT a
+# vendor in the master, because that is the point of these lines.
+NON_INVOICE_LINES = [
+    # (counterparty,            gl_code, label,              min,    max)
+    ("PALVELUMAKSU",            "7100", "Bank charges",        3.0,    45.0),
+    ("TILIN KUUKAUSIMAKSU",     "7100", "Bank charges",        5.0,    25.0),
+    ("ELISA OYJ SUORAVELOITUS", "6200", "Telecom",            45.0,   900.0),
+    ("FORTUM OYJ SUORAVELOITUS","5100", "Facilities",        200.0,  4200.0),
+    ("VUOKRA SUORAVELOITUS",    "5100", "Facilities",       1500.0, 18000.0),
+    ("VEROHALLINTO ALV",        "7200", "Taxes",            2000.0, 45000.0),
+    ("VEROHALLINTO ENNAKONPID", "7200", "Taxes",            1500.0, 30000.0),
+    ("PALKAT TILISIIRTO",       "7300", "Payroll",          8000.0, 90000.0),
+    ("TYOELAKEMAKSU",           "7300", "Payroll",          1200.0, 14000.0),
+]
+
+# Counterparties whose code is NOT a lookup. A first cut mapped each
+# counterparty to exactly one GL code, and the model scored 100% on both
+# tenants -- which is the right answer to the wrong question: a ten-entry
+# `dict` scores 100% too, and a demo that proves that invites "why do you
+# need Aito for this?"
+#
+# Real coding is contextual. A card settlement is office spend when it is
+# small and stock when it is large; a telco bill that crosses into
+# hardware is IT, not telecom. These carry the same ambiguity a clerk
+# actually resolves, so the model has to use the amount alongside the
+# name, and the $why panel has something true to show.
+# The threshold IS the band boundary. Aito conditions on `amount_band`,
+# not on a raw Decimal, so a rule that flips at some value the band cannot
+# express is unlearnable -- and the model falls back to the counterparty's
+# majority code, which is what a first cut here did.
+AMBIGUOUS_LINES = [
+    # (counterparty,               below,  above,  min,    max)
+    ("KORTTIMAKSUT TILITYS",       "4500", "4100",  40.0,  6000.0),
+    ("VERKKOKAUPPA SUORAVELOITUS", "4500", "6100",  60.0,  9000.0),
+]
+
+# Share of a customer's bank lines that settle no invoice.
+NON_INVOICE_SHARE = 0.15
+
+
+def generate_non_invoice_lines(
+    customer: dict, count: int, start_index: int,
+) -> list[dict]:
+    """Statement lines that settle no invoice, with the code a human gave.
+
+    Seeded on the customer id rather than drawn from the caller's stream,
+    for the same reason `settlement_entity_for` is: taking draws from the
+    shared per-customer rng would shift every value after it and rewrite
+    all 128,000 invoices for a change that only adds bank rows.
+    """
+    cid = customer["customer_id"]
+    rng = random.Random(f"noinvoice:{cid}")
+    rows = []
+    for i in range(count):
+        if rng.random() < 0.30:
+            counterparty, below, above, lo, hi = rng.choice(AMBIGUOUS_LINES)
+            amount = round(rng.uniform(lo, hi), 2)
+            gl_code = below if amount < AMOUNT_BAND_SMALL_MAX else above
+        else:
+            counterparty, gl_code, _label, lo, hi = rng.choice(NON_INVOICE_LINES)
+            amount = round(rng.uniform(lo, hi), 2)
+        bank = rng.choice(BANKS)
+        d = date(2024, 1, 1) + timedelta(days=rng.randint(0, 900))
+        pvm = f"{d.day:02d}.{d.month:02d}.{str(d.year)[-2:]}"
+        # No reference number: nothing issued one, which is itself the
+        # signal that this line has no invoice behind it.
+        desc = f"{counterparty} / PVM {pvm}" if bank == "OP Bank" else f"{counterparty}  {pvm}"
+        rows.append({
+            "transaction_id": f"{cid}-TXN-{start_index + i:06d}",
+            "customer_id": cid,
+            "description": desc,
+            "vendor_name": None,
+            "amount": amount,
+            "amount_band": amount_band(amount),
+            "bank": bank,
+            "invoice_id": None,
+            "gl_code": gl_code,
+        })
+    return rows
+
+
 # ── Settlement entities ───────────────────────────────────────────
 
 # Finnish finance houses that buy receivables. When a vendor factors its
@@ -919,6 +1011,10 @@ def generate_invoices_for_customer(
                 "amount": round(amount + amt_diff, 2),
                 "bank": bank,
                 "invoice_id": invoice["invoice_id"],
+                "amount_band": amount_band(round(amount + amt_diff, 2)),
+                # Null for a settlement: the code lives on the invoice this
+                # line pays. Only invoice-less lines carry their own.
+                "gl_code": None,
             })
 
         # Override for ~6% of invoices
@@ -945,6 +1041,13 @@ def generate_invoices_for_customer(
                 "confidence_was": round(rng.uniform(0.40, 0.88), 2),
                 "corrected_by": rng.choice(approvers)["name"],
             })
+
+    # Statement lines that settle no invoice -- see ADR 0024. Appended
+    # after the settlement rows so transaction ids stay contiguous.
+    n_non_invoice = round(len(bank_txns) * NON_INVOICE_SHARE / (1 - NON_INVOICE_SHARE))
+    bank_txns.extend(
+        generate_non_invoice_lines(customer, n_non_invoice, len(bank_txns))
+    )
 
     return invoices, bank_txns, overrides
 

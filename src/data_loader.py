@@ -116,6 +116,18 @@ SCHEMAS = {
             "amount": {"type": "Decimal", "nullable": False},
             "bank": {"type": "String", "nullable": False},
             "invoice_id": {"type": "String", "nullable": True, "link": "invoices.invoice_id"},
+            # Same reason invoices carries one: Aito will not condition on a
+            # raw Decimal. Without this the coder predicted the majority GL
+            # for a counterparty and ignored the amount entirely -- a
+            # KORTTIMAKSUT line came back 4100 at both EUR 120 and EUR 4800,
+            # where the truth flips at 500. See ADR 0024.
+            "amount_band": {"type": "String", "nullable": False},
+            # Set only on lines that settle NO invoice -- bank charges,
+            # direct debits, tax, payroll. For a settlement the code lives
+            # on the invoice, and this is null. It is the ground truth the
+            # Bank Feed view is measured against, the same role invoice_id
+            # plays for payment matching. See ADR 0024.
+            "gl_code": {"type": "String", "nullable": True},
         },
     },
     "overrides": {
