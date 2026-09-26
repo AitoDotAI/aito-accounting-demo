@@ -38,14 +38,15 @@ pkgs.mkShell {
     export PLAYWRIGHT_BROWSERS_PATH="${pkgs.playwright-driver.browsers}"
     export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
-    # Project env
-    export AITO_API_URL="''${AITO_API_URL:-http://localhost:8200}"
-    export AITO_API_KEY="''${AITO_API_KEY:-}"
+    # Project env. No AITO_API_URL / AITO_API_KEY defaults here: src/config.py
+    # lets an exported variable win over .env, so a default exported by the
+    # shell would silently shadow the .env credentials. (The old URL default,
+    # localhost:8200, was this demo's own API port, not an Aito engine.)
     export PYTHONDONTWRITEBYTECODE=1
     export PYTHONUNBUFFERED=1
 
     # Remind if Aito key is missing
-    if [ -z "$AITO_API_KEY" ]; then
+    if [ -z "''${AITO_API_KEY:-}" ] && [ ! -f .env ]; then
       echo ""
       echo "  AITO_API_KEY not set. Export it or add to .env"
       echo "  export AITO_API_KEY=your-key-here"

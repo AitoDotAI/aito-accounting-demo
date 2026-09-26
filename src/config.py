@@ -8,7 +8,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 
 @dataclass(frozen=True)
@@ -20,8 +20,27 @@ class Config:
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
+def _load_dotenv(path: Path) -> None:
+    """Fill the environment from a dotenv file without overriding it.
+
+    A variable the caller set wins over the file, so
+    `AITO_API_URL=http://localhost:8080 ./do load-data` really reaches the
+    local engine. This used `load_dotenv(override=True)`, where the file
+    won: on 2026-09-20 a loader run pointed at localhost silently wrote to
+    the production instance (shared.aito.ai) instead.
+
+    An empty variable counts as unset, so a blank export still picks up
+    the file's value rather than shadowing it.
+    """
+    for key, value in dotenv_values(path).items():
+        if value is not None and not os.environ.get(key):
+            os.environ[key] = value
+
+
 def load_config(*, use_dotenv: bool = True) -> Config:
     """Load config from environment, with .env file fallback.
+
+    An explicitly set environment variable wins over .env.
 
     Raises ValueError with a clear message if required variables are
     missing — never returns partial config.
@@ -30,11 +49,7 @@ def load_config(*, use_dotenv: bool = True) -> Config:
     with monkeypatched environment variables.
     """
     if use_dotenv:
-        # override=True so .env values win over shell defaults (e.g.
-        # the fallback AITO_API_URL in shell.nix). Explicit env vars
-        # set before entering the nix shell still work — just set
-        # them after sourcing, or put them in .env.
-        load_dotenv(_PROJECT_ROOT / ".env", override=True)
+        _load_dotenv(_PROJECT_ROOT / ".env")
 
     aito_api_url = os.environ.get("AITO_API_URL", "").rstrip("/")
     aito_api_key = os.environ.get("AITO_API_KEY", "")
