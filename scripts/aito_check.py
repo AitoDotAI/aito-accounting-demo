@@ -317,6 +317,37 @@ def check_evaluate_baseline_is_scoped(client) -> str:
     return f"accuracy {accuracy:.2f} vs baseline {baseline:.2f} on {samples} rows"
 
 
+def check_override_patterns_are_per_pattern(client) -> str:
+    """Each emerging override pattern carries ITS OWN support, within the total.
+
+    On 2.10.3 a v2 relate given a multi-key `where` dict kept one key and
+    dropped the rest with a 200, so every pattern's driver query ran the
+    same relate and /quality/overrides showed the identical
+    "184 matching overrides - lift 7.7x" on every row (one distinct count
+    across seven patterns). The client now sends an explicit $and. This
+    runs against the real engine because the defect lives there: a fake
+    client that honours conditions would pass on the broken code too.
+    """
+    from src.quality_service import compute_override_patterns
+
+    total = client.search(
+        "overrides", {"customer_id": CUSTOMER, "field": "gl_code"}, limit=0
+    ).get("total", 0)
+    patterns = compute_override_patterns(client, CUSTOMER)
+    require(len(patterns) >= 2, f"need 2+ override patterns to compare, got {len(patterns)}")
+
+    for p in patterns:
+        require(0 < p["count"] <= total,
+                f"pattern -> {p['corrected_to']} claims {p['count']} matching overrides, "
+                f"but {CUSTOMER} has {total} gl_code overrides in total")
+    distinct = len({(p["count"], p["lift"]) for p in patterns})
+    require(distinct > 1,
+            f"all {len(patterns)} patterns report the same count and lift "
+            f"({patterns[0]['count']}, {patterns[0]['lift']}x) -- the per-pattern "
+            "relate is not being conditioned on the pattern")
+    return f"{len(patterns)} patterns, {distinct} distinct (count, lift), all <= {total}"
+
+
 def check_payment_matching_ranks(client) -> str:
     """Bank-transaction → invoice matching produces a ranked candidate.
 
@@ -374,6 +405,7 @@ CHECKS: list[Callable[[object], str]] = [
     check_on_diagnostic_shows_exceptions,
     check_evaluate_baseline_is_scoped,
     check_payment_matching_ranks,
+    check_override_patterns_are_per_pattern,
     check_help_is_tenant_scoped,
 ]
 

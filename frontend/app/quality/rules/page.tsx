@@ -227,7 +227,16 @@ export default function RulePerformancePage() {
           )}
         </div>
       </div>
-      <AitoPanel config={PANEL} />
+      {/* The panel's Rules / Avg precision stats were static "--" placeholders
+          and never showed the numbers this page already computes below. */}
+      <AitoPanel config={{
+        ...PANEL,
+        stats: [
+          { value: data ? String(rules.length) : "--", label: "Rules" },
+          { value: data && rules.length > 0 ? `${(avgPrecision * 100).toFixed(0)}%` : "--", label: "Avg precision" },
+          ...PANEL.stats.slice(2),
+        ],
+      }} />
     </>
   );
 }

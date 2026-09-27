@@ -65,6 +65,24 @@ def resolve_env(value: str | None) -> tuple[bool, str | None]:
     return True, name
 
 
+def as_conjunction(where: dict) -> dict:
+    """Spell a multi-key condition as an explicit `$and`.
+
+    Measured on 2.10.3: a v2 `relate` given a `where` dict with several keys
+    keeps ONE of them and drops the rest, silently, with a 200. For the
+    condition field=gl_code AND corrected_value=5200 AND customer_id=CUST-0000
+    (exact count 67) a plain dict gave fCondition 947 -- customer_id alone --
+    while the same three clauses as `$and` gave 67. Every relate count built
+    on a multi-key dict was measured over the wrong population.
+
+    A single key, or a where that is already an operator, is returned
+    unchanged: it already means what it says.
+    """
+    if len(where) <= 1 or any(k.startswith("$") for k in where):
+        return where
+    return {"$and": [{k: v} for k, v in where.items()]}
+
+
 class AitoV2Client:
     """Synchronous client for the Aito v2 REST API.
 
@@ -235,7 +253,7 @@ class AitoV2Client:
         return self.query(
             {
                 "from": table,
-                "where": {"$on": [target, population_where]},
+                "where": {"$on": [target, as_conjunction(population_where)]},
                 "relate": relate_fields,
                 "select": ["related", "lift", "fs"],
                 "orderBy": "lift",
@@ -391,7 +409,7 @@ class AitoV2Client:
         directly. `fs` (with `fOnCondition` / `fCondition`) is already returned.
         """
         response = self.query(
-            {"from": table, "where": where, "relate": [relate_field],
+            {"from": table, "where": as_conjunction(where), "relate": [relate_field],
              "select": ["related", "condition", "lift", "fs"], "orderBy": "lift"}
         )
         for hit in response.get("hits", []):
