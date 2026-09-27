@@ -76,6 +76,21 @@ interface RuleCandidate {
 // How each output field reads in the UI.
 const TARGET_KIND: Record<string, string> = { gl_code: "GL code", approver: "Approver" };
 
+// ── Rule governance (ADR 0025) ─────────────────────────────────────
+// Mining proposes; promotion activates. Only a single "vendor = X" -> GL
+// rule can route today, because routing matches on vendor alone; a
+// multi-condition pattern applied that way would fire far more widely than
+// it was approved for, so it is not offered for promotion yet.
+function isRoutable(c: RuleCandidate): boolean {
+  return c.target_field === "gl_code" && c.clauses.length === 1 && c.clauses[0].field === "vendor";
+}
+
+function activeKey(vendor: string, gl: string): string {
+  return `${vendor}|${gl}`;
+}
+
+interface ActiveRevision { vendor: string | null; target_value: string; target_field: string; }
+
 interface RulesResponse {
   candidates: RuleCandidate[];
   metrics: { total: number; strong: number; review: number; weak: number; coverage_gain: number };
@@ -178,8 +193,41 @@ export default function RuleMiningPage() {
   const [drilldown, setDrilldown] = useState<{ rule: RuleCandidate; invoices: DrilldownInvoice[]; counts?: DrillCounts; diagnosis?: Diagnosis; diagLoading?: boolean } | null>(null);
   const [drillLoading, setDrillLoading] = useState(false);
 
+  const [active, setActive] = useState<Set<string>>(new Set());
+  const [promoting, setPromoting] = useState<string | null>(null);
+
+  function loadActive() {
+    apiFetch<{ rules: ActiveRevision[] }>(`/api/rules/active?customer_id=${customerId}`)
+      .then((d) => setActive(new Set(
+        d.rules.filter((r) => r.target_field === "gl_code" && r.vendor)
+          .map((r) => activeKey(r.vendor as string, r.target_value)))))
+      .catch(() => setActive(new Set()));
+  }
+
+  async function promote(c: RuleCandidate) {
+    const key = activeKey(c.clauses[0].value, c.target_value);
+    setPromoting(key);
+    try {
+      await apiFetch(`/api/rules/promote`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          customer_id: customerId,
+          rule: { conditions: c.clauses, target: { field: c.target_field, value: c.target_value } },
+          support: { match: c.support_match, total: c.support_total },
+          lift: c.lift,
+          reason: "promoted from Rule Mining review",
+        }),
+      });
+      loadActive();
+    } finally {
+      setPromoting(null);
+    }
+  }
+
   useEffect(() => {
     setData(null); setLive(false); setError(null); setDrilldown(null);
+    loadActive();
     apiFetch<RulesResponse>(`/api/rules/candidates?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
       .catch((e) => setError(e));
@@ -263,7 +311,26 @@ export default function RuleMiningPage() {
                 <div className={`rule-support ${supportClass(c.support_ratio)}`} style={{ minWidth: 80, textAlign: "right" }}>{Math.round(c.support_ratio * 100)}%</div>
                 <div style={{ fontSize: 12, fontFamily: "'IBM Plex Mono', monospace", color: "var(--text2)", minWidth: 80, textAlign: "right" }}>{c.coverage}%</div>
                 <div style={{ textAlign: "center" }}>{strengthBadge(c.strength)}</div>
-                <div style={{ minWidth: 100, textAlign: "right" }}>
+                <div style={{ minWidth: 170, textAlign: "right", display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
+                  {isRoutable(c) && active.has(activeKey(c.clauses[0].value, c.target_value)) ? (
+                    <span style={{ fontSize: 11, color: "var(--green, #2e7d32)", fontWeight: 600 }} title="Promoted: this rule routes invoices">Active ✓</span>
+                  ) : c.strength === "strong" ? (
+                    <button
+                      disabled={!isRoutable(c) || promoting !== null}
+                      onClick={(e) => { e.stopPropagation(); promote(c); }}
+                      title={isRoutable(c)
+                        ? "Make this rule route invoices. Recorded with its current support, as the audit trail."
+                        : "Multi-condition rules can't route yet: routing matches on vendor alone (ADR 0025)."}
+                      style={{
+                        fontSize: 11, padding: "3px 8px", borderRadius: 4,
+                        border: "1px solid var(--gold-dark)", background: "var(--gold-light)",
+                        color: "var(--gold-dark)", cursor: isRoutable(c) ? "pointer" : "not-allowed",
+                        opacity: isRoutable(c) ? 1 : 0.45, fontFamily: "inherit",
+                      }}
+                    >
+                      {promoting === activeKey(c.clauses[0].value, c.target_value) ? "Promoting…" : "Promote"}
+                    </button>
+                  ) : null}
                   <button
                     onClick={(e) => { e.stopPropagation(); openDrilldown(c); }}
                     style={{

@@ -1,5 +1,6 @@
 """Quality dashboard service — aggregate metrics per customer."""
 
+import json
 from src.aito_client import AitoClient, AitoError
 from src.employee_directory import resolve, tenant_employee_names
 
@@ -330,11 +331,13 @@ def mine_rules_for_customer(client: AitoClient, customer_id: str, top_n: int = 8
 
 
 def snapshot_rules_to_revisions(client: AitoClient, customer_id: str) -> int:
-    """Write the current mined rule set to rule_revisions.
+    """Append a point-in-time snapshot of the mined rule set to rule_revisions.
 
-    Each call closes any open revisions (sets valid_to) for rules that
-    no longer match the live mining output, and opens a new row for
-    every currently-mined rule. Returns the number of revisions written.
+    A REPORT, not a way rules become active: it appends one row per mined
+    rule and closes nothing. (An earlier docstring said it closed revisions
+    for rules no longer mined; it never did.) Which rules route is decided
+    by promotion -- see src/rule_governance.py and ADR 0025. Returns the
+    number of rows written.
 
     For SOX: querying "rules as of timestamp X" becomes a single
     WHERE valid_from <= X AND (valid_to IS NULL OR valid_to > X).
@@ -610,8 +613,7 @@ def compute_evaluations_matrix(client: AitoClient, customer_id: str) -> dict:
 def compute_rule_performance(client: AitoClient, customer_id: str | None = None) -> dict:
     """Mine deterministic rules from _relate, then replay them on the
     customer's invoices and report precision, coverage, owner, last review."""
-    import hashlib
-    from datetime import datetime, timedelta
+    from datetime import datetime
     from src.invoice_service import GL_LABELS
 
     if not customer_id:
@@ -637,12 +639,19 @@ def compute_rule_performance(client: AitoClient, customer_id: str | None = None)
     except AitoError:
         pass
 
-    mined = mine_rules_for_customer(client, customer_id, top_n=10)
+    # The rules IN FORCE, not the miner's candidates: a rule is listed here
+    # only while its latest revision is a promotion (ADR 0025). Before this
+    # the page replayed the top 10 mined rules while routing used the top 8,
+    # so it listed two rules that routed nothing.
+    from src.rule_governance import routed_revisions
+    revisions = routed_revisions(client, customer_id)
     employee_names = tenant_employee_names(client, customer_id)
 
-    today = datetime.utcnow().date()
     rules_data = []
-    for rule in mined:
+    for rev in revisions:
+        rule = {"name": rev["rule_name"], "vendor": rev["vendor"],
+                "gl_code": rev["target_value"], "approver": rev["approver"],
+                "lift": rev["lift"]}
         # Replay rule against the sample
         matches = [inv for inv in invoices if inv.get("vendor") == rule["vendor"]]
         n_match = len(matches)
@@ -653,9 +662,9 @@ def compute_rule_performance(client: AitoClient, customer_id: str | None = None)
         precision = correct_gl / n_match
         coverage_pct = round(n_match / max(1, len(invoices)) * 100, 1)
 
-        seed = int(hashlib.md5(rule["name"].encode()).hexdigest(), 16)
-        days_ago = seed % 90
-        last_reviewed = (today - timedelta(days=days_ago)).isoformat()
+        # From the record, not invented. This used to be a date derived from
+        # a hash of the rule name, and "owner" the tenant's busiest corrector.
+        last_reviewed = datetime.utcfromtimestamp(rev["valid_from"]).date().isoformat()
 
         rules_data.append({
             "rule": rule["name"],
@@ -666,8 +675,12 @@ def compute_rule_performance(client: AitoClient, customer_id: str | None = None)
             "total_matches": n_match,
             "correct": correct_gl,
             "disagreeing": disagreeing,
-            "owner": owner,
+            "owner": rev.get("changed_by") or owner,
             "last_reviewed": last_reviewed,
+            "promoted_support": f"{rev['support_match']}/{rev['support_total']}",
+            # The rule itself, so the page can demote it by identity.
+            "rule_def": {"conditions": json.loads(rev["conditions"]),
+                         "target": {"field": rev["target_field"], "value": rev["target_value"]}},
             "lift": rule["lift"],
             "trend": "stable" if precision >= 0.95 else ("drifting" if precision >= 0.80 else "degrading"),
             "status": "Active" if precision >= 0.95 else ("Drifting" if precision >= 0.80 else "Stale"),

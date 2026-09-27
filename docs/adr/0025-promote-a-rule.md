@@ -89,6 +89,53 @@ audit record: who, when, with what evidence.
   code already declares (plan item 7), so rule history is queryable with
   `relate`.
 
+## What building it changed
+
+**Revisions are append-only events, not rows closed in place.** Promote,
+demote and supersede each ADD a row; a rule's state is its latest row.
+Nothing in the table is ever rewritten, which is what an audit trail
+should be, and it needs no update primitive on a v2 collection. Events on
+one rule are stamped strictly after the previous one, because
+`valid_from` is whole seconds and a demote and re-promote in the same
+second would otherwise tie.
+
+**Day one verified live** on env `v2-governance`, CUST-0000/0001/0007:
+seeding promotes exactly the 8 rules that routed before, the routed set
+is identical, 0 of 15 invoice predictions differ, and re-seeding changes
+nothing. Getting to 0 needed one fix: seeded rules first carried a
+different name format, and the name appears in every routed invoice's
+explanation, so 9 of 15 differed for that alone.
+
+**The Rules page now lists 8 rules, not 10.** It used to replay the top
+10 mined rules while routing used the top 8, so it listed two rules that
+routed nothing. It now lists the rules in force. Its "Owner" and "Last
+reviewed" columns were fabricated -- the busiest corrector, and a date
+hashed from the rule name -- and are now who promoted it and when.
+
+**Promote and Demote are public, rate-limited writes**, like the demo's
+existing form-fill submit and rule snapshot. A visitor can demote the
+shown rules; `./do seed-rules` restores them.
+
+**Deploy order matters.** If the code is live before `rule_revisions` is
+migrated and seeded, no rule is promoted and Invoice Processing silently
+routes nothing by rule. `aito-check` now fails in exactly that state.
+Order: migrate the table to a collection, `./do seed-rules`, deploy,
+rebuild the precompute. The old code is unaffected by the first two.
+
+### Open: Rule Mining's candidates cannot be promoted yet
+
+Every strong candidate on Rule Mining is a multi-condition pattern
+(`vendor AND category -> gl_code`, `amount_band AND vendor -> approver`);
+CUST-0000 has 31 strong candidates and 0 single-vendor ones. Routing
+applies one rule's GL code *and* approver together, matching on vendor
+alone, so none of them can route, and the Promote button is disabled with
+the reason in its tooltip. Demote on the Rules page is fully functional.
+
+Making Rule Mining's Promote real needs routing to evaluate conjunctions
+and to set GL code and approver independently -- a refactor of the core
+invoice path that would re-open the day-one identity verified above.
+That is a decision, not a detail.
+
 ## Aito usage
 
 None new. Reads are `_query` on `rule_revisions`; writes are the existing

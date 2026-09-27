@@ -24,6 +24,7 @@ from src.formfill_service import predict_fields
 from src.invoice_service import predict_batch, compute_metrics
 from src.matching_service import match_all
 from src.rulemining_service import mine_rules
+from src.rule_governance import routing_rules
 from src.anomaly_service import scan_all
 from src.quality_service import get_quality_overview
 from src.rate_limit import check_rate_limit
@@ -164,13 +165,12 @@ def _warm_top_customers():
             return
 
         from src.invoice_service import predict_invoice, compute_metrics
-        from src.quality_service import mine_rules_for_customer
 
         def warm_one(cust, deep=False):
             cid = cust["customer_id"]
             try:
                 # Mine per-customer rules once and cache for downstream use
-                mined = mine_rules_for_customer(v2_client, cid)
+                mined = routing_rules(v2_client, cid)  # promoted rules route (ADR 0025)
                 cache.set(f"mined_rules:{_V2}{cid}", mined, ttl=_ttl(1800))
 
                 # Fast: invoices + quality (always)
@@ -610,8 +610,7 @@ def invoices_pending(customer_id: str = Query(...), page: int = 1, per_page: int
                         with cache.compute_lock(rules_key):
                             rules = cache.get(rules_key)
                             if rules is None:
-                                from src.quality_service import mine_rules_for_customer
-                                rules = mine_rules_for_customer(v2_client, customer_id)
+                                rules = routing_rules(v2_client, customer_id)  # promoted rules route (ADR 0025)
                                 cache.set(rules_key, rules, ttl=_ttl(1800))
 
                     from concurrent.futures import ThreadPoolExecutor
@@ -650,6 +649,72 @@ def matching_pairs(customer_id: str = Query(...)):
     result = match_all(v2_client, customer_id=customer_id)
     cache.set(cache_key, result, ttl=_ttl(300))
     return result
+
+
+# ── Rule governance (ADR 0025) ────────────────────────────────────
+#
+# Mining proposes; promotion activates. These three calls are shaped around
+# the governance act, not around GL codes -- a rule is {conditions, target}
+# -- so the agent demo's governance view can mirror them unchanged.
+#
+# Public and rate-limited like the demo's other writes (form-fill submit,
+# rule snapshot): a visitor can promote or demote, and `./do seed-rules`
+# restores the seeded set.
+
+def _require_rule(body: dict) -> dict:
+    rule = body.get("rule") or {}
+    conditions, target = rule.get("conditions"), rule.get("target")
+    if not (isinstance(conditions, list) and conditions
+            and all(isinstance(c, dict) and c.get("field") and "value" in c for c in conditions)):
+        raise HTTPException(400, "rule.conditions must be a non-empty list of {field, value}")
+    if not (isinstance(target, dict) and target.get("field") and "value" in target):
+        raise HTTPException(400, "rule.target must be {field, value}")
+    if not body.get("customer_id"):
+        raise HTTPException(400, "customer_id is required")
+    return rule
+
+
+@app.post("/api/rules/promote")
+def rules_promote(body: dict):
+    """Make a rule active. Returns the revision written: the audit record."""
+    from src import rule_governance
+    rule = _require_rule(body)
+    support = body.get("support") or {}
+    if not (isinstance(support.get("match"), int) and isinstance(support.get("total"), int)
+            and 0 < support["match"] <= support["total"]):
+        raise HTTPException(400, "support must be {match, total} with 0 < match <= total")
+    revision = rule_governance.promote(
+        v2_client, body["customer_id"], rule, support,
+        reason=str(body.get("reason") or "promoted from review"),
+        changed_by=str(body.get("changed_by") or "demo user"),
+        approver=body.get("approver"), lift=body.get("lift"),
+    )
+    rule_governance.refresh_governed_views(body["customer_id"])
+    return {"revision": revision}
+
+
+@app.post("/api/rules/demote")
+def rules_demote(body: dict):
+    """Stop a rule routing. 409 when it is not currently active."""
+    from src import rule_governance
+    rule = _require_rule(body)
+    try:
+        revision = rule_governance.demote(
+            v2_client, body["customer_id"], rule,
+            reason=str(body.get("reason") or "demoted from review"),
+            changed_by=str(body.get("changed_by") or "demo user"),
+        )
+    except rule_governance.RuleNotActive as exc:
+        raise HTTPException(409, str(exc)) from None
+    rule_governance.refresh_governed_views(body["customer_id"])
+    return {"revision": revision}
+
+
+@app.get("/api/rules/active")
+def rules_active(customer_id: str = Query(...)):
+    """The rules in force for a tenant, as revision rows."""
+    from src import rule_governance
+    return {"rules": rule_governance.active_rules(v2_client, customer_id)}
 
 
 @app.get("/api/rules/drilldown")

@@ -151,6 +151,13 @@ cmd_dev_v2() {
   cmd_dev
 }
 
+# Promote each tenant's currently-routing rules once, so routing is
+# unchanged on the day governance lands (ADR 0025). Idempotent.
+cmd_seed_rules() {
+  cd "$SCRIPT_DIR"
+  uv run python scripts/seed_promoted_rules.py "$@"
+}
+
 cmd_precompute() {
   cd "$SCRIPT_DIR"
   echo "Pre-computing predictions for all customers..."
@@ -438,6 +445,7 @@ case "${1:-help}" in
   v2-build)        cmd_v2_build "${@:2}" ;;
   precompute)      cmd_precompute "${@:2}" ;;
   precompute-v2)   cmd_precompute_v2 "${@:2}" ;;
+  seed-rules)      cmd_seed_rules "${@:2}" ;;
   screenshots)     cmd_screenshots "${@:2}" ;;
   test)            cmd_test ;;
   aito-check)      cmd_aito_check "${@:2}" ;;

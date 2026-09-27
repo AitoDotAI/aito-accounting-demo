@@ -188,22 +188,37 @@ SCHEMAS = {
             "prev_article_id": {"type": "String", "nullable": True, "link": "help_articles.article_id"},
         },
     },
+    # Append-only record of which rules route invoices and why. A rule's
+    # current state is its latest row; nothing here is ever rewritten, so
+    # the table is the audit trail. See ADR 0025 and src/rule_governance.py.
     "rule_revisions": {
         "type": "table",
         "columns": {
             "revision_id": {"type": "String", "nullable": False},
             "customer_id": {"type": "String", "nullable": False, "link": "customers.customer_id"},
+            # Identity of the rule: its conditions and the field it sets.
+            # Set on governance events; absent on older snapshot rows.
+            "rule_key": {"type": "String", "nullable": True},
+            "conditions": {"type": "String", "nullable": True},  # JSON [{field, value}]
+            "target_field": {"type": "String", "nullable": True},
+            "target_value": {"type": "String", "nullable": True},
             "rule_name": {"type": "String", "nullable": False},
-            "vendor": {"type": "String", "nullable": False},
-            "gl_code": {"type": "String", "nullable": False},
-            "approver": {"type": "String", "nullable": False, "link": "employees.employee_id"},
+            # vendor / gl_code are kept for the history and drift readers,
+            # which predate generic rules; null when a rule has neither.
+            "vendor": {"type": "String", "nullable": True},
+            "gl_code": {"type": "String", "nullable": True},
+            "approver": {"type": "String", "nullable": True, "link": "employees.employee_id"},
             "support_match": {"type": "Int", "nullable": False},
             "support_total": {"type": "Int", "nullable": False},
             "support_ratio": {"type": "Decimal", "nullable": False},
             "lift": {"type": "Decimal", "nullable": False},
             "valid_from": {"type": "Int", "nullable": False},
             "valid_to": {"type": "Int", "nullable": True},
-            "change_reason": {"type": "String", "nullable": True},  # "new" / "drift" / "approver_change" / "deprecated"
+            # Event: "promoted" / "demoted" / "seed" … or "snapshot" / "drift"
+            # for the older point-in-time reports.
+            "change_reason": {"type": "String", "nullable": True},
+            "note": {"type": "String", "nullable": True},       # the person's reason
+            "changed_by": {"type": "String", "nullable": True},
         },
     },
 }

@@ -348,6 +348,28 @@ def check_override_patterns_are_per_pattern(client) -> str:
     return f"{len(patterns)} patterns, {distinct} distinct (count, lift), all <= {total}"
 
 
+def check_rules_route_only_when_promoted(client) -> str:
+    """Invoices route on promoted rules, and there ARE promoted rules.
+
+    ADR 0025: mining proposes, promotion activates. Two failures this
+    catches that nothing else would:
+    - the code deployed before `./do seed-rules` ran, so no rule is
+      promoted and Invoice Processing silently routes nothing by rule;
+    - a rule routing that has no open promotion behind it.
+    """
+    from src.rule_governance import active_rules, routing_rules
+
+    routed = routing_rules(client, CUSTOMER)
+    require(routed, f"no promoted rules route for {CUSTOMER} -- run `./do seed-rules` "
+                    "after migrating rule_revisions, or every invoice goes to _predict")
+    promoted = {(r["vendor"], r["target_value"]) for r in active_rules(client, CUSTOMER)
+                if r["change_reason"] == "promoted"}
+    for r in routed:
+        require((r["vendor"], r["gl_code"]) in promoted,
+                f"rule {r['name']!r} routes without an open promotion")
+    return f"{len(routed)} rules route, each with an open promotion"
+
+
 def check_payment_matching_ranks(client) -> str:
     """Bank-transaction → invoice matching produces a ranked candidate.
 
@@ -405,6 +427,7 @@ CHECKS: list[Callable[[object], str]] = [
     check_on_diagnostic_shows_exceptions,
     check_evaluate_baseline_is_scoped,
     check_payment_matching_ranks,
+    check_rules_route_only_when_promoted,
     check_override_patterns_are_per_pattern,
     check_help_is_tenant_scoped,
 ]
