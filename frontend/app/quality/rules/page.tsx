@@ -86,6 +86,16 @@ export default function RulePerformancePage() {
 
   // Demote: stop the rule routing invoices. Appends a revision -- the
   // promotion stays in the record (ADR 0025).
+  async function resetRules() {
+    setDemoting("__reset__");
+    try {
+      await apiFetch(`/api/rules/reset?customer_id=${customerId}`, { method: "POST" });
+      setReloadTick((t) => t + 1);
+    } finally {
+      setDemoting(null);
+    }
+  }
+
   async function demote(r: RulePerf) {
     if (!r.rule_def) return;
     setDemoting(r.rule);
@@ -210,7 +220,22 @@ export default function RulePerformancePage() {
             <div className="card">
               <div className="card-header">
                 <span className="card-title">All rules — precision measured against ground truth</span>
-                <span className="card-hint">Avg precision: {(avgPrecision * 100).toFixed(0)}%</span>
+                <span className="card-hint">
+                  Avg precision: {(avgPrecision * 100).toFixed(0)}%
+                  {" · "}
+                  {/* Promote/Demote are public on this demo. The seeded rules
+                      come back hourly on their own; this does it now. */}
+                  <button
+                    onClick={resetRules}
+                    disabled={demoting !== null}
+                    title="Demo rules reset to the seeded set automatically every hour. This resets them now."
+                    style={{ fontSize: 11, background: "transparent", border: "none", padding: 0,
+                             color: "var(--gold-dark)", textDecoration: "underline", cursor: "pointer",
+                             fontFamily: "inherit" }}
+                  >
+                    {demoting === "__reset__" ? "Resetting…" : "Reset demo rules"}
+                  </button>
+                </span>
               </div>
               <table className="table">
                 <thead>

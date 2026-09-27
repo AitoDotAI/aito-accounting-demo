@@ -113,8 +113,22 @@ reviewed" columns were fabricated -- the busiest corrector, and a date
 hashed from the rule name -- and are now who promoted it and when.
 
 **Promote and Demote are public, rate-limited writes**, like the demo's
-existing form-fill submit and rule snapshot. A visitor can demote the
-shown rules; `./do seed-rules` restores them.
+existing form-fill submit and rule snapshot. So the demo restores itself:
+
+- `restore_seed` puts a tenant back to its seeded state — re-promotes a
+  seeded rule that was demoted or superseded, demotes any rule promoted
+  beyond the seed. It reads the record rather than re-mining, so it is
+  cheap, and it appends events like every other change.
+- It runs hourly on a daemon thread (`src/rule_restore.py`,
+  `RULES_RESTORE_SECONDS`, `0` disables) over just the tenants a visitor
+  touched, and on demand from "Reset demo rules" on the Rules page.
+- Every public change is recorded as `demo user`. Nothing authenticates a
+  name, so accepting one from the request would put an unverified claim in
+  the audit record, and would let a change hide from the restore.
+
+Verified live on `v2-governance`: a visitor demoting a seeded rule and
+promoting a stray one is undone by one pass (2 events), the active set
+equals the seed again, and a second pass writes nothing.
 
 **Deploy order matters.** If the code is live before `rule_revisions` is
 migrated and seeded, no rule is promoted and Invoice Processing silently
@@ -134,7 +148,57 @@ the reason in its tooltip. Demote on the Rules page is fully functional.
 Making Rule Mining's Promote real needs routing to evaluate conjunctions
 and to set GL code and approver independently -- a refactor of the core
 invoice path that would re-open the day-one identity verified above.
-That is a decision, not a detail.
+That is a decision, not a detail. **Decided (CPO, 2026-09-28):** ship
+with Promote disabled on Rule Mining, and do conjunction routing as its
+own reviewed follow-up, designed below.
+
+## Follow-up: routing conjunction rules
+
+### What changes
+
+1. **Match all conditions.** A rule applies to an invoice when every one
+   of its conditions equals the invoice's field (`vendor`, `category`,
+   `amount_band`, `vendor_country` — the input-side fields the miner
+   already restricts itself to). `check_rules` becomes a conjunction
+   matcher; a single-vendor rule is the one-condition case, so today's
+   rules behave exactly as now.
+2. **Route each field independently.** A rule sets ONE target field. For
+   an invoice, `gl_code` comes from the highest-priority matching rule
+   targeting `gl_code`, else from `_predict`; `approver` likewise. The two
+   are chosen separately, so a GL-only rule no longer needs an approver
+   attached, and `source` becomes per field (`rule` / `aito`).
+3. **Precedence when several rules match the same field:** the most
+   specific rule wins (most conditions), then the higher promoted support
+   ratio, then the earlier promotion. Deterministic, and explainable in
+   one line on the invoice.
+4. **Conflicts are refused at promotion, not resolved at routing.** Two
+   active rules with the same conditions and field is already impossible
+   (the rule key). Rules whose conditions nest (`vendor=X` and
+   `vendor=X AND category=Y`) are allowed — precedence handles them — and
+   the Promote response names any rule it will override.
+5. **The vendor-rule approver.** Today's seeded vendor rules carry the
+   approver the miner predicted. They become two revisions — the GL rule
+   and an approver rule with the same condition — so behaviour is kept
+   and the model is uniform.
+
+### Extending the day-one check
+
+The identity check is what makes this safe to ship, and it extends
+directly:
+
+- **Seeded behaviour must not move.** Re-run the same comparison —
+  invoice predictions with the pre-governance vendor rules vs. the
+  post-refactor router — on the same tenants and invoices; it must stay at
+  0 differing. Splitting a vendor rule into a GL rule plus an approver rule
+  (item 5) is where it could regress, so it is the case to watch.
+- **New rules must only change what they claim.** Promote one conjunction
+  rule in a branch environment and diff every invoice prediction before
+  and after: every changed invoice must match all of the rule's
+  conditions, and only the rule's target field may change. Anything else
+  is a precedence bug.
+- **Both run in `aito-check`** against the branch before promote, not only
+  as unit tests, for the same reason as the relate check (ADR 0020/0025):
+  the risk is in how rules meet real invoices.
 
 ## Aito usage
 

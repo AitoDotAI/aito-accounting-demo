@@ -178,3 +178,82 @@ def test_events_in_the_same_second_keep_their_order(store):
 
     assert [r["target_value"] for r in rg.active_rules(store, "CUST-0007")] == ["5100"]
     assert len({r["valid_from"] for r in store.rows}) == 3
+
+
+MINED = [{"name": "Europress Group Oy → GL 5100", "vendor": "Europress Group Oy",
+          "gl_code": "5100", "approver": "CUST-0007-EMP-0002",
+          "support_match": 505, "support_total": 513, "support_ratio": 0.984, "lift": 3.1}]
+OTHER = {"conditions": [{"field": "vendor", "value": "Kotimekko Oy"}],
+         "target": {"field": "gl_code", "value": "5300"}}
+
+
+class TestTheDemoRestoresItself:
+    """Demote is public. One visitor must not strip the routed rules for
+    every later visitor until a person notices -- the seeded state comes
+    back on its own, and on request."""
+
+    def _state(self, store):
+        return sorted((r["vendor"], r["target_value"]) for r in rg.active_rules(store, "CUST-0007"))
+
+    def test_a_demoted_seed_rule_is_restored(self, store):
+        rg.seed_promoted(store, "CUST-0007", MINED, now=100)
+        rg.demote(store, "CUST-0007", EUROPRESS, reason="x", changed_by="demo user", now=200)
+
+        changed = rg.restore_seed(store, "CUST-0007", now=300)
+
+        assert self._state(store) == [("Europress Group Oy", "5100")]
+        assert changed == 1
+
+    def test_a_superseded_seed_rule_is_restored(self, store):
+        rg.seed_promoted(store, "CUST-0007", MINED, now=100)
+        _promote(store, {**EUROPRESS, "target": {"field": "gl_code", "value": "5400"}}, t=200)
+
+        rg.restore_seed(store, "CUST-0007", now=300)
+
+        assert self._state(store) == [("Europress Group Oy", "5100")]
+
+    def test_a_visitor_promoted_rule_is_demoted(self, store):
+        rg.seed_promoted(store, "CUST-0007", MINED, now=100)
+        rg.promote(store, "CUST-0007", OTHER, {"match": 9, "total": 9},
+                   reason="x", changed_by="demo user", now=200)
+
+        rg.restore_seed(store, "CUST-0007", now=300)
+
+        assert self._state(store) == [("Europress Group Oy", "5100")]
+
+    def test_restoring_the_seeded_state_is_a_no_op(self, store):
+        rg.seed_promoted(store, "CUST-0007", MINED, now=100)
+        before = len(store.rows)
+
+        assert rg.restore_seed(store, "CUST-0007", now=300) == 0
+        assert len(store.rows) == before
+
+    def test_restore_is_recorded_not_rewritten(self, store):
+        rg.seed_promoted(store, "CUST-0007", MINED, now=100)
+        rg.demote(store, "CUST-0007", EUROPRESS, reason="x", changed_by="demo user", now=200)
+
+        rg.restore_seed(store, "CUST-0007", now=300, changed_by="auto-restore")
+
+        assert [(r["change_reason"], r["changed_by"]) for r in store.rows] == [
+            ("promoted", "seed"), ("demoted", "demo user"), ("promoted", "auto-restore")]
+
+
+def test_the_hourly_pass_restores_only_tenants_a_visitor_touched(store, monkeypatch):
+    from src import rule_restore
+    refreshed = []
+    monkeypatch.setattr(rg, "refresh_governed_views", lambda cid: refreshed.append(cid))
+    rg.seed_promoted(store, "CUST-0007", MINED, now=100)
+    rg.seed_promoted(store, "CUST-0000", MINED, now=100)
+    rg.demote(store, "CUST-0007", EUROPRESS, reason="x", changed_by="demo user", now=200)
+
+    changed = rule_restore.restore_once(store)
+
+    assert changed == {"CUST-0007": 1}
+    assert refreshed == ["CUST-0007"]
+
+
+def test_the_restore_timer_can_be_disabled(monkeypatch):
+    from src import rule_restore
+    monkeypatch.setenv("RULES_RESTORE_SECONDS", "0")
+
+    assert rule_restore.start(None) is False

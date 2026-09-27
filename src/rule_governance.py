@@ -194,6 +194,55 @@ def seed_promoted(client, customer_id: str, mined: list[dict], *, now: int | Non
     return written
 
 
+def _rule_of(row: dict) -> dict:
+    return {"conditions": json.loads(row["conditions"]),
+            "target": {"field": row["target_field"], "value": row["target_value"]}}
+
+
+def restore_seed(client, customer_id: str, *, changed_by: str = "auto-restore",
+                 now: int | None = None) -> int:
+    """Put a tenant's rules back to their seeded state. Returns events written.
+
+    Promote and Demote are public on the demo, so one visitor could strip
+    the routed rules for every later visitor. This undoes that without a
+    person: every seeded rule is re-promoted with its seeded target if it
+    was demoted or superseded, and any rule promoted beyond the seed is
+    demoted. It reads the record rather than re-mining, so it is cheap
+    enough to run on a timer. Like every change, it APPENDS events; the
+    visitor's demotion stays in the history.
+    """
+    history = _history(client, customer_id)
+    seeded: dict[str, dict] = {}
+    for row in sorted(history, key=lambda r: r["valid_from"]):
+        if row["changed_by"] == "seed" and row["change_reason"] == "promoted":
+            seeded.setdefault(row["rule_key"], row)
+
+    written = 0
+    active = {r["rule_key"]: r for r in active_rules(client, customer_id)}
+    for key, seed in seeded.items():
+        current = active.get(key)
+        if current is None or current["target_value"] != seed["target_value"]:
+            promote(client, customer_id, _rule_of(seed),
+                    {"match": seed["support_match"], "total": seed["support_total"]},
+                    reason="restore the demo's seeded rules", changed_by=changed_by,
+                    approver=seed["approver"], lift=seed["lift"],
+                    name=seed["rule_name"], now=now)
+            written += 1
+    for key, row in active.items():
+        if key not in seeded:
+            demote(client, customer_id, _rule_of(row),
+                   reason="restore the demo's seeded rules", changed_by=changed_by, now=now)
+            written += 1
+    return written
+
+
+def tenants_changed_by_visitors(client) -> set[str]:
+    """Tenants whose rules a visitor has touched, so the restore timer does
+    not have to read every tenant's history each hour."""
+    result = client.search(REVISIONS_TABLE, {"changed_by": "demo user"}, limit=_MAX_REVISIONS)
+    return {r["customer_id"] for r in result.get("hits", [])}
+
+
 # Views whose content depends on which rules are active.
 GOVERNED_VIEWS = ("invoices_pending", "rule_performance")
 

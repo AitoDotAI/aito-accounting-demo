@@ -104,6 +104,13 @@ from src import precompute_store  # noqa: E402
 # restarts it or calls /api/cache/invalidate -- see ADR 0023.
 from src import cache_versions, cache_watch  # noqa: E402
 
+# Undo visitors' rule changes on a timer, so the public Promote / Demote
+# cannot leave the demo stripped for everyone after them (ADR 0025).
+from src import rule_restore  # noqa: E402
+
+if rule_restore.start(v2_client):
+    print(f"Rule restore running every {rule_restore.interval_seconds()}s")
+
 cache_versions.init(aito)
 if cache_watch.start():
     print(f"Cache watcher polling every {cache_watch.interval_seconds()}s")
@@ -658,8 +665,11 @@ def matching_pairs(customer_id: str = Query(...)):
 # -- so the agent demo's governance view can mirror them unchanged.
 #
 # Public and rate-limited like the demo's other writes (form-fill submit,
-# rule snapshot): a visitor can promote or demote, and `./do seed-rules`
-# restores the seeded set.
+# rule snapshot). Every public change is recorded as "demo user": nothing
+# here authenticates a name, so accepting one from the body would put an
+# unverified claim in the audit record -- and would let a change hide from
+# the hourly restore, which looks for exactly that attribution.
+PUBLIC_ACTOR = "demo user"
 
 def _require_rule(body: dict) -> dict:
     rule = body.get("rule") or {}
@@ -686,7 +696,7 @@ def rules_promote(body: dict):
     revision = rule_governance.promote(
         v2_client, body["customer_id"], rule, support,
         reason=str(body.get("reason") or "promoted from review"),
-        changed_by=str(body.get("changed_by") or "demo user"),
+        changed_by=PUBLIC_ACTOR,
         approver=body.get("approver"), lift=body.get("lift"),
     )
     rule_governance.refresh_governed_views(body["customer_id"])
@@ -702,12 +712,26 @@ def rules_demote(body: dict):
         revision = rule_governance.demote(
             v2_client, body["customer_id"], rule,
             reason=str(body.get("reason") or "demoted from review"),
-            changed_by=str(body.get("changed_by") or "demo user"),
+            changed_by=PUBLIC_ACTOR,
         )
     except rule_governance.RuleNotActive as exc:
         raise HTTPException(409, str(exc)) from None
     rule_governance.refresh_governed_views(body["customer_id"])
     return {"revision": revision}
+
+
+@app.post("/api/rules/reset")
+def rules_reset(customer_id: str = Query(...)):
+    """Put this tenant's rules back to the seeded demo state, now.
+
+    The same restore also runs hourly on its own (src/rule_restore.py), so
+    one visitor's demotions never outlast the hour for everyone else.
+    """
+    from src import rule_governance
+    changed = rule_governance.restore_seed(v2_client, customer_id, changed_by="reset")
+    if changed:
+        rule_governance.refresh_governed_views(customer_id)
+    return {"events_written": changed}
 
 
 @app.get("/api/rules/active")
