@@ -1,7 +1,7 @@
 # 0025. Promote a mined rule into the rule set
 
 **Date:** 2026-09-27
-**Status:** proposed — waits behind the live fixes and the v2.11.0 re-check
+**Status:** approved in principle (CPO, 2026-09-27) — next after `c0ad20d` deploys
 
 ## Context
 
@@ -59,6 +59,26 @@ closes any open revision for the same `(vendor, target)` it supersedes.
 Recording the support at promotion time is what lets drift mean
 something: the Rules page already compares current precision against
 first precision, and "first" becomes "when a person approved it".
+
+### An API another demo can mirror
+
+This is also the reference implementation of the agent storyline's
+governance use case, so the endpoint is shaped around the governance
+act rather than around GL codes:
+
+```
+POST /api/rules/promote   {customer_id, rule: {conditions: [{field, value}],
+                                                target: {field, value}},
+                           support: {match, total}, reason}
+POST /api/rules/demote    {customer_id, rule_id, reason}
+GET  /api/rules/active    ?customer_id=
+```
+
+`conditions` is a list even though `check_rules` matches on vendor
+alone today, and `target` names its field, so the same shape carries an
+approver rule or a multi-clause `$patterns` rule without a new endpoint.
+The response returns the revision row that was written, which is the
+audit record: who, when, with what evidence.
 
 ### 3. Fix what the table claims
 
