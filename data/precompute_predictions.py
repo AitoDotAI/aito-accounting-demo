@@ -251,18 +251,19 @@ def precompute_one_customer(
             sizes["prediction_accuracy"] = save(
                 customer_id, "prediction_accuracy", EMPTY_PREDICTION_ACCURACY,
             )
-            sizes["rule_performance"] = save(
-                customer_id, "rule_performance", EMPTY_RULE_PERFORMANCE,
-            )
         else:
             sizes["prediction_accuracy"] = save(
                 customer_id, "prediction_accuracy",
                 precompute_prediction_accuracy(client, customer_id),
             )
-            sizes["rule_performance"] = save(
-                customer_id, "rule_performance",
-                precompute_rule_performance_for_customer(client, customer_id),
-            )
+        # Outside the skip on purpose. Rule performance searches and mines
+        # rules; it never calls _evaluate, so the reason for skipping does
+        # not apply. It used to share the skip, which served an empty Rules
+        # view to 19 of 20 tenants -- "only Tornio has rules".
+        sizes["rule_performance"] = save(
+            customer_id, "rule_performance",
+            precompute_rule_performance_for_customer(client, customer_id),
+        )
     return sizes
 
 
