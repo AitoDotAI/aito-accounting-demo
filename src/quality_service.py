@@ -30,25 +30,49 @@ def compute_automation_breakdown(client: AitoClient, customer_id: str | None = N
 
 
 def compute_override_stats(client: AitoClient, customer_id: str | None = None) -> dict:
-    """Compute override statistics from the overrides table."""
+    """Override totals for the tenant, and how they split by field and corrector.
+
+    Counted by Aito, not by the page. This used to fetch `limit=100` rows and
+    report `len(hits)`, so the KPI read "OVERRIDES 100" on a tenant with 947
+    and the breakdowns came from whichever 100 rows arrived first.
+
+    `get` returns each distinct value of a field with its exact frequency
+    `$f`, in one query. Measured on CUST-0000: `field` gives 3 values and
+    `corrected_by` 122, each summing to 947 -- the tenant's total.
+    """
+    where = {"customer_id": customer_id} if customer_id else {}
     try:
-        where = {"customer_id": customer_id} if customer_id else {}
-        all_overrides = client.search("overrides", where, limit=100)
+        total = int(client.search("overrides", where, limit=0).get("total", 0))
+        by_field = _value_counts(client, where, "field")
+        by_corrector = _value_counts(client, where, "corrected_by")
     except AitoError:
         return {"total": 0, "by_field": {}, "by_corrector": {}}
-
-    hits = all_overrides.get("hits", [])
-    total = len(hits)
-    by_field: dict[str, int] = {}
-    by_corrector: dict[str, int] = {}
-
-    for h in hits:
-        field = h.get("field", "unknown")
-        by_field[field] = by_field.get(field, 0) + 1
-        corrector = h.get("corrected_by", "unknown")
-        by_corrector[corrector] = by_corrector.get(corrector, 0) + 1
-
     return {"total": total, "by_field": by_field, "by_corrector": by_corrector}
+
+
+# Distinct values `get` may return. It must cover every value, or the
+# breakdown silently undercounts -- a tenant already has 122 correctors.
+_MAX_DISTINCT = 1000
+
+
+def _value_counts(client: AitoClient, where: dict, field: str) -> dict[str, int]:
+    """Exact count of overrides per distinct value of `field`."""
+    result = client.query({
+        "from": "overrides", "where": where, "get": field,
+        "select": ["$value", "$f"], "orderBy": "$f", "limit": _MAX_DISTINCT,
+    })
+    if int(result.get("total", 0)) > _MAX_DISTINCT:
+        raise ValueError(
+            f"overrides.{field} has {result['total']} distinct values, more than "
+            f"the {_MAX_DISTINCT} this breakdown reads -- it would undercount")
+    # `get` lists every distinct value in the WHOLE table and filters only
+    # the frequencies: for CUST-0003 it returned 122 correctors, 116 of them
+    # with $f 0 -- other tenants' staff. A value that never occurs in this
+    # population is not one of its values, so zero-frequency rows are not
+    # counts to show. Without this the page reported 122 correctors on a
+    # tenant that has 6.
+    return {str(h["$value"]): int(h["$f"]) for h in result.get("hits", [])
+            if int(h["$f"]) > 0}
 
 
 def compute_override_patterns(client: AitoClient, customer_id: str | None = None) -> list[dict]:

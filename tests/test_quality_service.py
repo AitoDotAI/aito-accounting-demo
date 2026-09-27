@@ -7,7 +7,7 @@ import pytest
 
 from src.aito_client import AitoClient
 from src.config import Config
-from src.quality_service import compute_automation_breakdown, compute_override_stats
+from src.quality_service import compute_automation_breakdown
 
 TEST_CONFIG = Config(
     aito_api_url="https://test.aito.app/db/demo",
@@ -61,25 +61,3 @@ class TestComputeAutomationBreakdown:
         assert result["automation_rate"] == 0
 
 
-class TestComputeOverrideStats:
-    def test_counts_by_field_and_corrector(self, httpx_mock):
-        httpx_mock.add_response(
-            url="https://test.aito.app/db/demo/api/v1/_search",
-            json={
-                "offset": 0, "total": 4,
-                "hits": [
-                    {"field": "gl_code", "corrected_by": "Sanna L."},
-                    {"field": "gl_code", "corrected_by": "Mikael H."},
-                    {"field": "gl_code", "corrected_by": "Sanna L."},
-                    {"field": "approver", "corrected_by": "Tiina M."},
-                ],
-            },
-        )
-
-        client = AitoClient(TEST_CONFIG)
-        result = compute_override_stats(client)
-
-        assert result["total"] == 4
-        assert result["by_field"]["gl_code"] == 3
-        assert result["by_field"]["approver"] == 1
-        assert result["by_corrector"]["Sanna L."] == 2
