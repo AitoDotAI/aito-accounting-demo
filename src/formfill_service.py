@@ -9,6 +9,8 @@ explanations so the UI can show dropdowns and factor breakdowns.
 from concurrent.futures import ThreadPoolExecutor
 
 from src.aito_client import AitoClient, AitoError, aito_call_log
+from src.amount_band import amount_band
+from src.employee_directory import resolve, tenant_employee_names
 from src.invoice_service import GL_LABELS, _extract_alternatives, _extract_why_factors
 
 # Fields that can be predicted, with display labels and formatting.
@@ -33,8 +35,11 @@ PREDICT_FIELDS = [
 ]
 
 # All field names that can be used as input context
-INPUT_FIELDS = {"vendor", "amount", "gl_code", "approver", "cost_centre",
-                "vat_pct", "payment_method", "due_days", "category"}
+# `description` and `amount_band` are what make this more than a vendor
+# master-data lookup: WHAT was bought, and how big it was. Without them a
+# vendor the tenant had never used got no answer at all.
+INPUT_FIELDS = {"vendor", "amount", "amount_band", "description", "gl_code", "approver",
+                "cost_centre", "vat_pct", "payment_method", "due_days", "category"}
 
 COST_CENTRE_LABELS = {
     "CC-100": "General & Admin",
@@ -141,6 +146,13 @@ def predict_fields(client: AitoClient, where: dict) -> dict:
     Returns predictions for the remaining fields, each with top-3
     alternatives and $why explanations.
     """
+    # Aito ignores a raw Decimal amount; it conditions on the band.
+    if "amount" in where and "amount_band" not in where:
+        try:
+            where = {**where, "amount_band": amount_band(float(where["amount"]))}
+        except (TypeError, ValueError):
+            raise ValueError(f"amount must be a number, got {where['amount']!r}") from None
+
     # Determine which fields to predict (skip fields already provided)
     provided = set(where.keys())
     fields_to_predict = [
@@ -193,6 +205,12 @@ def predict_fields(client: AitoClient, where: dict) -> dict:
         display_value = format_value(raw_value, field_def["format"])
         confidence = round(top["$p"], 4)
         label_map = _label_map_for_field(field_name)
+        if field_name == "approver":
+            # `approver` holds an employee_id. Submit the id, SHOW the name:
+            # this rendered "CUST-0000-EMP-0015" to the person filling the form.
+            names = tenant_employee_names(client, where.get("customer_id", ""))
+            display_value = resolve(names, raw_value) or raw_value
+            label_map = names
         alternatives = _extract_alternatives(hits, label_map)
         auto_prefill = confidence >= threshold
         return {
