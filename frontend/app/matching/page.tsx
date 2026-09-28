@@ -12,6 +12,11 @@ import { apiFetch, fmtAmount } from "@/lib/api";
 import type { AitoPanelConfig } from "@/lib/types";
 
 const PANEL: AitoPanelConfig = {
+  source: [
+    { label: "Payment matching", path: "src/matching_service.py" },
+    { label: "This page", path: "frontend/app/matching/page.tsx" },
+    { label: "Aito v2 client", path: "src/aito_v2_client.py" },
+  ],
   operation: "_predict",
   stats: [
     { value: "_predict", label: "Operation" },

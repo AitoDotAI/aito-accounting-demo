@@ -10,6 +10,12 @@ import { apiFetch } from "@/lib/api";
 import type { AitoPanelConfig } from "@/lib/types";
 
 const PANEL: AitoPanelConfig = {
+  source: [
+    { label: "Evaluation matrix", path: "src/quality_service.py" },
+    { label: "_evaluate runner", path: "src/evaluation_service.py" },
+    { label: "This page", path: "frontend/app/quality/evaluations/page.tsx" },
+    { label: "Aito v2 client", path: "src/aito_v2_client.py" },
+  ],
   operation: "_evaluate (cross-validation)",
   stats: [
     { value: "_evaluate", label: "Operator" },

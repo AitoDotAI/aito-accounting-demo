@@ -44,6 +44,11 @@ interface Template {
 }
 
 const PANEL_CONFIG: AitoPanelConfig = {
+  source: [
+    { label: "Multi-tenant landing", path: "src/multitenancy_service.py" },
+    { label: "This page", path: "frontend/app/page.tsx" },
+    { label: "Aito v2 client", path: "src/aito_v2_client.py" },
+  ],
   operation: "_predict",
   stats: [
     { value: "_predict", label: "Operation" },

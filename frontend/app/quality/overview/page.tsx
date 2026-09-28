@@ -10,6 +10,11 @@ import { apiFetch } from "@/lib/api";
 import type { AitoPanelConfig } from "@/lib/types";
 
 const PANEL: AitoPanelConfig = {
+  source: [
+    { label: "Quality metrics", path: "src/quality_service.py" },
+    { label: "This page", path: "frontend/app/quality/overview/page.tsx" },
+    { label: "Aito v2 client", path: "src/aito_v2_client.py" },
+  ],
   operation: "_search (aggregates)",
   stats: [
     { value: "78%", label: "Automation" },

@@ -10,6 +10,11 @@ import { apiFetch, fmtAmount } from "@/lib/api";
 import type { AitoPanelConfig } from "@/lib/types";
 
 const PANEL: AitoPanelConfig = {
+  source: [
+    { label: "Anomaly detection", path: "src/anomaly_service.py" },
+    { label: "This page", path: "frontend/app/anomalies/page.tsx" },
+    { label: "Aito v2 client", path: "src/aito_v2_client.py" },
+  ],
   operation: "_predict (inverse)",
   stats: [
     { value: "Inverse", label: "Approach" },

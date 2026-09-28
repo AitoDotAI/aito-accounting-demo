@@ -7,6 +7,9 @@ import { useCustomer } from "@/lib/customer-context";
 import type { AitoPanelConfig } from "@/lib/types";
 
 const PANEL: AitoPanelConfig = {
+  source: [
+    { label: "This page", path: "frontend/app/integrations/page.tsx" },
+  ],
   operation: "outbound webhooks",
   stats: [
     { value: "Sketch", label: "Status" },

@@ -17,6 +17,12 @@ import { apiFetch, fmtAmount } from "@/lib/api";
 import type { InvoicesResponse, InvoicePrediction, AitoPanelConfig } from "@/lib/types";
 
 const PANEL_CONFIG: AitoPanelConfig = {
+  source: [
+    { label: "GL + approver prediction", path: "src/invoice_service.py" },
+    { label: "Which rules route (governance)", path: "src/rule_governance.py" },
+    { label: "This page", path: "frontend/app/invoices/page.tsx" },
+    { label: "Aito v2 client", path: "src/aito_v2_client.py" },
+  ],
   operation: "_predict",
   stats: [
     { value: "_predict", label: "Operation" },

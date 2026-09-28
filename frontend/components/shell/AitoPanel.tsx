@@ -11,6 +11,8 @@ interface AitoPanelProps {
   lastResponseMs?: number | null;
 }
 
+const REPO = "https://github.com/AitoDotAI/aito-accounting-demo";
+
 const IconChevronRight = () => (
   <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" width="12" height="12">
     <path d="M5.5 3l5 5-5 5L4 11.5 7.5 8 4 4.5z"/>
@@ -191,6 +193,21 @@ export default function AitoPanel({ config, lastQuery, lastResponseMs }: AitoPan
           <strong>Note:</strong> GL codes (4100, 5300, 6200…) are
           illustrative — real Finnish Liikekirjuri uses different
           numbering. Chosen for demo readability.
+        </div>
+      </div>
+
+      <div className="aito-section">
+        <div className="aito-section-title">Source code</div>
+        <div className="aito-links">
+          {config.source.map((src, i) => (
+            <a key={i} className="aito-link" href={`${REPO}/blob/main/${src.path}`} target="_blank" rel="noreferrer">
+              <IconCode /> {src.label}
+              <span style={{ marginLeft: 6, fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, opacity: 0.6 }}>{src.path}</span>
+            </a>
+          ))}
+          <a className="aito-link" href={REPO} target="_blank" rel="noreferrer">
+            <IconCode /> The whole demo on GitHub
+          </a>
         </div>
       </div>
 

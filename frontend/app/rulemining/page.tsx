@@ -12,6 +12,12 @@ import { apiFetch } from "@/lib/api";
 import type { AitoPanelConfig } from "@/lib/types";
 
 const PANEL: AitoPanelConfig = {
+  source: [
+    { label: "Rule mining ($patterns)", path: "src/rulemining_service.py" },
+    { label: "Promote / demote", path: "src/rule_governance.py" },
+    { label: "This page", path: "frontend/app/rulemining/page.tsx" },
+    { label: "Aito v2 client", path: "src/aito_v2_client.py" },
+  ],
   operation: "_relate",
   stats: [
     { value: "30", label: "Patterns" },

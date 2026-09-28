@@ -12,6 +12,11 @@ import Spinner from "@/components/ui/Spinner";
 import type { AitoPanelConfig } from "@/lib/types";
 
 const PANEL_CONFIG: AitoPanelConfig = {
+  source: [
+    { label: "Form-field prediction", path: "src/formfill_service.py" },
+    { label: "This page", path: "frontend/app/formfill/page.tsx" },
+    { label: "Aito v2 client", path: "src/aito_v2_client.py" },
+  ],
   operation: "_predict (multi-field)",
   stats: [
     { value: "0.95", label: "Avg confidence" },
