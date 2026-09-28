@@ -12,6 +12,11 @@ import { apiFetch } from "@/lib/api";
 import type { AitoPanelConfig } from "@/lib/types";
 
 const PANEL: AitoPanelConfig = {
+  source: [
+    { label: "Override patterns", path: "src/quality_service.py" },
+    { label: "This page", path: "frontend/app/quality/overrides/page.tsx" },
+    { label: "Aito v2 client", path: "src/aito_v2_client.py" },
+  ],
   operation: "_relate (override mining)",
   stats: [
     { value: "_relate", label: "Operation" },

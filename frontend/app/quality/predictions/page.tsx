@@ -10,6 +10,11 @@ import { apiFetch, fmtAmount } from "@/lib/api";
 import type { AitoPanelConfig } from "@/lib/types";
 
 const PANEL: AitoPanelConfig = {
+  source: [
+    { label: "_evaluate runner", path: "src/evaluation_service.py" },
+    { label: "This page", path: "frontend/app/quality/predictions/page.tsx" },
+    { label: "Aito v2 client", path: "src/aito_v2_client.py" },
+  ],
   operation: "_evaluate (with cases)",
   stats: [
     { value: "_evaluate", label: "Operator" },

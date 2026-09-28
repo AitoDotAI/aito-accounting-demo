@@ -6,6 +6,9 @@ import AitoPanel from "@/components/shell/AitoPanel";
 import type { AitoPanelConfig } from "@/lib/types";
 
 const PANEL_CONFIG: AitoPanelConfig = {
+  source: [
+    { label: "This page", path: "frontend/app/procurement/page.tsx" },
+  ],
   operation: "Procurement-ready",
   stats: [
     { value: "SOC 2", label: "Posture" },

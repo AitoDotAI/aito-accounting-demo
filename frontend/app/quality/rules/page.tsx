@@ -12,6 +12,13 @@ import { apiFetch } from "@/lib/api";
 import type { AitoPanelConfig } from "@/lib/types";
 
 const PANEL: AitoPanelConfig = {
+  source: [
+    { label: "Rules in force", path: "src/quality_service.py" },
+    { label: "Promote / demote", path: "src/rule_governance.py" },
+    { label: "Hourly demo reset", path: "src/rule_restore.py" },
+    { label: "This page", path: "frontend/app/quality/rules/page.tsx" },
+    { label: "Aito v2 client", path: "src/aito_v2_client.py" },
+  ],
   operation: "_predict (replay)",
   stats: [{ value: "--", label: "Rules" }, { value: "--", label: "Avg precision" }, { value: "Indexed", label: "Model" }, { value: "$invoices", label: "Records" }],
   description: "Rule precision measured by replaying each rule against this customer's invoices and comparing the predicted GL code to the actual one.",

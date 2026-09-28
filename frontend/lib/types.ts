@@ -99,6 +99,13 @@ export interface AitoPanelConfig {
   description: string;
   query: string;
   links: { label: string; url: string }[];
+  /**
+   * The code behind this page, linked from the pane. Required: this repo is
+   * a reference implementation, and a pane that shows the Aito query but not
+   * the code that runs it leaves the reader one step short. `path` is
+   * repo-relative, e.g. "src/matching_service.py".
+   */
+  source: { label: string; path: string }[];
   /** Optional: ordered narrative of which Aito calls produce which UI parts */
   flow_steps?: AitoFlowStep[];
 }
