@@ -41,3 +41,15 @@ test("a legacy flat factor is judged by its field", () => {
 test("the base rate has no propositions and is never hidden", () => {
   assert.equal(isHiddenInPresentation({ type: "base", base_p: 0.2 }), false);
 });
+
+test("a page can keep a field that is its evidence, number and all", () => {
+  // Payment matching: the amount agreeing to the cent is the reason.
+  const amount = pattern({ field: "amount", value: "5966.97" });
+  assert.equal(isHiddenInPresentation(amount, ["amount"]), false);
+  assert.equal(isHiddenInPresentation(pattern({ field: "invoice_id.amount", value: "5966.97" }), ["amount"]), false);
+});
+
+test("keeping amount does not keep category or other bare numbers", () => {
+  assert.equal(isHiddenInPresentation(pattern({ field: "category", value: "logistics" }), ["amount"]), true);
+  assert.equal(isHiddenInPresentation(pattern({ field: "description", value: "07.05.24" }), ["amount"]), true);
+});

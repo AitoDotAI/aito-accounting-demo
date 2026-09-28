@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from src.aito_client import AitoClient, AitoError
 from src.invoice_service import _extract_why_factors
+from src.reference_lookup import find_invoice_by_reference, quotes_reference
 
 
 @dataclass
@@ -25,6 +26,9 @@ class MatchPair:
     bank_name: str | None
     confidence: float
     status: str  # "matched", "suggested", "unmatched"
+    # "reference" when the bank line quoted the invoice's reference and
+    # no prediction was made; "aito" when `_predict` chose the invoice.
+    matched_by: str | None = None
     explanation: list[dict] = field(default_factory=list)
     # Aito's own $p for this invoice, distinct from `confidence`, which
     # blends it with amount proximity. The panel needs both: the factor
@@ -43,6 +47,7 @@ class MatchPair:
             "confidence": round(self.confidence, 2),
             "model_p": self.model_p,
             "status": self.status,
+            "matched_by": self.matched_by,
             "explanation": self.explanation,
         }
 
@@ -229,6 +234,7 @@ def match_bank_txn_to_invoice(
         confidence=best_score,
         model_p=best_p,
         status=status,
+        matched_by="aito",
         explanation=explanation,
     )
 
@@ -287,10 +293,58 @@ def _build_explanation(
     return factors
 
 
+def match_reference_first(client: AitoClient, txn: dict, open_invoices: list[dict]) -> MatchPair | None:
+    """Match a payment by its quoted reference, or ask Aito if it quotes none.
+
+    A reference on the bank line names the invoice outright, so reading
+    it is the answer and not evidence to weigh. Only a payment without
+    one -- or quoting one that matches no open invoice -- needs a
+    prediction (ADR 0026).
+    """
+    invoice = find_invoice_by_reference(txn["description"], open_invoices)
+    if invoice is None:
+        return match_bank_txn_to_invoice(client, txn, open_invoices)
+    return MatchPair(
+        invoice_id=invoice["invoice_id"],
+        invoice_vendor=invoice["vendor"],
+        invoice_amount=invoice["amount"],
+        bank_txn_id=txn["txn_id"],
+        bank_description=txn["description"],
+        bank_amount=txn["amount"],
+        bank_name=txn["bank"],
+        confidence=1.0,
+        status="matched",
+        matched_by="reference",
+    )
+
+
+def choose_payments_to_show(
+    payments: list[dict],
+    invoices_by_id: dict[str, dict],
+    unreferenced: int,
+    referenced: int,
+) -> list[dict]:
+    """Payments without a reference first, then a few that quote one.
+
+    The unreferenced ones are the work an AP clerk actually does and the
+    case Aito is here for; the referenced ones show that the lookup is
+    handled too. Reads each payment's own invoice through the fixture's
+    ground-truth link, which only decides what to DISPLAY.
+    """
+    def quotes_own_reference(payment: dict) -> bool:
+        return quotes_reference(payment["description"], invoices_by_id[payment["invoice_id"]]["reference"])
+
+    without = [p for p in payments if not quotes_own_reference(p)]
+    with_reference = [p for p in payments if quotes_own_reference(p)]
+    return without[:unreferenced] + with_reference[:referenced]
+
+
 def match_all(
     client: AitoClient,
     customer_id: str | None = None,
-    payment_count: int = 8,
+    unreferenced_count: int = 6,
+    referenced_count: int = 2,
+    payment_window: int = 40,
     ledger_decoys: int = 30,
 ) -> dict:
     """Assign each incoming payment to an invoice in the open ledger.
@@ -312,25 +366,40 @@ def match_all(
     a real deployment reads that from its AP ledger instead. The matcher
     itself never sees the link: it gets `description` and `amount` only,
     and has to re-derive the pairing.
+
+    Which payments are shown is chosen from a wider window so that most of
+    them quote no reference (ADR 0026). The first eight of the table are
+    typically 5-7 referenced payments, whose answer is printed on the
+    bank line.
     """
     try:
         where = {"customer_id": customer_id} if customer_id else {}
-        txn_result = client.search("bank_transactions", where, limit=payment_count)
-        payments = txn_result.get("hits", [])
-        if not payments:
+        window = client.search("bank_transactions", where, limit=payment_window).get("hits", [])
+        if not window:
             raise AitoError("no bank transactions for this customer")
 
+        window_invoice_ids = sorted({t["invoice_id"] for t in window})
+        window_invoices = {
+            row["invoice_id"]: row
+            for row in client.search(
+                "invoices", {**where, "invoice_id": {"$or": window_invoice_ids}},
+                limit=len(window_invoice_ids),
+            ).get("hits", [])
+        }
+        missing = set(window_invoice_ids) - set(window_invoices)
+        if missing:
+            raise AitoError(f"bank transactions link to invoices Aito did not return: {sorted(missing)}")
+
+        payments = choose_payments_to_show(window, window_invoices, unreferenced_count, referenced_count)
         # The invoices these payments settle — the ledger must contain
         # them, or the task is unanswerable rather than hard.
-        target_ids = sorted({t["invoice_id"] for t in payments if t.get("invoice_id")})
-        target_rows = client.search(
-            "invoices", {**where, "invoice_id": {"$or": target_ids}}, limit=len(target_ids),
-        ).get("hits", []) if target_ids else []
+        target_rows = [window_invoices[t["invoice_id"]] for t in payments]
 
         # Decoys, so choosing the right invoice is a real discrimination.
         decoy_rows = client.search("invoices", where, limit=ledger_decoys).get("hits", [])
     except AitoError:
         return {"pairs": [], "metrics": {"matched": 0, "suggested": 0, "unmatched": 0,
+                                         "matched_by_reference": 0, "matched_by_aito": 0,
                                          "total": 0, "avg_confidence": 0, "match_rate": 0}}
 
     ledger: dict[str, dict] = {}
@@ -339,6 +408,7 @@ def match_all(
             "invoice_id": row["invoice_id"],
             "vendor": row["vendor"],
             "amount": row["amount"],
+            "reference": row["reference"],
         })
 
     bank_txns = [{
@@ -359,7 +429,7 @@ def match_all(
     pairs: list[MatchPair] = []
     remaining = list(ledger.values())
     for txn in bank_txns:
-        pair = match_bank_txn_to_invoice(client, txn, remaining)
+        pair = match_reference_first(client, txn, remaining)
         if pair is not None:
             pairs.append(pair)
             # One invoice settles one payment.
@@ -375,7 +445,9 @@ def match_all(
     matched = sum(1 for p in pairs if p.status == "matched")
     suggested = sum(1 for p in pairs if p.status == "suggested")
     unmatched = sum(1 for p in pairs if p.status == "unmatched")
-    confidences = [p.confidence for p in pairs if p.confidence > 0]
+    # Averaged over Aito's matches only: a lookup's 1.0 is not a
+    # confidence the model earned, and would inflate the figure.
+    confidences = [p.confidence for p in pairs if p.matched_by == "aito"]
     avg_conf = sum(confidences) / len(confidences) if confidences else 0.0
 
     return {
@@ -384,6 +456,8 @@ def match_all(
             "matched": matched,
             "suggested": suggested,
             "unmatched": unmatched,
+            "matched_by_reference": sum(1 for p in pairs if p.matched_by == "reference"),
+            "matched_by_aito": sum(1 for p in pairs if p.matched_by == "aito"),
             "total": len(pairs),
             "ledger_size": len(ledger),
             "avg_confidence": round(avg_conf, 2),

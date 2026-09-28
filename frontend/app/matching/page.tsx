@@ -14,6 +14,7 @@ import type { AitoPanelConfig } from "@/lib/types";
 const PANEL: AitoPanelConfig = {
   source: [
     { label: "Payment matching", path: "src/matching_service.py" },
+    { label: "Reference lookup (no Aito)", path: "src/reference_lookup.py" },
     { label: "This page", path: "frontend/app/matching/page.tsx" },
     { label: "Aito v2 client", path: "src/aito_v2_client.py" },
   ],
@@ -26,7 +27,8 @@ const PANEL: AitoPanelConfig = {
   ],
   description:
     '<code style="font-size:11px;color:var(--aito-accent)">_predict invoice_id</code> traverses the schema link from bank_transactions to invoices, returning full invoice rows ranked by association. ' +
-    "Aito matches description text tokens and amount to find the most likely invoice.",
+    "A payment that quotes its invoice's reference is matched by lookup first; only the ones without a reference reach Aito, " +
+    "which matches on the payer's name, description text and amount.",
   query: JSON.stringify(
     { from: "bank_transactions", where: { description: "KESKO OYJ HELSINKI", amount: 4220 }, predict: "invoice_id", select: ["$p", "invoice_id", "vendor", "amount", "$why"] },
     null, 2,
@@ -35,10 +37,11 @@ const PANEL: AitoPanelConfig = {
     { label: "API reference: _predict", url: "https://aito.ai/docs/api/#post-api-v1-predict" },
   ],
   flow_steps: [
-    { n: 1, produces: "Open invoices list", call: "_search invoices WHERE customer_id LIMIT 20" },
-    { n: 2, produces: "Bank transactions list", call: "_search bank_transactions WHERE customer_id LIMIT 10" },
-    { n: 3, produces: "Best matching invoice per txn", call: "_predict invoice_id WHERE customer_id, description, amount" },
-    { n: 4, produces: "$why explanation per match", call: "Same _predict, select [$p, $why]; expanded on click" },
+    { n: 1, produces: "Incoming payments", call: "_search bank_transactions WHERE customer_id LIMIT 40; show 6 without a reference, 2 with" },
+    { n: 2, produces: "Open ledger", call: "_search invoices WHERE customer_id (the payments' invoices + 30 others)" },
+    { n: 3, produces: "Matched by reference", call: "No Aito call: the bank line quotes an open invoice's reference" },
+    { n: 4, produces: "Best matching invoice for the rest", call: "_predict invoice_id WHERE customer_id, description, vendor_name, amount" },
+    { n: 5, produces: "$why explanation per Aito match", call: "Same _predict, select [$p, $why]; expanded on click" },
   ],
 };
 
@@ -63,16 +66,31 @@ interface MatchPair {
   bank_name: string | null;
   confidence: number;
   status: "matched" | "suggested" | "unmatched";
+  /** "reference": the bank line quoted the invoice's reference, no prediction made. */
+  matched_by: "reference" | "aito" | null;
   /** $why factors in the same grouped shape as invoice predictions. */
   explanation?: WhyFactor[];
 }
 
 interface MatchResponse {
   pairs: MatchPair[];
-  metrics: { matched: number; suggested: number; unmatched: number; total: number; ledger_size?: number; avg_confidence: number; match_rate: number };
+  metrics: {
+    matched: number; suggested: number; unmatched: number; total: number; ledger_size?: number;
+    matched_by_reference: number; matched_by_aito: number;
+    /** Over Aito's matches only; a lookup's certainty is not the model's. */
+    avg_confidence: number; match_rate: number;
+  };
 }
 
 function connectorBadge(pair: MatchPair) {
+  if (pair.matched_by === "reference") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+        <div style={{ height: 3, width: 48, background: "var(--border)", borderRadius: 2 }} />
+        <span className="badge badge-gray" style={{ fontSize: 10 }}>ref</span>
+      </div>
+    );
+  }
   if (pair.status === "matched" || pair.status === "suggested") {
     const color = pair.status === "matched" ? "#6ab87a" : "var(--gold-mid)";
     const badgeClass = pair.status === "matched" ? "badge badge-green" : "badge badge-gold";
@@ -121,18 +139,18 @@ export default function MatchingPage() {
         <TopBar
           breadcrumb="Payables"
           title="Payment Matching"
-          subtitle={m ? `${m.total} payments \u00B7 ${m.matched} matched \u00B7 ${m.suggested} suggested \u00B7 ${m.unmatched} unmatched \u00B7 ledger of ${m.ledger_size ?? "?"}` : error ? "Backend not reachable" : "Loading..."}
+          subtitle={m ? `${m.total} payments \u00B7 open ledger of ${m.ledger_size ?? "?"}` : error ? "Backend not reachable" : "Loading..."}
           live={live}
         />
         <div className="content">
           <div className="metrics">
-            <div className="metric highlight"><div className="metric-label">Match Rate</div><div className="metric-value">{m ? `${Math.round(m.match_rate * 100)}%` : "--"}</div></div>
-            <div className="metric"><div className="metric-label">Avg Confidence</div><div className="metric-value">{m?.avg_confidence.toFixed(2) ?? "--"}</div></div>
-            <div className="metric"><div className="metric-label">Matched</div><div className="metric-value">{m ? m.matched + m.suggested : "--"}</div></div>
+            <div className="metric highlight"><div className="metric-label">Matched by Aito</div><div className="metric-value">{m?.matched_by_aito ?? "--"}</div></div>
+            <div className="metric"><div className="metric-label">Avg Aito Confidence</div><div className="metric-value">{m?.avg_confidence.toFixed(2) ?? "--"}</div></div>
+            <div className="metric"><div className="metric-label">Matched by Reference</div><div className="metric-value">{m?.matched_by_reference ?? "--"}</div></div>
             <div className="metric"><div className="metric-label">Unmatched</div><div className="metric-value">{m?.unmatched ?? "--"}</div></div>
           </div>
           <div className="card">
-            <div className="card-header"><span className="card-title">Incoming payment &#x2192; Open invoice</span><span className="card-hint">Click a match to see why &middot; Aito _predict invoice_id via schema link</span></div>
+            <div className="card-header"><span className="card-title">Incoming payment &#x2192; Open invoice</span><span className="card-hint">Payments without a reference first &middot; click an Aito match to see why</span></div>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr>
@@ -180,7 +198,21 @@ export default function MatchingPage() {
                       </td>
                       <td className={`match-item ${rowClass}`} style={{ verticalAlign: "middle" }}>
                         {p.invoice_id ? (
-                          <><div className="match-name">{p.invoice_vendor} &middot; {p.invoice_id}</div><div className="match-detail">{fmtAmount(p.invoice_amount)}</div></>
+                          <>
+                            <div className="match-name">{p.invoice_vendor} &middot; {p.invoice_id}</div>
+                            <div className="match-detail">
+                              {fmtAmount(p.invoice_amount)}
+                              {p.matched_by === "reference" && <> &middot; matched by reference, no prediction needed</>}
+                              {/* The reference settles WHICH invoice, not whether it is paid in
+                                  full: a short or over payment still needs the clerk's eye. */}
+                              {p.bank_amount != null && Math.abs(p.bank_amount - p.invoice_amount) >= 0.005 && (
+                                <span style={{ color: "var(--amber)" }}>
+                                  {" "}&middot; {p.bank_amount > p.invoice_amount ? "overpaid" : "underpaid"}{" "}
+                                  {fmtAmount(Math.abs(p.bank_amount - p.invoice_amount))}
+                                </span>
+                              )}
+                            </div>
+                          </>
                         ) : (
                           <div className="match-name" style={{ color: "var(--text3)" }}>No invoice matched</div>
                         )}
@@ -197,6 +229,7 @@ export default function MatchingPage() {
                             confidence={p.confidence}
                             modelP={p.model_p}
                             blendNote={"blended with how closely the amounts agree \u2192"}
+                            keepFields={["amount"]}
                           />
                         </td>
                       </tr>

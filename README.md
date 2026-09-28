@@ -97,8 +97,10 @@ top-3 alternatives + `$why` factors with text-token highlighting.
   "from": "bank_transactions",
   "where": {
     "customer_id": "CUST-0000",
-    "description": "OP /VENDOR/ TELIA FINLAND OYJ /VIITE/ 12345",
-    "amount": 890.50
+    "invoice_id.customer_id": "CUST-0000",
+    "description": "DB-FIN KARDEX FINLAND OY",
+    "vendor_name": "Kardex",
+    "amount": 5966.97
   },
   "predict": "invoice_id",
   "select": ["$p", "invoice_id", "vendor", "amount", "$why"]
@@ -107,6 +109,11 @@ top-3 alternatives + `$why` factors with text-token highlighting.
 
 The `invoice_id` link in the bank_transactions schema lets `_predict`
 return the linked invoice row — no second query, no manual join.
+
+A payment that quotes its invoice's reference number (`VIITE 468883814`)
+is matched by plain lookup and never reaches Aito; the page leads with
+the ones that quote nothing, which is where a model earns its keep
+([ADR 0026](docs/adr/0026-lead-with-payments-that-quote-no-reference.md)).
 
 [→ Implementation](src/matching_service.py) | [Use case guide](docs/use-cases/03-payment-matching.md) | [ADR](docs/adr/0007-payment-matching.md)
 
@@ -384,6 +391,7 @@ adds ~63 ms.
 │   ├── formfill_service.py      # Multi-field predict + predict_template
 │   ├── rulemining_service.py    # Pattern discovery via _relate
 │   ├── matching_service.py      # _predict invoice_id via schema link
+│   ├── reference_lookup.py      # Quoted reference → invoice, no Aito
 │   ├── anomaly_service.py       # Inverse prediction, clustered by reason
 │   ├── help_service.py          # _recommend for help articles
 │   ├── quality_service.py       # mine_rules, _evaluate, override mining

@@ -4,7 +4,6 @@
     ./do eval-matching                     # 25 payments, CUST-0000
     ./do eval-matching --n 50 --pool 60    # bigger sample, harder pool
     ./do eval-matching --v2 --env v2-ref   # against a v2 environment
-    ./do eval-matching --split-on-reference  # quoted vs unquoted, separately
 
 Every other predictive view in this demo can state its accuracy —
 `_evaluate` measures GL coding and approver routing directly. Payment
@@ -38,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.aito_client import AitoClient  # noqa: E402
 from src.config import load_config  # noqa: E402
 from src.matching_service import match_bank_txn_to_invoice  # noqa: E402
+from src.reference_lookup import quotes_reference  # noqa: E402
 
 # Finnish reference formats. The invoice carries the reference the vendor
 # issued; a payment either quotes it or it does not. Stripping it from a
@@ -202,9 +202,6 @@ def main() -> int:
     parser.add_argument("--split-on-settlement", action="store_true",
                         help="split on whether the bank line names the billed vendor "
                              "or a settlement entity (factoring, group, legal entity)")
-    parser.add_argument("--split-on-reference", action="store_true",
-                        help="report quoted-reference and no-reference payments separately — "
-                             "the split that says where a model is actually needed")
     parser.add_argument("--v2", action="store_true", help="evaluate against a v2 environment")
     parser.add_argument("--env", default="v2-demo", help="v2 environment name")
     args = parser.parse_args()
@@ -235,25 +232,6 @@ def main() -> int:
 
     rows = evaluate(client, payments, pool, strip=args.no_reference, workers=args.workers)
 
-    if args.split_on_reference:
-        # Which payments actually quoted their invoice's reference. This
-        # is the split worth reporting: a quoted reference reconciles by
-        # lookup, and the demo should not claim credit for it.
-        by_id = {inv["invoice_id"]: inv for inv in pool}
-        def quoted(row):
-            ref = (by_id.get(row["truth"], {}).get("reference") or "")
-            core = re.sub(r"\D", "", ref)
-            return bool(core) and core in re.sub(r"\D", "", row["description"])
-        with_ref = [r for r in rows if quoted(r)]
-        without = [r for r in rows if not quoted(r)]
-        if with_ref:
-            report("payments that QUOTED the invoice reference", with_ref, len(pool), args.detail)
-        if without:
-            report("payments with NO reference — the case that needs a model",
-                   without, len(pool), args.detail)
-        report("all payments", rows, len(pool), args.detail)
-        return 0
-
     if args.split_on_settlement:
         # Whether the bank line named the billed vendor at all. A payment
         # settled by a factoring house or a group parent carries a name
@@ -276,8 +254,27 @@ def main() -> int:
         report("all payments", rows, len(pool), args.detail)
         return 0
 
-    label = "reference stripped" if args.no_reference else "as generated"
-    report(label, rows, len(pool), args.detail)
+    if not args.no_reference:
+        # Split by whether the payment quoted its invoice's reference --
+        # the same test the Payment Matching page uses to decide whether
+        # to ask Aito at all (ADR 0026). A quoted reference reconciles by
+        # lookup, so blending it in would credit the model with lookups.
+        by_id = {inv["invoice_id"]: inv for inv in pool}
+
+        def quoted(row):
+            return quotes_reference(row["description"], by_id[row["truth"]]["reference"])
+
+        with_ref = [r for r in rows if quoted(r)]
+        without = [r for r in rows if not quoted(r)]
+        if with_ref:
+            report("payments that QUOTED the invoice reference", with_ref, len(pool), args.detail)
+        if without:
+            report("payments with NO reference — the case that needs a model",
+                   without, len(pool), args.detail)
+        report("all payments", rows, len(pool), args.detail)
+        return 0
+
+    report("reference stripped", rows, len(pool), args.detail)
     return 0
 
 

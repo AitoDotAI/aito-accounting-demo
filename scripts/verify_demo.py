@@ -115,7 +115,13 @@ def check_matching_pairs(body: dict) -> str:
     assert pairs, "no matching pairs"
     matched = [p for p in pairs if p.get("status") != "unmatched"]
     assert matched, f"all {len(pairs)} transactions unmatched"
-    return f"{len(matched)} matched / {len(pairs)}"
+    # A payload without `matched_by` predates ADR 0026: the precompute
+    # has not been rebuilt, and the page would lead with lookups again.
+    by_aito = [p for p in pairs if p.get("matched_by") == "aito"]
+    assert len(by_aito) >= 6, (
+        f"only {len(by_aito)} of {len(pairs)} payments matched by Aito — "
+        "stale precompute? run ./do precompute-v2")
+    return f"{len(by_aito)} by Aito, {len(matched) - len(by_aito)} by reference / {len(pairs)}"
 
 
 def check_anomalies(body: dict) -> str:

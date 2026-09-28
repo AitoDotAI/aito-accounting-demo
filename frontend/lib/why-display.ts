@@ -26,7 +26,14 @@ function stripLinkPrefix(field: string): string {
   return field.replace(/^invoice_id\./, "");
 }
 
-export function isHiddenInPresentation(factor: WhyFactor): boolean {
+/**
+ * `keepFields` names fields that ARE the evidence on a given page and so
+ * stay visible even though they are hidden elsewhere: on payment matching
+ * the amount agreeing to the cent is the first thing an accountant checks,
+ * while on GL coding the same exact figure is a coincidence. A kept field
+ * is exempt from the bare-number rule too, since its value is a number.
+ */
+export function isHiddenInPresentation(factor: WhyFactor, keepFields: readonly string[] = []): boolean {
   // A conjunction is hidden whole if any part of it is: its lift belongs
   // to the combination, so showing the remaining parts with that lift
   // would credit them with evidence that was not theirs alone.
@@ -34,7 +41,9 @@ export function isHiddenInPresentation(factor: WhyFactor): boolean {
     ...(factor.propositions ?? []),
     ...(factor.field ? [{ field: factor.field, value: factor.value ?? "" }] : []),
   ];
-  return propositions.some(
-    (p) => FIELDS_HIDDEN_IN_PRESENTATION.has(stripLinkPrefix(p.field)) || PURE_NUMBER.test(p.value),
-  );
+  return propositions.some((p) => {
+    const field = stripLinkPrefix(p.field);
+    if (keepFields.includes(field)) return false;
+    return FIELDS_HIDDEN_IN_PRESENTATION.has(field) || PURE_NUMBER.test(p.value);
+  });
 }
