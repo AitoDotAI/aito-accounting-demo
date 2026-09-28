@@ -78,6 +78,10 @@ Click **Smart Form Fill** in nav.
   green**, with a check icon. Tab through the rest to confirm them.
 - Click `?` next to any prediction — `$why` tooltip shows the input
   features that drove this prediction with their lift values.
+- Clear the form and type a vendor the tenant has never used, then
+  **What was bought** = *Annual software licence renewal*. GL fills
+  from the line text alone (6100 Software, ~78%) — the vendor-less
+  case is where a lookup table has nothing to say.
 - Click **Log submission** in topbar — green banner: "Logged 7 field
   decisions to prediction_log". Real audit table updated in Aito.
 

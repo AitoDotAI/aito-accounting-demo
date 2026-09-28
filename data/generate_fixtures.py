@@ -17,6 +17,9 @@ import math
 import random
 from datetime import date, timedelta
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 random.seed(42)
 
@@ -61,17 +64,9 @@ CAPEX_CATEGORIES = {"it_equipment", "software", "maintenance"}
 # amount_band thresholds (EUR). Derived from `amount` at intake, so it is
 # a legitimate prediction input. `large` (>= 10k) is both the
 # capitalization boundary and the approver escalation boundary.
-AMOUNT_BAND_SMALL_MAX = 1_000.0
-AMOUNT_BAND_LARGE_MIN = 10_000.0
-
-
-def amount_band(amount: float) -> str:
-    """Bucket an invoice amount into small / medium / large."""
-    if amount < AMOUNT_BAND_SMALL_MAX:
-        return "small"
-    if amount >= AMOUNT_BAND_LARGE_MIN:
-        return "large"
-    return "medium"
+# Single definition shared with the services that query this data -- see
+# src/amount_band.py.
+from src.amount_band import AMOUNT_BAND_LARGE_MIN, AMOUNT_BAND_SMALL_MAX, amount_band  # noqa: E402,F401
 
 
 # ── VAT ───────────────────────────────────────────────────────────

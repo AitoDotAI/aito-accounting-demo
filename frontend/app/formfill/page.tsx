@@ -388,6 +388,19 @@ export default function FormFillPage() {
                 </div>
               </div>
 
+              {/* The invoice line text is what an accountant codes from when
+                  the vendor alone is ambiguous or new; it is sent to Aito
+                  as a condition like any other field. */}
+              <div className="field-group">
+                <div className="field-label">What was bought</div>
+                <input
+                  className="field-input"
+                  value={userValues.description || ""}
+                  onChange={(e) => handleChange("description", e.target.value)}
+                  placeholder="e.g. Annual software licence renewal"
+                />
+              </div>
+
               <div className="field-row">
                 <div className="field-group">
                   <div className="field-label">Amount excl. VAT</div>
