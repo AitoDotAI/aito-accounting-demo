@@ -64,6 +64,19 @@ def _query_clause(query: str) -> dict:
     ]}
 
 
+def normalize_page(page: str) -> str:
+    """One spelling of a page path: no trailing slash (except the root).
+
+    The production build uses Next's `trailingSlash: true`, so the help
+    drawer sends `/invoices/`, while every recorded impression says
+    `/invoices`. The page evidence then matched nothing and ranking fell
+    back to generic popularity -- Tornio's own "Approval policy" article,
+    written for the Invoices page, never appeared there. Normalising both
+    the search and the impressions keeps them in one vocabulary.
+    """
+    return page.rstrip("/") or page
+
+
 def search_help(
     client: AitoClient,
     customer_id: str,
@@ -83,7 +96,7 @@ def search_help(
         "article_id.customer_id": _eligibility_clause(customer_id),
     }
     if page:
-        where["page"] = page
+        where["page"] = normalize_page(page)
     if query:
         where.update(_query_clause(query))
 
@@ -212,7 +225,7 @@ def log_impression(
         "impression_id": f"IMP-{uuid.uuid4().hex[:12]}",
         "article_id": article_id,
         "customer_id": customer_id,
-        "page": page,
+        "page": normalize_page(page),
         "query": query,
         "clicked": clicked,
         "timestamp": int(time.time()),
