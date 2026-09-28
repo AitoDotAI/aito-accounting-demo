@@ -46,8 +46,8 @@ class TestClassifyStrength:
 
 class TestTargetValueLabel:
     def test_gl_code_maps_to_label(self):
-        assert target_value_label("gl_code", "5400") == "Professional Services"
-        assert target_value_label("gl_code", "1600") == "Capital Equipment"
+        assert target_value_label("gl_code", "5400") == "Asiantuntijapalvelut"
+        assert target_value_label("gl_code", "1600") == "Koneet ja kalusto"
 
     def test_unknown_gl_falls_back_to_code(self):
         assert target_value_label("gl_code", "9999") == "9999"
@@ -135,7 +135,7 @@ class TestBuildCandidate:
         # lift = precision / (target_total/n)
         assert c.lift == pytest.approx((1251 / 1261) / (12222 / 16000), abs=0.02)
         assert c.strength == "strong"
-        assert c.target_display == "GL 1600 (Capital Equipment)"
+        assert c.target_display == "GL 1600 (Koneet ja kalusto)"
 
     def test_approver_target_display_is_the_name(self):
         c = build_candidate(
@@ -157,7 +157,7 @@ class TestRuleCandidate:
     def _candidate(self, **overrides):
         defaults = dict(
             clauses=[RuleClause("category", "it_equipment"), RuleClause("amount_band", "large")],
-            target_field="gl_code", target_value="1600", target_label="Capital Equipment",
+            target_field="gl_code", target_value="1600", target_label="Koneet ja kalusto",
             rule_match=1251, rule_total=1261, target_total=12222, n=16000,
             lift=1.6, strength="strong",
         )
@@ -172,7 +172,7 @@ class TestRuleCandidate:
             {"field": "amount_band", "value": "large"},
         ]
         assert d["target_field"] == "gl_code"
-        assert d["target"] == "GL 1600 (Capital Equipment)"
+        assert d["target"] == "GL 1600 (Koneet ja kalusto)"
         assert d["support"] == "1251/1261"
         assert d["strength"] == "strong"
 

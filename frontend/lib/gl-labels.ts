@@ -8,16 +8,17 @@
 // tooltips and footers wherever GL codes are surfaced.
 
 export const GL_LABELS: Record<string, string> = {
-  "4100": "COGS",
-  "4400": "Materials & Supplies",
-  "4500": "Office Expenses",
-  "4600": "Logistics",
-  "5100": "Facilities",
-  "5200": "Maintenance",
-  "5300": "Insurance",
-  "5400": "Professional Services",
-  "6100": "IT & Software",
-  "6200": "Telecom",
+  "1600": "Koneet ja kalusto",
+  "4100": "Tavaraostot",
+  "4400": "Aineet ja tarvikkeet",
+  "4500": "Toimistokulut",
+  "4600": "Rahti- ja kuljetuskulut",
+  "5100": "Toimitilakulut",
+  "5200": "Korjaus- ja huoltokulut",
+  "5300": "Vakuutusmaksut",
+  "5400": "Asiantuntijapalvelut",
+  "6100": "IT- ja ohjelmistokulut",
+  "6200": "Puhelin- ja tietoliikennekulut",
 };
 
 export const GL_DISCLAIMER =

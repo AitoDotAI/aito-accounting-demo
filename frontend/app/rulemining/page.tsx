@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Nav from "@/components/shell/Nav";
 import { useCustomer } from "@/lib/customer-context";
+import { useDeveloperMode } from "@/lib/developer-mode";
 import ErrorState from "@/components/shell/ErrorState";
 import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
@@ -191,8 +192,18 @@ interface DrillCounts {
   disagree: number;
 }
 
+// The demo's category is close to the account name, so a pattern that
+// conditions on it reads as "the answer predicts the answer". Outside
+// developer view those patterns are hidden -- counted on screen, never
+// dropped silently. Promoted routing rules are vendor-only (ADR 0025) and
+// are unaffected.
+function conditionsOnCategory(c: RuleCandidate): boolean {
+  return c.clauses.some((clause) => clause.field === "category");
+}
+
 export default function RuleMiningPage() {
   const { customerId } = useCustomer();
+  const { developerMode } = useDeveloperMode();
   const [data, setData] = useState<RulesResponse | null>(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -293,7 +304,7 @@ export default function RuleMiningPage() {
               <div style={{ fontSize: "10.5px", fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", textAlign: "center" }}>Strength</div>
               <div />
             </div>
-            {(data?.candidates ?? []).map((c, i) => (
+            {(data?.candidates ?? []).filter((c) => developerMode || !conditionsOnCategory(c)).map((c, i) => (
               <div
                 key={i}
                 className="rule-row"
@@ -350,6 +361,12 @@ export default function RuleMiningPage() {
                 </div>
               </div>
             ))}
+            {!developerMode && data && data.candidates.some(conditionsOnCategory) && (
+              <div style={{ padding: "10px 20px", fontSize: 11.5, color: "var(--text3)", borderBottom: "1px solid var(--border2)" }}>
+                {data.candidates.filter(conditionsOnCategory).length} patterns that condition on the invoice
+                category are hidden, because the category restates the account. Developer view shows them.
+              </div>
+            )}
             {!data && !error && Array.from({ length: 6 }).map((_, i) => (
               <div key={`skel-${i}`} style={{ display: "flex", alignItems: "center", padding: 14, borderBottom: "1px solid var(--border2)", gap: 16 }}>
                 <div style={{ flex: 1 }}>
@@ -470,10 +487,11 @@ function DrilldownModal({
 
 function InvoiceRow({ inv }: { inv: DrilldownInvoice }) {
   const [open, setOpen] = useState(false);
+  const { developerMode } = useDeveloperMode();
   const detail: [string, string | number | undefined][] = [
     ["vendor", inv.vendor],
     ["vendor_country", inv.vendor_country],
-    ["category", inv.category],
+    ...(developerMode ? [["category", inv.category] as [string, string | undefined]] : []),
     ["amount_band", inv.amount_band],
     ["gl_code", inv.gl_code],
     ["approver", inv.approver],

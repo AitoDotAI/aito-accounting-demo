@@ -117,8 +117,8 @@ def audit_invoice_processing(client, customer: str) -> str:
                   f"{iid}: {field} alternatives not sorted by confidence: {confs}")
             # The top alternative should be the value actually shown.
             # Compare against `display`, not `value`: the approver field
-            # carries a rendered label ("AP / Sanna Lehtinen") while the
-            # alternative keeps the raw name alongside the same label.
+            # carries the person's name ("Sanna Lehtinen") while the
+            # alternative's value is the employee id.
             if alts and d.get(field) is not None:
                 shown = d.get(field)
                 top = alts[0]
