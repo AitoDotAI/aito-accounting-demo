@@ -23,7 +23,7 @@ _spec.loader.exec_module(pp)
 def recorded(monkeypatch):
     written: dict[str, object] = {}
     monkeypatch.setattr(pp, "save", lambda cid, name, data: written.__setitem__(name, data) or 0)
-    monkeypatch.setattr(pp, "mine_rules_for_customer", lambda *a, **k: [])
+    monkeypatch.setattr(pp, "routing_rules", lambda *a, **k: [])
     for fn in ("precompute_invoices_pending", "precompute_matching", "precompute_anomalies",
                "precompute_quality_overview", "precompute_rules", "precompute_prediction_accuracy"):
         monkeypatch.setattr(pp, fn, lambda *a, **k: {"stub": True})

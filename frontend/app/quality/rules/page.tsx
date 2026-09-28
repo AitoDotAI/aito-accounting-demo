@@ -29,6 +29,8 @@ interface RulePerf {
   disagreeing?: number;
   owner?: string;
   last_reviewed?: string;
+  promoted_support?: string;
+  rule_def?: { conditions: { field: string; value: string }[]; target: { field: string; value: string } };
   trend: string;
   status: string;
 }
@@ -79,6 +81,35 @@ export default function RulePerformancePage() {
   const [drift, setDrift] = useState<DriftData | null>(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
+  const [demoting, setDemoting] = useState<string | null>(null);
+
+  // Demote: stop the rule routing invoices. Appends a revision -- the
+  // promotion stays in the record (ADR 0025).
+  async function resetRules() {
+    setDemoting("__reset__");
+    try {
+      await apiFetch(`/api/rules/reset?customer_id=${customerId}`, { method: "POST" });
+      setReloadTick((t) => t + 1);
+    } finally {
+      setDemoting(null);
+    }
+  }
+
+  async function demote(r: RulePerf) {
+    if (!r.rule_def) return;
+    setDemoting(r.rule);
+    try {
+      await apiFetch(`/api/rules/demote`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ customer_id: customerId, rule: r.rule_def, reason: "demoted from Rules review" }),
+      });
+      setReloadTick((t) => t + 1);
+    } finally {
+      setDemoting(null);
+    }
+  }
 
   useEffect(() => {
     setData(null); setDrift(null); setLive(false); setError(null);
@@ -88,7 +119,7 @@ export default function RulePerformancePage() {
     apiFetch<DriftData>(`/api/quality/rules/drift?customer_id=${customerId}`)
       .then((d) => setDrift(d))
       .catch(() => {});
-  }, [customerId]);
+  }, [customerId, reloadTick]);
 
   const backfillDrift = async () => {
     await fetch(`/api/quality/rules/backfill?customer_id=${customerId}`, { method: "POST" });
@@ -189,19 +220,35 @@ export default function RulePerformancePage() {
             <div className="card">
               <div className="card-header">
                 <span className="card-title">All rules — precision measured against ground truth</span>
-                <span className="card-hint">Avg precision: {(avgPrecision * 100).toFixed(0)}%</span>
+                <span className="card-hint">
+                  Avg precision: {(avgPrecision * 100).toFixed(0)}%
+                  {" · "}
+                  {/* Promote/Demote are public on this demo. The seeded rules
+                      come back hourly on their own; this does it now. */}
+                  <button
+                    onClick={resetRules}
+                    disabled={demoting !== null}
+                    title="Demo rules reset to the seeded set automatically every hour. This resets them now."
+                    style={{ fontSize: 11, background: "transparent", border: "none", padding: 0,
+                             color: "var(--gold-dark)", textDecoration: "underline", cursor: "pointer",
+                             fontFamily: "inherit" }}
+                  >
+                    {demoting === "__reset__" ? "Resetting…" : "Reset demo rules"}
+                  </button>
+                </span>
               </div>
               <table className="table">
                 <thead>
                   <tr>
                     <th>Rule</th>
                     <th>Fires on</th>
-                    <th>Owner</th>
-                    <th>Last reviewed</th>
+                    <th>Promoted by</th>
+                    <th>Promoted</th>
                     <th>Matches</th>
                     <th>Disagree</th>
                     <th>Precision</th>
                     <th>Status</th>
+                    <th />
                   </tr>
                 </thead>
                 <tbody>
@@ -218,6 +265,19 @@ export default function RulePerformancePage() {
                       <td><ConfidenceBar value={r.precision} /></td>
                       <td>
                         <span className={`badge ${r.status === "Active" ? "badge-green" : r.status === "Drifting" ? "badge-amber" : "badge-red"}`}>{r.status}</span>
+                      </td>
+                      <td>
+                        {r.rule_def && (
+                          <button
+                            onClick={() => demote(r)}
+                            disabled={demoting !== null}
+                            title={`Stop this rule routing invoices. Promoted at ${r.promoted_support ?? "?"} support; the record keeps both events.`}
+                            style={{ fontSize: 11, padding: "3px 8px", borderRadius: 4, border: "1px solid var(--border)",
+                                     background: "transparent", color: "var(--text2)", cursor: "pointer", fontFamily: "inherit" }}
+                          >
+                            {demoting === r.rule ? "Demoting…" : "Demote"}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

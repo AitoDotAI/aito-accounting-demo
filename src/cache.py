@@ -129,6 +129,20 @@ def set(key: str, value: Any, ttl: int = DEFAULT_TTL) -> None:
         pass
 
 
+def delete(key: str) -> None:
+    """Forget one entry in both layers, so the next read recomputes it."""
+    _l1.pop(key, None)
+    if _aito is None:
+        return
+    try:
+        _aito._request("POST", "/data/_delete",
+                       json={"from": CACHE_TABLE, "where": {"key": key}})
+    except AitoError:
+        # Best-effort like set(): an entry that survives in L2 still
+        # expires on its TTL.
+        pass
+
+
 def drop_local() -> int:
     """Drop the in-process copy only, leaving the shared Aito table alone.
 

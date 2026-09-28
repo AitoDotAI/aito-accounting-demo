@@ -33,6 +33,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.aito_client import AitoClient, AitoError  # noqa: E402
+from src.rule_governance import routing_rules  # noqa: E402
 from src.config import load_config  # noqa: E402
 from src.invoice_service import predict_invoice  # noqa: E402
 from src.matching_service import match_all  # noqa: E402
@@ -42,7 +43,6 @@ from src.quality_service import (  # noqa: E402
     compute_prediction_quality,
     compute_rule_performance,
     get_quality_overview,
-    mine_rules_for_customer,
 )
 
 random.seed(42)
@@ -210,7 +210,8 @@ def precompute_one_customer(
         mined_rules: list[dict] = []
     else:
         # Rules are reused across the invoice/accuracy precomputes
-        mined_rules = mine_rules_for_customer(client, customer_id)
+        # The PROMOTED rules, which are the ones that route (ADR 0025).
+        mined_rules = routing_rules(client, customer_id)
 
     # Predictions are the headline feature — done for everyone.
     sizes["invoices_pending"] = save(

@@ -34,6 +34,9 @@ CREATE_ORDER = [
     "customers",
     "corporate_entities",
     "employees",
+    # Schema only: written by rule governance, never loaded from a fixture.
+    # Was a v1 table until ADR 0025, so relate could not run over it.
+    "rule_revisions",
     "help_articles",
     "invoices",
     "bank_transactions",

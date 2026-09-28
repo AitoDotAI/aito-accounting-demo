@@ -202,6 +202,28 @@ def get(name: str) -> Any | None:
     return None
 
 
+def drop(name: str) -> None:
+    """Remove a precomputed payload from every layer.
+
+    The next read then finds nothing and the endpoint computes live. Used
+    when a payload is known to be wrong -- a rule promotion changes what
+    `invoices_pending` and `rule_performance` should say, and they would
+    otherwise keep the old answer until the next precompute rebuild.
+    """
+    full = _NAMESPACE + name
+    with _l1_mutex:
+        _l1.pop(full, None)
+    if _aito is not None:
+        try:
+            _aito._request("POST", "/data/_delete",
+                           json={"from": PRECOMPUTE_TABLE, "where": {"name": full}})
+        except AitoError:
+            pass
+    path = _fallback_path(full)
+    if path.exists():
+        path.unlink()
+
+
 def invalidate_view(view: str) -> int:
     """Drop every customer's L1 entry for one view, e.g. "matching_pairs".
 
