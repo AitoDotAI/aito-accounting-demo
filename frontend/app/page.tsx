@@ -6,6 +6,7 @@ import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
 import { apiFetch } from "@/lib/api";
 import { glLabel } from "@/lib/gl-labels";
+import { useDeveloperMode } from "@/lib/developer-mode";
 import type { AitoPanelConfig } from "@/lib/types";
 
 interface SharedTenant {
@@ -37,6 +38,7 @@ interface Template {
     gl_code: string;
     gl_label?: string;
     approver?: string;
+    approver_name?: string | null;
     cost_centre?: string;
     category?: string;
   };
@@ -108,6 +110,7 @@ interface LandingPayload {
 }
 
 export default function Home() {
+  const { developerMode } = useDeveloperMode();
   const [vendors, setVendors] = useState<SharedVendor[]>([]);
   const [customers, setCustomers] = useState<CustomerLite[]>([]);
   const [vendorIdx, setVendorIdx] = useState(0);
@@ -280,8 +283,8 @@ export default function Home() {
                         <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px dashed var(--border2)", display: "grid", gridTemplateColumns: "auto 1fr", gap: "5px 10px", fontSize: 11.5 }}>
                           {tpl.fields.approver && (
                             <>
-                              <span style={{ color: "var(--text3)" }}>Approver</span>
-                              <span style={{ color: "var(--text2)" }}>{tpl.fields.approver}</span>
+                              <span style={{ color: "var(--text3)" }}>Hyväksyjä</span>
+                              <span style={{ color: "var(--text2)" }}>{tpl.fields.approver_name ?? tpl.fields.approver}</span>
                             </>
                           )}
                           {tpl.fields.cost_centre && (
@@ -290,7 +293,8 @@ export default function Home() {
                               <span style={{ color: "var(--text2)", fontFamily: "'IBM Plex Mono', monospace" }}>{tpl.fields.cost_centre}</span>
                             </>
                           )}
-                          {tpl.fields.category && (
+                          {/* Category restates the account; developer view only. */}
+                          {developerMode && tpl.fields.category && (
                             <>
                               <span style={{ color: "var(--text3)" }}>Category</span>
                               <span style={{ color: "var(--text2)" }}>{tpl.fields.category}</span>

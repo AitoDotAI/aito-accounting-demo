@@ -17,18 +17,21 @@ from src.employee_directory import resolve, tenant_employee_names
 
 REVIEW_THRESHOLD = 0.50
 
+# Account names as a Finnish bookkeeper writes them. The codes are
+# illustrative, not the Liikekirjuri numbering (see frontend/lib/gl-labels.ts,
+# which must stay in sync).
 GL_LABELS = {
-    "1600": "Capital Equipment",
-    "4100": "COGS",
-    "4400": "Materials & Supplies",
-    "4500": "Office Expenses",
-    "4600": "Logistics",
-    "5100": "Facilities",
-    "5200": "Maintenance",
-    "5300": "Insurance",
-    "5400": "Professional Services",
-    "6100": "IT & Software",
-    "6200": "Telecom",
+    "1600": "Koneet ja kalusto",
+    "4100": "Tavaraostot",
+    "4400": "Aineet ja tarvikkeet",
+    "4500": "Toimistokulut",
+    "4600": "Rahti- ja kuljetuskulut",
+    "5100": "Toimitilakulut",
+    "5200": "Korjaus- ja huoltokulut",
+    "5300": "Vakuutusmaksut",
+    "5400": "Asiantuntijapalvelut",
+    "6100": "IT- ja ohjelmistokulut",
+    "6200": "Puhelin- ja tietoliikennekulut",
 }
 
 
@@ -61,7 +64,7 @@ def _names_from_hits(hits: list[dict]) -> dict[str, str]:
             for h in hits if h.get("feature") and h.get("name")}
 
 
-def _extract_alternatives(hits: list[dict], label_map: dict | None = None, prefix: str = "",
+def _extract_alternatives(hits: list[dict], label_map: dict | None = None,
                           label_replaces_value: bool = False) -> list[dict]:
     """Extract top-3 alternatives from Aito _predict hits.
 
@@ -79,8 +82,6 @@ def _extract_alternatives(hits: list[dict], label_map: dict | None = None, prefi
         display = value
         if label_map and value in label_map:
             display = label_map[value] if label_replaces_value else f"{value} \u2013 {label_map[value]}"
-        if prefix:
-            display = f"{prefix}{display}"
 
         why_factors = _extract_why_factors(hit.get("$why"))
 
@@ -492,7 +493,7 @@ def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None 
             invoice_date=invoice_date,
             due_days=due_days,
             vat_pct=vat_pct,
-            approver=f"AP / {approver}",
+            approver=approver,
             approver_confidence=0.99,
             gl_code=gl_code,
             gl_label=gl_label,
@@ -500,7 +501,7 @@ def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None 
             source="rule",
             confidence=0.99,
             gl_alternatives=[{"value": gl_code, "display": f"{gl_code} \u2013 {gl_label}", "confidence": 0.99, "why": rule_why}],
-            approver_alternatives=[{"value": approver_id, "display": f"AP / {approver}", "confidence": 0.99, "why": rule_why}],
+            approver_alternatives=[{"value": approver_id, "display": approver, "confidence": 0.99, "why": rule_why}],
         )
 
     where = {"vendor": vendor, "amount": amount}
@@ -583,7 +584,7 @@ def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None 
         invoice_date=invoice_date,
         due_days=due_days,
         vat_pct=vat_pct,
-        approver=f"AP / {approver_name}" if approver_name else None,
+        approver=approver_name,
         approver_confidence=approver_conf,
         gl_code=gl_code,
         gl_label=GL_LABELS.get(gl_code, gl_code) if gl_code else None,
@@ -592,8 +593,7 @@ def predict_invoice(client: AitoClient, invoice: dict, rules: list[dict] | None 
         confidence=overall_conf,
         gl_alternatives=_extract_alternatives(gl_hits, GL_LABELS),
         approver_alternatives=_extract_alternatives(
-            approver_hits, employee_names, prefix="AP / ",
-            label_replaces_value=True,
+            approver_hits, employee_names, label_replaces_value=True,
         ),
     )
 

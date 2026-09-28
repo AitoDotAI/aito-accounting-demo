@@ -2,6 +2,8 @@
 
 import LiftHint, { formatLift } from "./LiftHint";
 import type { WhyFactor } from "@/lib/types";
+import { useDeveloperMode } from "@/lib/developer-mode";
+import { isHiddenInPresentation } from "@/lib/why-display";
 
 // ── $why factor cards ─────────────────────────────────────────────
 //
@@ -48,6 +50,7 @@ export default function WhyCards({
   modelP?: number;
   onHoverFactor?: (h: HoverHighlight) => void;
 }) {
+  const { developerMode } = useDeveloperMode();
   const base = why.find((f) => f.type === "base");
   const allPatterns = why.filter((f) => f.type === "pattern");
   // Aito's own normalisation terms (exclusiveness, rowCap, nameBoost).
@@ -75,8 +78,13 @@ export default function WhyCards({
   // and the folded line says how many it stands for.
   const MATERIAL = 1.15;
   const isMaterial = (lift: number) => lift >= MATERIAL || lift <= 1 / MATERIAL;
-  const patterns = allPatterns.filter((f) => isMaterial(f.lift ?? 1));
-  const minorPatterns = allPatterns.filter((f) => !isMaterial(f.lift ?? 1));
+  // Outside developer view, factors that mislead an accountant (category,
+  // a raw amount, a bare number) fold into the same line -- see
+  // lib/why-display.ts. The arithmetic is unchanged either way.
+  const earnsCard = (f: WhyFactor) =>
+    isMaterial(f.lift ?? 1) && (developerMode || !isHiddenInPresentation(f));
+  const patterns = allPatterns.filter(earnsCard);
+  const minorPatterns = allPatterns.filter((f) => !earnsCard(f));
 
   // One collapsed multiplier covering the engine's normalisation terms and
   // the immaterial factors, so `base x ... = confidence` still balances.
@@ -177,10 +185,10 @@ export default function WhyCards({
         }}>
           <div>
             <span style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px" }}>
-              Model normalisation
+              Other signals
             </span>{" "}
             <span style={{ color: "var(--text3)" }}>
-              {foldedCount} term{foldedCount === 1 ? "" : "s"} with no proposition of their own
+              {foldedCount} {developerMode ? "normalisation and minor" : "weaker or technical"} term{foldedCount === 1 ? "" : "s"}, combined
             </span>
           </div>
           <span style={{ fontWeight: 600 }}>× {formatLift(foldedMultiplier)}×</span>
@@ -303,7 +311,7 @@ export default function WhyCards({
             <>
               <span>{pct(baseP)}</span>
               {foldedCount > 0 && (
-                <span title={`${foldedCount} normalisation and minor terms`}>
+                <span title={`${foldedCount} other signals, combined`}>
                   {" "}× {formatLift(foldedMultiplier)}
                 </span>
               )}

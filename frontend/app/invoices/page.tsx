@@ -14,6 +14,7 @@ import InvoiceDetail from "@/components/invoices/InvoiceDetail";
 import { useCustomer } from "@/lib/customer-context";
 import { demoToday } from "@/lib/demo-time";
 import { apiFetch, fmtAmount } from "@/lib/api";
+import { GL_LABELS, glDisplay } from "@/lib/gl-labels";
 import type { InvoicesResponse, InvoicePrediction, AitoPanelConfig } from "@/lib/types";
 
 const PANEL_CONFIG: AitoPanelConfig = {
@@ -47,7 +48,7 @@ const PANEL_CONFIG: AitoPanelConfig = {
     { n: 2, produces: "Mined rules (vendor → GL)", call: "_relate vendor → gl_code; rules where support_ratio ≥ 0.95" },
     { n: 3, produces: "GL prediction per invoice", call: "_predict gl_code WHERE customer_id, vendor, amount, category" },
     { n: 4, produces: "Approver prediction", call: "_predict approver WHERE customer_id, vendor, amount, category" },
-    { n: 5, produces: "Touchless rate", call: "Client-side: share of predictions ≥ 0.85 confidence" },
+    { n: 5, produces: "Coded automatically", call: "Client-side: share of predictions ≥ 0.85 confidence" },
   ],
 };
 
@@ -57,10 +58,18 @@ function sourceBadge(source: string) {
   return <span className="badge badge-amber">No match</span>;
 }
 
-function touchlessPct(invoices: InvoicePrediction[]): number {
-  if (invoices.length === 0) return 0;
-  const touchless = invoices.filter((inv) => inv.confidence >= 0.85).length;
-  return Math.round((touchless / invoices.length) * 100);
+// One threshold for every count on this page: the headline, the cards and
+// the filters must agree, or the page contradicts itself on screen.
+const AUTOMATIC_CONFIDENCE = 0.85;
+
+// The pending set is a sample of 50 invoices (data/precompute_predictions.py);
+// fetch it whole so the counts describe every pending invoice, not the
+// first page of them. Without a precompute the endpoint samples `per_page`
+// invoices live, so this also keeps that path to the same 50.
+const PENDING_PAGE_SIZE = 50;
+
+function isAutomatic(inv: InvoicePrediction): boolean {
+  return inv.confidence >= AUTOMATIC_CONFIDENCE;
 }
 
 function dueDate(inv: InvoicePrediction): Date | null {
@@ -98,7 +107,7 @@ export default function InvoicesPage() {
   useEffect(() => {
     setData(null); setLive(false); setError(null);
     let stillCurrent = true;
-    apiFetch<InvoicesResponse>(`/api/invoices/pending?customer_id=${customerId}`)
+    apiFetch<InvoicesResponse>(`/api/invoices/pending?customer_id=${customerId}&per_page=${PENDING_PAGE_SIZE}`)
       .then((d) => { if (stillCurrent) { setData(d); setLive(true); } })
       .catch((e) => { if (stillCurrent) setError(e); });
     return () => { stillCurrent = false; };
@@ -114,13 +123,17 @@ export default function InvoicesPage() {
   });
   const invoices = allInvoices.filter((inv) => {
     switch (filter) {
-      case "touchless": return inv.confidence >= 0.85;
-      case "review":    return inv.source === "review" || inv.confidence < 0.85;
+      case "touchless": return isAutomatic(inv);
+      case "review":    return !isAutomatic(inv);
       case "rule":      return inv.source === "rule";
       case "aito":      return inv.source === "aito";
       default: return true;
     }
   });
+
+  const automaticCount = allInvoices.filter(isAutomatic).length;
+  const reviewCount = allInvoices.length - automaticCount;
+  const automaticPct = allInvoices.length ? Math.round((automaticCount / allInvoices.length) * 100) : 0;
 
   // Detail-pane open state: which invoice is "viewed" (vs the
   // checkbox `selected` set used for batch override).
@@ -163,19 +176,25 @@ export default function InvoicesPage() {
         <TopBar
           breadcrumb="Payables"
           title="Invoice Processing"
-          subtitle={metrics ? `${metrics.total} pending \u00B7 ${metrics.review_count} require review` : "Loading..."}
+          subtitle={data ? `${allInvoices.length} pending invoices` : "Loading..."}
           live={live}
         />
         <div className="content" style={viewed ? { paddingBottom: 540 } : undefined}>
+          {data && (
+            <div className="invoices-headline">
+              <strong>{automaticCount}/{allInvoices.length}</strong> coded automatically,{" "}
+              <strong>{reviewCount}</strong> need review
+            </div>
+          )}
           <div className="metrics">
             <div
               className={`metric highlight ${filter === "touchless" ? "metric-active" : ""}`}
               onClick={() => setFilter(filter === "touchless" ? "all" : "touchless")}
               style={{ cursor: "pointer" }}
-              title="Click to filter to touchless invoices"
+              title="Click to filter to invoices coded automatically"
             >
-              <div className="metric-label"><TourBadge n={5} />Touchless rate</div>
-              <div className="metric-value">{metrics ? `${touchlessPct(allInvoices)}%` : "--"}</div>
+              <div className="metric-label"><TourBadge n={5} />Coded automatically</div>
+              <div className="metric-value">{data ? `${automaticPct}%` : "--"}</div>
               <div className="metric-sub metric-neutral">
                 Predicted at &ge; 0.85 confidence
               </div>
@@ -189,7 +208,7 @@ export default function InvoicesPage() {
             </div>
             <div className="metric">
               <div className="metric-label">Pending</div>
-              <div className="metric-value">{metrics?.total ?? "--"}</div>
+              <div className="metric-value">{data ? allInvoices.length : "--"}</div>
             </div>
             <div
               className={`metric ${filter === "review" ? "metric-active" : ""}`}
@@ -197,10 +216,10 @@ export default function InvoicesPage() {
               style={{ cursor: "pointer" }}
               title="Click to filter to invoices needing review"
             >
-              <div className="metric-label">Review needed</div>
-              <div className="metric-value" style={{ color: metrics?.review_count ? "var(--amber)" : undefined }}>{metrics?.review_count ?? "--"}</div>
+              <div className="metric-label">Need review</div>
+              <div className="metric-value" style={{ color: reviewCount ? "var(--amber)" : undefined }}>{data ? reviewCount : "--"}</div>
               <div className="metric-sub metric-neutral">
-                {metrics?.review_count ? "Below confidence threshold" : "All above threshold"}
+                Below 0.85 confidence, so it goes to you
               </div>
             </div>
           </div>
@@ -208,7 +227,7 @@ export default function InvoicesPage() {
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, padding: "6px 12px", background: "var(--gold-light)", border: "1px solid #d8bc70", borderRadius: 6, fontSize: 12 }}>
               <span style={{ color: "var(--gold-dark)", fontWeight: 600 }}>Filtered:</span>
               <span style={{ color: "var(--text2)" }}>
-                {filter === "touchless" && `Showing ${invoices.length} touchless invoices (≥0.85 confidence)`}
+                {filter === "touchless" && `Showing ${invoices.length} invoices coded automatically (≥0.85 confidence)`}
                 {filter === "review" && `Showing ${invoices.length} invoices needing review (<0.85 confidence)`}
                 {filter === "rule" && `Showing ${invoices.length} rule-routed invoices`}
                 {filter === "aito" && `Showing ${invoices.length} Aito-predicted invoices`}
@@ -241,16 +260,9 @@ export default function InvoicesPage() {
                 style={{ padding: "4px 8px", borderRadius: 4, border: "1px solid var(--border)", fontSize: 12, fontFamily: "inherit" }}
               >
                 <option value="">— pick —</option>
-                <option value="4100">4100 — COGS</option>
-                <option value="4400">4400 — Materials & Supplies</option>
-                <option value="4500">4500 — Office Expenses</option>
-                <option value="4600">4600 — Logistics</option>
-                <option value="5100">5100 — Facilities</option>
-                <option value="5200">5200 — Maintenance</option>
-                <option value="5300">5300 — Insurance</option>
-                <option value="5400">5400 — Professional Services</option>
-                <option value="6100">6100 — IT & Software</option>
-                <option value="6200">6200 — Telecom</option>
+                {Object.keys(GL_LABELS).map((code) => (
+                  <option key={code} value={code}>{glDisplay(code)}</option>
+                ))}
               </select>
               <button
                 onClick={applyBulkOverride}
@@ -302,7 +314,7 @@ export default function InvoicesPage() {
                   <th>Vendor</th>
                   <th>Net</th>
                   <th>VAT</th>
-                  <th><TourBadge n={4} />Approver</th>
+                  <th><TourBadge n={4} />Hyväksyjä</th>
                   <th><TourBadge n={3} />GL Code</th>
                   <th>Conf.</th>
                   <th>Source</th>

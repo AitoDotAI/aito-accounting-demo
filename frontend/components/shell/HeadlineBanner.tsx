@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useCustomer } from "@/lib/customer-context";
+import { useDeveloperMode } from "@/lib/developer-mode";
 
 const KEY = "predictive-ledger-banner-dismissed";
 
@@ -12,6 +13,7 @@ const KEY = "predictive-ledger-banner-dismissed";
  */
 export default function HeadlineBanner() {
   const { customers } = useCustomer();
+  const { developerMode } = useDeveloperMode();
   const [dismissed, setDismissed] = useState(true);
 
   useEffect(() => {
@@ -19,7 +21,8 @@ export default function HeadlineBanner() {
     setDismissed(localStorage.getItem(KEY) === "1");
   }, []);
 
-  if (dismissed) return null;
+  // The developer framing is for developers; an accountant sees the product.
+  if (!developerMode || dismissed) return null;
   // Don't render anything until /api/customers has resolved -- the
   // banner used to flash a hardcoded "256 customers" before the
   // real count (255) arrived.

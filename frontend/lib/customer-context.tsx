@@ -28,22 +28,27 @@ const CustomerContext = createContext<CustomerContextType>({
 
 const STORAGE_KEY = "predictive-ledger-customer-id";
 
+// The first tenant a visitor sees. CUST-0000 is almost entirely coded by
+// rules and its anomaly scan comes back empty, so it shows nothing for
+// Aito to do; CUST-0001 has a real mix of rule, predicted and flagged work.
+export const DEFAULT_CUSTOMER = "CUST-0001";
+
 function readInitialCustomer(): string {
   // Resolve initial customer in priority order:
   //   1. ?customer_id=CUST-0042 in the URL (shareable links)
   //   2. localStorage (returning user's last selection)
-  //   3. CUST-0000 fallback
-  if (typeof window === "undefined") return "CUST-0000";
+  //   3. DEFAULT_CUSTOMER
+  if (typeof window === "undefined") return DEFAULT_CUSTOMER;
   const url = new URL(window.location.href);
   const fromUrl = url.searchParams.get("customer_id");
   if (fromUrl && /^CUST-\d{4}$/.test(fromUrl)) return fromUrl;
   const stored = window.localStorage.getItem(STORAGE_KEY);
   if (stored && /^CUST-\d{4}$/.test(stored)) return stored;
-  return "CUST-0000";
+  return DEFAULT_CUSTOMER;
 }
 
 export function CustomerProvider({ children }: { children: ReactNode }) {
-  const [customerId, setCustomerIdState] = useState<string>("CUST-0000");
+  const [customerId, setCustomerIdState] = useState<string>(DEFAULT_CUSTOMER);
   const [customers, setCustomers] = useState<Customer[]>([]);
 
   // Read URL/localStorage on mount (window is undefined during SSR/static export)

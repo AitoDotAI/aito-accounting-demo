@@ -4,6 +4,7 @@ import Script from "next/script";
 import "./globals.css";
 import { CustomerProvider } from "@/lib/customer-context";
 import { TourProvider } from "@/lib/tour-context";
+import { DeveloperModeProvider } from "@/lib/developer-mode";
 import { GuidedTourProvider } from "@/lib/guided-tour";
 import HeadlineBanner from "@/components/shell/HeadlineBanner";
 import HelpDrawer from "@/components/help/HelpDrawer";
@@ -21,6 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <CustomerProvider>
+          <DeveloperModeProvider>
           <TourProvider>
             <GuidedTourProvider>
               <HeadlineBanner />
@@ -33,6 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <Analytics />
             </GuidedTourProvider>
           </TourProvider>
+          </DeveloperModeProvider>
         </CustomerProvider>
 
         <Script

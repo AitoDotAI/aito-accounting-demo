@@ -71,6 +71,7 @@ interface TemplateResponse {
     gl_code: string | null;
     gl_label: string | null;
     approver: string | null;
+    approver_name?: string | null;
     cost_centre: string | null;
     vat_pct: string | null;
     payment_method: string | null;
@@ -91,6 +92,9 @@ export default function FormFillPage() {
   const [template, setTemplate] = useState<TemplateResponse | null>(null);
   const [topTemplates, setTopTemplates] = useState<TemplateResponse[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // True while the form holds only the example this page opened with.
+  const [preloaded, setPreloaded] = useState(false);
+  const preloadedFor = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -156,6 +160,7 @@ export default function FormFillPage() {
   }, [customerId]);
 
   const handleChange = useCallback((field: string, value: string) => {
+    setPreloaded(false);
     setUserValues((prev) => {
       const next = { ...prev, [field]: value };
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -191,6 +196,7 @@ export default function FormFillPage() {
   const applyTopTemplate = useCallback((t: TemplateResponse) => {
     if (!t.vendor || !t.fields) return;
     const f = t.fields;
+    setPreloaded(false);
     const next: Record<string, string> = { vendor: t.vendor };
     if (f.gl_code) next.gl_code = f.gl_code;
     if (f.approver) next.approver = f.approver;
@@ -205,6 +211,7 @@ export default function FormFillPage() {
   }, [fetchPredictions]);
 
   const handleClear = useCallback(() => {
+    setPreloaded(false);
     setUserValues({});
     setPredictions([]);
     setLastQuery(null);
@@ -258,6 +265,17 @@ export default function FormFillPage() {
     : 0;
   const formIsEmpty = Object.values(userValues).every((v) => !v);
 
+  // Open on a worked example rather than an empty form: the tenant's most
+  // frequent recurring vendor is entered, and every other field arrives as
+  // a prediction to confirm. Once per tenant, and only onto an empty form.
+  useEffect(() => {
+    const example = topTemplates[0]?.vendor;
+    if (!example || !formIsEmpty || preloadedFor.current === customerId) return;
+    preloadedFor.current = customerId;
+    handleVendorSelect(example);
+    setPreloaded(true);
+  }, [topTemplates, customerId, formIsEmpty, handleVendorSelect]);
+
   return (
     <>
       <Nav />
@@ -288,7 +306,7 @@ export default function FormFillPage() {
               {submitMsg}
             </div>
           )}
-          {formIsEmpty && topTemplates.length > 0 && (
+          {(formIsEmpty || preloaded) && topTemplates.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", marginBottom: 8 }}>
                 Quick start &middot; recurring vendors for this customer
@@ -316,7 +334,7 @@ export default function FormFillPage() {
                     </div>
                     <div style={{ fontSize: 11, color: "var(--text3)", lineHeight: 1.5 }}>
                       GL {t.fields?.gl_code} ({t.fields?.gl_label})<br />
-                      Approver: {t.fields?.approver}<br />
+                      Hyväksyjä: {t.fields?.approver_name ?? t.fields?.approver}<br />
                       <span style={{ color: "var(--gold-dark)" }}>
                         {t.match_count} of {t.total_history} prior invoices &middot; {Math.round((t.confidence ?? 0) * 100)}%
                       </span>
@@ -332,7 +350,7 @@ export default function FormFillPage() {
                 <strong style={{ color: "var(--gold-dark)" }}>Template match:</strong>{" "}
                 {template.match_count} of {template.total_history} prior invoices for{" "}
                 <strong>{template.vendor}</strong> use the same routing
-                {template.fields?.gl_label && <> (GL {template.fields.gl_code} {template.fields.gl_label}, approver {template.fields.approver})</>}.
+                {template.fields?.gl_label && <> (GL {template.fields.gl_code} {template.fields.gl_label}, hyväksyjä {template.fields.approver_name ?? template.fields.approver})</>}.
               </div>
               <button className="btn btn-primary" onClick={applyTemplate} style={{ whiteSpace: "nowrap" }}>
                 Apply template
@@ -523,7 +541,7 @@ export default function FormFillPage() {
                 onChange={handleChange}
               />
               <PredictedField
-                label="Approver"
+                label="Hyväksyjä"
                 fieldName="approver"
                 value={getPrediction("approver")?.value || ""}
                 predicted={getPrediction("approver")?.predicted || false}
