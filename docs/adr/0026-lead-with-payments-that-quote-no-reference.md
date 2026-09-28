@@ -1,7 +1,7 @@
 # 0026. Lead payment matching with payments that quote no reference
 
 **Date:** 2026-09-28
-**Status:** proposed
+**Status:** accepted
 
 ## Context
 
@@ -84,12 +84,15 @@ There is no new query pattern.
   reference**, confidence 100%, and no Aito explanation.
 - A payment that quotes a reference matching no open invoice goes to
   Aito, not to the lookup.
+- When the payment amount differs from the matched invoice's, the row
+  says "overpaid" or "underpaid" and by how much. A reference settles
+  which invoice is paid, not whether it is paid in full.
 - The metrics show "matched by reference" and "matched by Aito" as
   separate counts.
 - `./do eval-matching` prints accuracy for referenced and unreferenced
   payments separately.
-- `./do aito-check` asserts that the visible set contains at least six
-  unreferenced payments for each demo tenant.
+- `./do aito-check` asserts that at least six of the visible payments
+  are matched by Aito, each with an explanation.
 
 ## Demo impact
 

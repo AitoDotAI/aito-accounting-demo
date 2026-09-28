@@ -118,27 +118,37 @@ Click **Payment Matching**.
   is the direction of the decision — a payment arrives and has to be
   matched to one invoice in the open ledger. An invoice with no payment
   is simply unpaid, so only *payments* can show as unmatched.
-- The first matched row's **why panel auto-expands** — the factors Aito
-  used: description token lifts and amount proximity. A row matched by
-  vendor rather than by Aito's own top candidate says so, naming the
-  invoice Aito ranked, instead of borrowing that invoice's explanation.
-- The final confidence blends Aito's probability with an amount score,
+- **The first six payments quote no reference number** — e.g.
+  `DB-FIN KARDEX FINLAND OY`, just a payer name and maybe a date. That is
+  the AP clerk's actual workload. Aito matches each one; the metrics
+  count them as **Matched by Aito**.
+- The first row's **why panel auto-expands** — the factors Aito used:
+  payer-name and description token lifts, and amount proximity. A row
+  matched by vendor rather than by Aito's own top candidate says so,
+  naming the invoice Aito ranked, instead of borrowing that invoice's
+  explanation.
+- The last two rows quote a reference (`VIITE 468883814`) and show a
+  grey **ref** badge: *matched by reference, no prediction needed*.
+  They never reach Aito.
+- The Aito confidence blends Aito's probability with an amount score,
   so the panel states that step rather than printing an equals sign
   between two unrelated numbers.
-- Bank descriptions are realistic Finnish: `KESKO HELSINKI / VIITE
-  661031599 / PVM 18.08.24` with check-digit-correct Viite numbers.
 
 **What to say:**
 
-> "Aito's `_predict invoice_id` traverses the schema link from
-> bank_transactions to invoices in a single query, ranks invoices by
-> association with the bank description and amount, and returns the
-> full invoice row. No separate matching service, no Levenshtein
-> heuristic — it's just `_predict`."
+> "When the payer quotes the reference number, matching is a lookup —
+> we do that without Aito, like every AP system does. These six are
+> the ones your clerk spends the day on: no reference, just a name.
+> Aito's `_predict invoice_id` traverses the schema link from
+> bank_transactions to invoices and ranks the open ledger by the
+> payer's name, the description and the amount — one query, no
+> separate matching model."
 
 **If asked how good it is:** `./do eval-matching` scores the matcher
-against ground truth rather than counting pairs produced. The view's
-"match rate" only ever counted the latter.
+against ground truth rather than counting pairs produced, and reports
+payments with and without a reference separately so lookups cannot
+inflate the number (2026-09-28, v2-demo: 13/13 unreferenced payments
+matched to the right invoice out of a 55-invoice ledger).
 
 ### 6 — Rule Mining + drill-down [~45 sec]
 

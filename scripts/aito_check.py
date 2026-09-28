@@ -389,7 +389,16 @@ def check_payment_matching_ranks(client) -> str:
     for pair in matched:
         require_probability(pair.get("confidence"), "match confidence")
         require(pair.get("bank_txn_id"), f"matched pair has no bank transaction: {pair}")
-    return f"{len(matched)} matched / {len(pairs)} pairs"
+
+    # The page exists to show payments that quote no reference (ADR 0026);
+    # if the window stops yielding them, it is back to showing lookups.
+    by_aito = [p for p in pairs if p.get("matched_by") == "aito"]
+    require(len(by_aito) >= 6,
+            f"only {len(by_aito)} of {len(pairs)} visible payments were matched by Aito — "
+            "the page should lead with six that quote no reference")
+    for pair in by_aito:
+        require(pair.get("explanation"), f"Aito match has no explanation: {pair['bank_txn_id']}")
+    return f"{len(by_aito)} matched by Aito, {len(matched) - len(by_aito)} by reference / {len(pairs)} pairs"
 
 
 def check_help_is_tenant_scoped(client) -> str:

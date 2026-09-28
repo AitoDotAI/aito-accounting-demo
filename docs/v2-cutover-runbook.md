@@ -103,7 +103,7 @@ Verify the branch before anyone sees it:
 
 ```bash
 ./do audit --v2 --env v2-demo --accuracy   # coherence + every field beats its base rate
-./do eval-matching --v2 --env v2-demo --split-on-reference
+./do eval-matching --v2 --env v2-demo      # accuracy split by quoted / no reference
 ```
 
 ## 2. Deploy the app pointed at the branch
