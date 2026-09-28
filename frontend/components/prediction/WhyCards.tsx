@@ -29,6 +29,7 @@ export default function WhyCards({
   confidence,
   blendNote,
   modelP,
+  keepFields,
   onHoverFactor,
 }: {
   why: WhyFactor[];
@@ -48,6 +49,8 @@ export default function WhyCards({
    * chain is a decomposition of THIS number rather than of `confidence`.
    */
   modelP?: number;
+  /** Fields that are the evidence on this page; see isHiddenInPresentation. */
+  keepFields?: readonly string[];
   onHoverFactor?: (h: HoverHighlight) => void;
 }) {
   const { developerMode } = useDeveloperMode();
@@ -82,7 +85,7 @@ export default function WhyCards({
   // a raw amount, a bare number) fold into the same line -- see
   // lib/why-display.ts. The arithmetic is unchanged either way.
   const earnsCard = (f: WhyFactor) =>
-    isMaterial(f.lift ?? 1) && (developerMode || !isHiddenInPresentation(f));
+    isMaterial(f.lift ?? 1) && (developerMode || !isHiddenInPresentation(f, keepFields));
   const patterns = allPatterns.filter(earnsCard);
   const minorPatterns = allPatterns.filter((f) => !earnsCard(f));
 

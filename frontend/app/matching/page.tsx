@@ -229,6 +229,7 @@ export default function MatchingPage() {
                             confidence={p.confidence}
                             modelP={p.model_p}
                             blendNote={"blended with how closely the amounts agree \u2192"}
+                            keepFields={["amount"]}
                           />
                         </td>
                       </tr>

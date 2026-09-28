@@ -62,3 +62,18 @@ against an invoice of €1 853,80. The row now says **overpaid €1,00**
   This change shortened the matching subtitle to
   `8 payments · open ledger of 30` so that it no longer runs under the
   bar.
+
+## Re-review after #48 (presentation mode), 2026-09-28
+
+**A #48 change would have removed the key factor from this page.** #48
+hides the raw `amount` from why cards outside developer view, which is
+right for GL coding, where "amount is 10209.0" is a coincidence. On
+payment matching the amount agreeing to the cent is the main evidence,
+worth ×10 on CUST-0001's first row. Merged unchanged, it would have
+folded into "Other signals". `WhyCards` now takes `keepFields`, and the
+matching page keeps `amount`. Two new tests in `why-display.test.ts`
+cover this.
+
+`screenshots/03-matching.png` was recaptured from this branch merged
+with main. The old image showed the previous design: invoice → bank,
+every payment quoting a VIITE, "40% match rate".
