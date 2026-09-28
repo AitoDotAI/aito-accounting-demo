@@ -113,7 +113,10 @@ def predict_template(client: AitoClient, customer_id: str, vendor: str) -> dict 
         "fields": {
             "gl_code": gl,
             "gl_label": GL_LABELS.get(gl, gl) if gl else None,
+            # `approver` stays the employee id, which is what applying the
+            # template submits; the name is for the card a person reads.
             "approver": approver,
+            "approver_name": resolve(tenant_employee_names(client, customer_id), approver),
             "cost_centre": cc,
             "vat_pct": mode_of("vat_pct"),
             "payment_method": mode_of("payment_method"),

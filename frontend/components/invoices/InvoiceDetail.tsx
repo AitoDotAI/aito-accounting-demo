@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useCustomer } from "@/lib/customer-context";
+import { useDeveloperMode } from "@/lib/developer-mode";
 import { apiFetch, fmtAmount } from "@/lib/api";
 import LiftHint from "@/components/prediction/LiftHint";
 import WhyCards from "@/components/prediction/WhyCards";
@@ -131,7 +132,7 @@ function PredictionTab({ inv }: { inv: InvoicePrediction }) {
           onHoverFactor={setHl}
         />
         <AlternativesCard
-          title="Approver — top alternatives"
+          title="Hyväksyjä — top alternatives"
           predicted={inv.approver}
           alts={apprAlts}
           format={(v) => v}
@@ -143,12 +144,16 @@ function PredictionTab({ inv }: { inv: InvoicePrediction }) {
 }
 
 function InvoiceInputs({ inv, hl }: { inv: InvoicePrediction; hl: Highlight }) {
+  const { developerMode } = useDeveloperMode();
   // Compact 2-column grid for the structured fields, then a full-
   // width description row at the bottom so long text wraps naturally.
   const grid: { field: string; label: string; value: React.ReactNode }[] = [
     { field: "vendor", label: "Vendor", value: inv.vendor },
     { field: "vendor_country", label: "Country", value: inv.vendor_country || "—" },
-    { field: "category", label: "Category", value: inv.category || "—" },
+    // The demo's category is close to the account name, so showing it
+    // beside a GL suggestion reads as the answer given away. It is still
+    // a model input; developer view shows it (see lib/why-display.ts).
+    ...(developerMode ? [{ field: "category", label: "Category", value: inv.category || "—" }] : []),
     { field: "amount", label: "Amount", value: fmtAmount(inv.amount) },
     { field: "vat_pct", label: "VAT %", value: inv.vat_pct != null ? `${inv.vat_pct}%` : "—" },
     { field: "invoice_date", label: "Invoice date", value: inv.invoice_date || "—" },
@@ -296,6 +301,7 @@ function AlternativesCard({
 // ── History tab ─────────────────────────────────────────────────
 
 function HistoryTab({ inv, history, loading }: { inv: InvoicePrediction; history: VendorHistoryRow[] | null; loading: boolean }) {
+  const { developerMode } = useDeveloperMode();
   if (loading) return <div style={{ fontSize: 12, color: "var(--text3)" }}>Loading vendor history…</div>;
   if (!history || history.length === 0) return <div style={{ fontSize: 12, color: "var(--text3)" }}>No prior invoices for this vendor.</div>;
 
@@ -334,9 +340,9 @@ function HistoryTab({ inv, history, loading }: { inv: InvoicePrediction; history
             <th style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid var(--border2)" }}>Invoice</th>
             <th style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid var(--border2)" }}>Date</th>
             <th style={{ textAlign: "right", padding: "6px 8px", borderBottom: "1px solid var(--border2)" }}>Amount</th>
-            <th style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid var(--border2)" }}>Category</th>
+            {developerMode && <th style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid var(--border2)" }}>Category</th>}
             <th style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid var(--border2)" }}>GL</th>
-            <th style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid var(--border2)" }}>Approver</th>
+            <th style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid var(--border2)" }}>Hyväksyjä</th>
           </tr>
         </thead>
         <tbody>
@@ -350,7 +356,7 @@ function HistoryTab({ inv, history, loading }: { inv: InvoicePrediction; history
                 <td className="mono" style={{ padding: "6px 8px", color: "var(--gold-dark)" }}>{r.invoice_id}</td>
                 <td className="mono" style={{ padding: "6px 8px", color: "var(--text3)", fontSize: 11 }}>{r.invoice_date ?? "—"}</td>
                 <td className="mono" style={{ padding: "6px 8px", textAlign: "right" }}>{fmtAmount(r.amount)}</td>
-                <td style={{ padding: "6px 8px" }}>{r.category ?? "—"}</td>
+                {developerMode && <td style={{ padding: "6px 8px" }}>{r.category ?? "—"}</td>}
                 <td className="mono" style={{ padding: "6px 8px", fontWeight: 600 }}>{r.gl_code}</td>
                 <td style={{ padding: "6px 8px", color: "var(--text2)" }}>{r.approver}</td>
               </tr>

@@ -26,7 +26,7 @@ def _mock_predict_response(feature, p=0.90):
 class TestFormatValue:
     def test_gl_code_includes_label(self):
         assert "4400" in format_value("4400", "gl")
-        assert "Supplies" in format_value("4400", "gl")
+        assert "tarvikkeet" in format_value("4400", "gl")
 
     def test_pct_appends_percent_sign(self):
         assert format_value("24", "pct") == "24%"

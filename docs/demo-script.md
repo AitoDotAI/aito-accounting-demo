@@ -11,9 +11,17 @@
 3. `./do dev` started — server is ready in <1 s when precomputed
    data exists (cache warmup is skipped automatically)
 4. Browser wide enough for **nav + main + Aito side panel**
-5. Customer dropdown shows **CUST-0000 · enterprise (16,000)** with
-   a **green** "warm" dot. Each row in the dropdown shows a
-   green/amber dot indicating precomputed vs cold.
+5. Customer dropdown shows **CUST-0001** (the default: a real mix of
+   rule-coded, predicted and flagged work; CUST-0000 is nearly all
+   rules and has nothing for Aito to do) with a **green** "warm" dot.
+   A browser that picked another customer before keeps it; open
+   `/?customer_id=CUST-0001` to reset.
+6. **Developer view** (checkbox at the foot of the nav, or `?dev=1`)
+   is **off** for an accounting audience: no developer banner, no
+   QUALITY section, and why cards show only the evidence an accountant
+   would check -- `category`, raw amounts and bare numbers fold into one
+   "Other signals" line, so the arithmetic still balances. Turn it on
+   for a developer audience.
 
 ## The headline
 
@@ -28,9 +36,10 @@
 
 **What to point out:**
 
-- **Touchless rate** (top-left, gold) — the share of invoices Aito
-  routes at ≥ 0.85 confidence. Click it to filter the table to
-  touchless rows; click **Review needed** to see the rest.
+- **The headline** — *"X/50 coded automatically, Y need review"*.
+  Automatic means ≥ 0.85 confidence, and every count on the page uses
+  that one threshold. Click **Coded automatically** to filter the
+  table to those rows; click **Need review** to see the rest.
 - **Sorted by due date** with red "Nd overdue" / amber "Due in Nd"
   labels. Accountants live in dates.
 - **Source column** — `Rule` (mined per customer, blue),
@@ -44,8 +53,8 @@
 
 > "These rules aren't hand-coded. The system mined them from this
 > customer's history using `_relate`. Notice GL labels are realistic —
-> 4400 Materials & Supplies, 5300 Insurance — these come from the
-> data, not a hardcoded list."
+> 4400 Aineet ja tarvikkeet, 5300 Vakuutusmaksut — named the way your
+> bookkeepers name them; the numbering is illustrative."
 
 ### 2 — Switch customer to show isolation [~30 sec]
 
@@ -54,7 +63,7 @@ Click the customer dropdown. Search for "small". Pick **CUST-0254**
 
 - The table changes completely — different vendors, different GL
   patterns.
-- Touchless rate drops, "Review needed" rises — small customers
+- "Coded automatically" drops, "Need review" rises — small customers
   haven't accumulated enough history yet.
 - The dot turns amber (cold cache) on first switch, then green.
 
@@ -64,7 +73,7 @@ Click the customer dropdown. Search for "small". Pick **CUST-0254**
 > changed in the where clause. Aito honestly reports lower confidence
 > for the cold-start customer instead of pretending to know."
 
-Switch back to **CUST-0000**.
+Switch back to **CUST-0001**.
 
 ### 3 — Smart Form Fill [~60 sec]
 
@@ -187,7 +196,8 @@ Click **Rule Mining**.
 
 ### 7 — Quality / Predictions (close on accuracy) [~45 sec]
 
-Click **Quality** in nav, then **Prediction quality**.
+Turn on **Developer view**, then click **Quality** in nav, then
+**Prediction quality**. (Skip this step for an accounting audience.)
 
 - **Rules-only baseline** card: shows what you'd get with rules alone
   (low coverage, high accuracy within covered).
@@ -204,7 +214,7 @@ Click **Quality** in nav, then **Prediction quality**.
 
 ### Optional close — Override Patterns
 
-Click **Quality → Override Patterns**.
+Click **Governance → 2 · Review overrides**.
 
 - Headline finding callout: *"Reviewers corrected gl_code to 4500 in
   14 recent invoices (lift 38× over baseline). This is a rule

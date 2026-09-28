@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useCustomer } from "@/lib/customer-context";
+import { useDeveloperMode } from "@/lib/developer-mode";
 import { apiFetch } from "@/lib/api";
 
 interface NavItem {
@@ -19,7 +20,9 @@ interface Badges {
   anomalies: number;
 }
 
-const NAV_ITEMS: { section: string; items: NavItem[] }[] = [
+// `developerOnly` sections are the engineering evidence (evaluations,
+// quality metrics): worth a developer's time, noise to an accountant.
+const NAV_ITEMS: { section: string; developerOnly?: boolean; items: NavItem[] }[] = [
   { section: "Featured", items: [
     { href: "/", label: "Same vendor, different tenants" },
   ]},
@@ -36,7 +39,7 @@ const NAV_ITEMS: { section: string; items: NavItem[] }[] = [
     { href: "/quality/overrides", label: "2 · Review overrides" },
     { href: "/quality/rules", label: "3 · Measure rules" },
   ]},
-  { section: "Quality", items: [
+  { section: "Quality", developerOnly: true, items: [
     { href: "/quality/overview", label: "System Overview" },
     { href: "/quality/predictions", label: "Prediction Quality" },
     { href: "/quality/evaluations", label: "Evaluations Matrix" },
@@ -52,6 +55,7 @@ const NAV_ITEMS: { section: string; items: NavItem[] }[] = [
 export default function Nav() {
   const pathname = usePathname();
   const { customerId } = useCustomer();
+  const { developerMode, setDeveloperMode } = useDeveloperMode();
   const [badges, setBadges] = useState<Badges | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -97,7 +101,7 @@ export default function Nav() {
           <div className="nav-logo-sub">Powered by Aito.ai</div>
         </div>
 
-        {NAV_ITEMS.map((section) => (
+        {NAV_ITEMS.filter((section) => developerMode || !section.developerOnly).map((section) => (
           <div key={section.section}>
             <div className="nav-section">{section.section}</div>
             {section.items.map((item) => {
@@ -121,6 +125,14 @@ export default function Nav() {
           </div>
         ))}
 
+        <label className="nav-developer-toggle">
+          <input
+            type="checkbox"
+            checked={developerMode}
+            onChange={(e) => setDeveloperMode(e.target.checked)}
+          />
+          Developer view
+        </label>
       </nav>
     </>
   );

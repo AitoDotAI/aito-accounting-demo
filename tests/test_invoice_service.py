@@ -74,7 +74,7 @@ class TestPredictInvoice:
 
         assert result.source == "rule"
         assert result.gl_code == "6200"
-        assert result.approver == "AP / Mikael H."
+        assert result.approver == "Mikael H."
         assert result.confidence == 0.99
 
     def test_aito_prediction_above_threshold(self, httpx_mock):
@@ -104,8 +104,8 @@ class TestPredictInvoice:
 
         assert result.source == "aito"
         assert result.gl_code == "4400"
-        assert result.gl_label == "Materials & Supplies"
-        assert result.approver == "AP / Sanna L."
+        assert result.gl_label == "Aineet ja tarvikkeet"
+        assert result.approver == "Sanna L."
         assert result.confidence == 0.88  # min(0.91, 0.88)
 
     def test_low_confidence_flags_for_review(self, httpx_mock):
@@ -184,7 +184,7 @@ class TestComputeMetrics:
 
     def test_to_dict_includes_all_fields(self):
         pred = InvoicePrediction(
-            "INV-1", "Kesko", 4220, "AP / Sanna L.", 0.88,
+            "INV-1", "Kesko", 4220, "Sanna L.", 0.88,
             "4400", "Supplies", 0.91, "aito", 0.88,
         )
         d = pred.to_dict()
@@ -211,10 +211,9 @@ class TestApproverIsResolvedToAName:
         hits = [{"feature": "CUST-0000-EMP-0156", "$p": 0.91}]
         names = {"CUST-0000-EMP-0156": "Matti Niemi"}
 
-        alts = _extract_alternatives(hits, names, prefix="AP / ",
-                                     label_replaces_value=True)
+        alts = _extract_alternatives(hits, names, label_replaces_value=True)
 
-        assert alts[0]["display"] == "AP / Matti Niemi"
+        assert alts[0]["display"] == "Matti Niemi"
         # The id stays the machine-readable value: it is what an override
         # is recorded against, and it is unique where a name is not.
         assert alts[0]["value"] == "CUST-0000-EMP-0156"
@@ -233,9 +232,9 @@ class TestApproverIsResolvedToAName:
         # would drop a real alternative.
         alts = _extract_alternatives([{"feature": "CUST-0000-EMP-9999", "$p": 0.5}],
                                      {"CUST-0000-EMP-0156": "Matti Niemi"},
-                                     prefix="AP / ", label_replaces_value=True)
+                                     label_replaces_value=True)
 
-        assert alts[0]["display"] == "AP / CUST-0000-EMP-9999"
+        assert alts[0]["display"] == "CUST-0000-EMP-9999"
 
     def test_the_name_rides_along_on_the_hit(self):
         # `approver` links to employees, so a predict returns employee
