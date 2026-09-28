@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import WhyCards from "./WhyCards";
+import { placePopup, type Placement } from "@/lib/popup-placement";
 import type { WhyFactor } from "@/lib/types";
 
 interface WhyTooltipProps {
@@ -14,32 +15,34 @@ interface WhyTooltipProps {
 
 export default function WhyTooltip({ label, factors, confidence = 0 }: WhyTooltipProps) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [pos, setPos] = useState<Placement | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
 
+  const POPUP_WIDTH = 380;
+
+  // Place from the popup's MEASURED height. It used to open above the
+  // button unconditionally with no height limit, so on rows in the upper
+  // part of the screen its top was cut off by the viewport edge. See
+  // lib/popup-placement.ts.
   const updatePosition = useCallback(() => {
-    if (!btnRef.current) return;
-    const rect = btnRef.current.getBoundingClientRect();
-    // Popup is 380px wide and positioned with translate(-50%, -100%).
-    // Clamp the anchor so the popup never escapes the viewport, even
-    // when the trigger button sits near the right edge of a narrow column.
-    const popupWidth = 380;
-    const margin = 12;
-    const half = popupWidth / 2;
-    const anchorX = rect.left + rect.width / 2;
-    const minX = half + margin;
-    const maxX = window.innerWidth - half - margin;
-    const clampedX = Math.max(minX, Math.min(maxX, anchorX));
-    setPos({
-      top: rect.top - 8,
-      left: clampedX,
-    });
+    if (!btnRef.current || !popupRef.current) return;
+    const r = btnRef.current.getBoundingClientRect();
+    setPos(placePopup(
+      { top: r.top, bottom: r.bottom, left: r.left, width: r.width },
+      { width: POPUP_WIDTH, height: popupRef.current.scrollHeight },
+      { width: window.innerWidth, height: window.innerHeight },
+    ));
   }, []);
+
+  // Measure before paint: the popup first renders hidden, then is placed.
+  useLayoutEffect(() => {
+    if (open) updatePosition();
+    else setPos(null);
+  }, [open, updatePosition]);
 
   useEffect(() => {
     if (!open) return;
-    updatePosition();
     function handleClick(e: MouseEvent) {
       if (
         popupRef.current && !popupRef.current.contains(e.target as Node) &&
@@ -50,9 +53,11 @@ export default function WhyTooltip({ label, factors, confidence = 0 }: WhyToolti
     }
     document.addEventListener("mousedown", handleClick);
     window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("resize", updatePosition);
     return () => {
       document.removeEventListener("mousedown", handleClick);
       window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("resize", updatePosition);
     };
   }, [open, updatePosition]);
 
@@ -68,18 +73,25 @@ export default function WhyTooltip({ label, factors, confidence = 0 }: WhyToolti
       >
         ?
       </button>
-      {open && pos && createPortal(
+      {open && createPortal(
         <div
           ref={popupRef}
           className="why-popup"
+          data-placement={pos?.placement ?? "above"}
           style={{
+            // The arrow is CSS; it reads where to point from here.
+            ["--arrow-x" as string]: `${pos?.arrowX ?? 190}px`,
             position: "fixed",
-            top: pos.top,
-            left: pos.left,
-            transform: "translate(-50%, -100%)",
+            top: pos?.top ?? 0,
+            left: pos?.left ?? 0,
+            // Hidden until measured and placed, so it never flashes
+            // in the wrong spot.
+            visibility: pos ? "visible" : "hidden",
+            maxHeight: pos?.maxHeight,
+            overflowY: pos?.maxHeight ? "auto" : undefined,
             // Wider than the legacy flat-list popup -- pattern cards
             // need horizontal room for the highlighted text spans.
-            width: 380,
+            width: POPUP_WIDTH,
           }}
         >
           <div className="why-title">Why {label}?</div>

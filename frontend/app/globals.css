@@ -146,7 +146,9 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 .why-btn:hover{background:var(--gold-bright)}
 .why-popup{background:var(--surface);border:1px solid var(--gold-mid);border-radius:10px;padding:14px 18px;font-size:12px;line-height:1.6;box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:10000;max-width:calc(100vw - 40px)}
 .why-popup mark{background:#fff3a8;padding:0 2px;border-radius:2px}
-.why-popup::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:6px solid transparent;border-top-color:var(--gold-mid)}
+.why-popup::after{content:'';position:absolute;top:100%;left:var(--arrow-x,50%);transform:translateX(-50%);border:6px solid transparent;border-top-color:var(--gold-mid)}
+/* Opened below its button (it would not fit above): the arrow points up. */
+.why-popup[data-placement=below]::after{top:auto;bottom:100%;border-top-color:transparent;border-bottom-color:var(--gold-mid)}
 .why-title{font-weight:600;color:var(--gold-dark);margin-bottom:2px;font-size:13px}
 .why-subtitle{font-size:10px;color:var(--text3);margin-bottom:10px}
 .why-factor{display:flex;align-items:center;gap:8px;padding:5px 8px;color:var(--text2);font-size:12px;background:var(--surface2);border-radius:4px;margin-bottom:4px}
