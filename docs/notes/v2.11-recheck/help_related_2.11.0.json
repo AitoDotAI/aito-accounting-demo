@@ -1,0 +1,793 @@
+{
+ "engine": {
+  "builtAt": "2026-09-29T04:50:43.457579355Z",
+  "gitRevision": "03b4c2ed76480afd3e3d00dc2541639551400f6c",
+  "name": "aitoai",
+  "version": "2.11.0"
+ },
+ "cases": [
+  {
+   "customer_id": "CUST-0000",
+   "prev_article_id": "APP-02",
+   "variants": {
+    "as_is": [
+     {
+      "article_id": "APP-06",
+      "p": 0.491882,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-04",
+      "p": 0.427426,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-08",
+      "p": 0.346939,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-09",
+      "p": 0.341924,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-02",
+      "p": 0.327251,
+      "owner": "*"
+     }
+    ],
+    "no_target_scope": [
+     {
+      "article_id": "CUST-0015-INT-04",
+      "p": 0.688734,
+      "owner": "CUST-0015"
+     },
+     {
+      "article_id": "CUST-0008-INT-00",
+      "p": 0.6657,
+      "owner": "CUST-0008"
+     },
+     {
+      "article_id": "CUST-0011-INT-00",
+      "p": 0.62533,
+      "owner": "CUST-0011"
+     },
+     {
+      "article_id": "CUST-0009-INT-03",
+      "p": 0.611968,
+      "owner": "CUST-0009"
+     },
+     {
+      "article_id": "CUST-0002-INT-01",
+      "p": 0.567849,
+      "owner": "CUST-0002"
+     }
+    ],
+    "no_prev_filter": [
+     {
+      "article_id": "APP-06",
+      "p": 0.350896,
+      "owner": "*"
+     },
+     {
+      "article_id": "CUST-0000-INT-01",
+      "p": 0.346273,
+      "owner": "CUST-0000"
+     },
+     {
+      "article_id": "APP-05",
+      "p": 0.329892,
+      "owner": "*"
+     },
+     {
+      "article_id": "CUST-0000-INT-03",
+      "p": 0.315909,
+      "owner": "CUST-0000"
+     },
+     {
+      "article_id": "APP-02",
+      "p": 0.312549,
+      "owner": "*"
+     }
+    ]
+   }
+  },
+  {
+   "customer_id": "CUST-0000",
+   "prev_article_id": "CUST-0000-INT-00",
+   "variants": {
+    "as_is": [
+     {
+      "article_id": "APP-00",
+      "p": 1.0,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-01",
+      "p": 1.0,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-02",
+      "p": 1.0,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-03",
+      "p": 1.0,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-04",
+      "p": 1.0,
+      "owner": "*"
+     }
+    ],
+    "no_target_scope": [
+     {
+      "article_id": "APP-00",
+      "p": 1.0,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-01",
+      "p": 1.0,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-02",
+      "p": 1.0,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-03",
+      "p": 1.0,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-04",
+      "p": 1.0,
+      "owner": "*"
+     }
+    ],
+    "no_prev_filter": [
+     {
+      "article_id": "APP-06",
+      "p": 0.350896,
+      "owner": "*"
+     },
+     {
+      "article_id": "CUST-0000-INT-01",
+      "p": 0.346273,
+      "owner": "CUST-0000"
+     },
+     {
+      "article_id": "APP-05",
+      "p": 0.329892,
+      "owner": "*"
+     },
+     {
+      "article_id": "CUST-0000-INT-03",
+      "p": 0.315909,
+      "owner": "CUST-0000"
+     },
+     {
+      "article_id": "APP-02",
+      "p": 0.312549,
+      "owner": "*"
+     }
+    ]
+   }
+  },
+  {
+   "customer_id": "CUST-0000",
+   "prev_article_id": "APP-06",
+   "variants": {
+    "as_is": [
+     {
+      "article_id": "APP-04",
+      "p": 0.471844,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-01",
+      "p": 0.400553,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-03",
+      "p": 0.393239,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-07",
+      "p": 0.382791,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-05",
+      "p": 0.335788,
+      "owner": "*"
+     }
+    ],
+    "no_target_scope": [
+     {
+      "article_id": "CUST-0013-INT-01",
+      "p": 0.647253,
+      "owner": "CUST-0013"
+     },
+     {
+      "article_id": "CUST-0013-INT-03",
+      "p": 0.576735,
+      "owner": "CUST-0013"
+     },
+     {
+      "article_id": "CUST-0012-INT-00",
+      "p": 0.551682,
+      "owner": "CUST-0012"
+     },
+     {
+      "article_id": "CUST-0002-INT-03",
+      "p": 0.530535,
+      "owner": "CUST-0002"
+     },
+     {
+      "article_id": "CUST-0012-INT-01",
+      "p": 0.519166,
+      "owner": "CUST-0012"
+     }
+    ],
+    "no_prev_filter": [
+     {
+      "article_id": "APP-06",
+      "p": 0.350896,
+      "owner": "*"
+     },
+     {
+      "article_id": "CUST-0000-INT-01",
+      "p": 0.346273,
+      "owner": "CUST-0000"
+     },
+     {
+      "article_id": "APP-05",
+      "p": 0.329892,
+      "owner": "*"
+     },
+     {
+      "article_id": "CUST-0000-INT-03",
+      "p": 0.315909,
+      "owner": "CUST-0000"
+     },
+     {
+      "article_id": "APP-02",
+      "p": 0.312549,
+      "owner": "*"
+     }
+    ]
+   }
+  },
+  {
+   "customer_id": "CUST-0003",
+   "prev_article_id": "CUST-0003-INT-04",
+   "variants": {
+    "as_is": [
+     {
+      "article_id": "CUST-0003-INT-01",
+      "p": 0.570684,
+      "owner": "CUST-0003"
+     },
+     {
+      "article_id": "CUST-0003-INT-00",
+      "p": 0.455984,
+      "owner": "CUST-0003"
+     },
+     {
+      "article_id": "CUST-0003-INT-04",
+      "p": 0.324914,
+      "owner": "CUST-0003"
+     },
+     {
+      "article_id": "CUST-0003-INT-02",
+      "p": 0.227172,
+      "owner": "CUST-0003"
+     },
+     {
+      "article_id": "APP-01",
+      "p": 0.180551,
+      "owner": "*"
+     }
+    ],
+    "no_target_scope": [
+     {
+      "article_id": "CUST-0003-INT-01",
+      "p": 0.570684,
+      "owner": "CUST-0003"
+     },
+     {
+      "article_id": "CUST-0003-INT-00",
+      "p": 0.455984,
+      "owner": "CUST-0003"
+     },
+     {
+      "article_id": "CUST-0003-INT-04",
+      "p": 0.324914,
+      "owner": "CUST-0003"
+     },
+     {
+      "article_id": "CUST-0003-INT-02",
+      "p": 0.227172,
+      "owner": "CUST-0003"
+     },
+     {
+      "article_id": "APP-01",
+      "p": 0.180551,
+      "owner": "*"
+     }
+    ],
+    "no_prev_filter": [
+     {
+      "article_id": "CUST-0003-INT-04",
+      "p": 0.567836,
+      "owner": "CUST-0003"
+     },
+     {
+      "article_id": "CUST-0003-INT-02",
+      "p": 0.359112,
+      "owner": "CUST-0003"
+     },
+     {
+      "article_id": "APP-03",
+      "p": 0.330128,
+      "owner": "*"
+     },
+     {
+      "article_id": "CUST-0003-INT-01",
+      "p": 0.318586,
+      "owner": "CUST-0003"
+     },
+     {
+      "article_id": "CUST-0003-INT-03",
+      "p": 0.318052,
+      "owner": "CUST-0003"
+     }
+    ]
+   }
+  },
+  {
+   "customer_id": "CUST-0003",
+   "prev_article_id": "CUST-0003-INT-02",
+   "variants": {
+    "as_is": [
+     {
+      "article_id": "CUST-0003-INT-04",
+      "p": 0.660346,
+      "owner": "CUST-0003"
+     },
+     {
+      "article_id": "CUST-0003-INT-01",
+      "p": 0.445879,
+      "owner": "CUST-0003"
+     },
+     {
+      "article_id": "CUST-0003-INT-02",
+      "p": 0.315724,
+      "owner": "CUST-0003"
+     },
+     {
+      "article_id": "APP-07",
+      "p": 0.30898,
+      "owner": "*"
+     },
+     {
+      "article_id": "CUST-0003-INT-03",
+      "p": 0.297304,
+      "owner": "CUST-0003"
+     }
+    ],
+    "no_target_scope": [
+     {
+      "article_id": "CUST-0003-INT-04",
+      "p": 0.660346,
+      "owner": "CUST-0003"
+     },
+     {
+      "article_id": "CUST-0003-INT-01",
+      "p": 0.445879,
+      "owner": "CUST-0003"
+     },
+     {
+      "article_id": "CUST-0002-INT-01",
+      "p": 0.4166,
+      "owner": "CUST-0002"
+     },
+     {
+      "article_id": "CUST-0013-INT-01",
+      "p": 0.411154,
+      "owner": "CUST-0013"
+     },
+     {
+      "article_id": "CUST-0019-INT-00",
+      "p": 0.392769,
+      "owner": "CUST-0019"
+     }
+    ],
+    "no_prev_filter": [
+     {
+      "article_id": "CUST-0003-INT-04",
+      "p": 0.567836,
+      "owner": "CUST-0003"
+     },
+     {
+      "article_id": "CUST-0003-INT-02",
+      "p": 0.359112,
+      "owner": "CUST-0003"
+     },
+     {
+      "article_id": "APP-03",
+      "p": 0.330128,
+      "owner": "*"
+     },
+     {
+      "article_id": "CUST-0003-INT-01",
+      "p": 0.318586,
+      "owner": "CUST-0003"
+     },
+     {
+      "article_id": "CUST-0003-INT-03",
+      "p": 0.318052,
+      "owner": "CUST-0003"
+     }
+    ]
+   }
+  },
+  {
+   "customer_id": "CUST-0003",
+   "prev_article_id": "APP-07",
+   "variants": {
+    "as_is": [
+     {
+      "article_id": "APP-04",
+      "p": 0.43115,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-07",
+      "p": 0.340081,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-06",
+      "p": 0.300606,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-01",
+      "p": 0.29676,
+      "owner": "*"
+     },
+     {
+      "article_id": "LEGAL-05",
+      "p": 0.25032,
+      "owner": "*"
+     }
+    ],
+    "no_target_scope": [
+     {
+      "article_id": "CUST-0009-INT-04",
+      "p": 0.678876,
+      "owner": "CUST-0009"
+     },
+     {
+      "article_id": "CUST-0018-INT-00",
+      "p": 0.66057,
+      "owner": "CUST-0018"
+     },
+     {
+      "article_id": "CUST-0019-INT-00",
+      "p": 0.621927,
+      "owner": "CUST-0019"
+     },
+     {
+      "article_id": "CUST-0014-INT-03",
+      "p": 0.606086,
+      "owner": "CUST-0014"
+     },
+     {
+      "article_id": "CUST-0014-INT-01",
+      "p": 0.604348,
+      "owner": "CUST-0014"
+     }
+    ],
+    "no_prev_filter": [
+     {
+      "article_id": "CUST-0003-INT-04",
+      "p": 0.567836,
+      "owner": "CUST-0003"
+     },
+     {
+      "article_id": "CUST-0003-INT-02",
+      "p": 0.359112,
+      "owner": "CUST-0003"
+     },
+     {
+      "article_id": "APP-03",
+      "p": 0.330128,
+      "owner": "*"
+     },
+     {
+      "article_id": "CUST-0003-INT-01",
+      "p": 0.318586,
+      "owner": "CUST-0003"
+     },
+     {
+      "article_id": "CUST-0003-INT-03",
+      "p": 0.318052,
+      "owner": "CUST-0003"
+     }
+    ]
+   }
+  },
+  {
+   "customer_id": "CUST-0007",
+   "prev_article_id": "CUST-0007-INT-04",
+   "variants": {
+    "as_is": [
+     {
+      "article_id": "APP-03",
+      "p": 0.542897,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-04",
+      "p": 0.51966,
+      "owner": "*"
+     },
+     {
+      "article_id": "CUST-0007-INT-03",
+      "p": 0.321529,
+      "owner": "CUST-0007"
+     },
+     {
+      "article_id": "LEGAL-00",
+      "p": 0.30124,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-06",
+      "p": 0.2867,
+      "owner": "*"
+     }
+    ],
+    "no_target_scope": [
+     {
+      "article_id": "APP-03",
+      "p": 0.542897,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-04",
+      "p": 0.51966,
+      "owner": "*"
+     },
+     {
+      "article_id": "CUST-0007-INT-03",
+      "p": 0.321529,
+      "owner": "CUST-0007"
+     },
+     {
+      "article_id": "LEGAL-00",
+      "p": 0.30124,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-06",
+      "p": 0.2867,
+      "owner": "*"
+     }
+    ],
+    "no_prev_filter": [
+     {
+      "article_id": "CUST-0007-INT-02",
+      "p": 0.333903,
+      "owner": "CUST-0007"
+     },
+     {
+      "article_id": "CUST-0007-INT-04",
+      "p": 0.328374,
+      "owner": "CUST-0007"
+     },
+     {
+      "article_id": "APP-06",
+      "p": 0.325366,
+      "owner": "*"
+     },
+     {
+      "article_id": "CUST-0007-INT-03",
+      "p": 0.322213,
+      "owner": "CUST-0007"
+     },
+     {
+      "article_id": "APP-07",
+      "p": 0.306468,
+      "owner": "*"
+     }
+    ]
+   }
+  },
+  {
+   "customer_id": "CUST-0007",
+   "prev_article_id": "CUST-0007-INT-03",
+   "variants": {
+    "as_is": [
+     {
+      "article_id": "CUST-0007-INT-02",
+      "p": 0.881405,
+      "owner": "CUST-0007"
+     },
+     {
+      "article_id": "CUST-0007-INT-00",
+      "p": 0.844868,
+      "owner": "CUST-0007"
+     },
+     {
+      "article_id": "CUST-0007-INT-04",
+      "p": 0.706487,
+      "owner": "CUST-0007"
+     },
+     {
+      "article_id": "CUST-0007-INT-03",
+      "p": 0.651971,
+      "owner": "CUST-0007"
+     },
+     {
+      "article_id": "CUST-0007-INT-01",
+      "p": 0.027225,
+      "owner": "CUST-0007"
+     }
+    ],
+    "no_target_scope": [
+     {
+      "article_id": "CUST-0007-INT-02",
+      "p": 0.881405,
+      "owner": "CUST-0007"
+     },
+     {
+      "article_id": "CUST-0007-INT-00",
+      "p": 0.844868,
+      "owner": "CUST-0007"
+     },
+     {
+      "article_id": "CUST-0007-INT-04",
+      "p": 0.706487,
+      "owner": "CUST-0007"
+     },
+     {
+      "article_id": "CUST-0003-INT-04",
+      "p": 0.678288,
+      "owner": "CUST-0003"
+     },
+     {
+      "article_id": "CUST-0002-INT-01",
+      "p": 0.662066,
+      "owner": "CUST-0002"
+     }
+    ],
+    "no_prev_filter": [
+     {
+      "article_id": "CUST-0007-INT-02",
+      "p": 0.333903,
+      "owner": "CUST-0007"
+     },
+     {
+      "article_id": "CUST-0007-INT-04",
+      "p": 0.328374,
+      "owner": "CUST-0007"
+     },
+     {
+      "article_id": "APP-06",
+      "p": 0.325366,
+      "owner": "*"
+     },
+     {
+      "article_id": "CUST-0007-INT-03",
+      "p": 0.322213,
+      "owner": "CUST-0007"
+     },
+     {
+      "article_id": "APP-07",
+      "p": 0.306468,
+      "owner": "*"
+     }
+    ]
+   }
+  },
+  {
+   "customer_id": "CUST-0007",
+   "prev_article_id": "APP-09",
+   "variants": {
+    "as_is": [
+     {
+      "article_id": "APP-06",
+      "p": 0.41535,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-02",
+      "p": 0.374463,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-07",
+      "p": 0.342478,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-08",
+      "p": 0.313163,
+      "owner": "*"
+     },
+     {
+      "article_id": "APP-09",
+      "p": 0.311637,
+      "owner": "*"
+     }
+    ],
+    "no_target_scope": [
+     {
+      "article_id": "CUST-0013-INT-01",
+      "p": 0.708272,
+      "owner": "CUST-0013"
+     },
+     {
+      "article_id": "CUST-0013-INT-03",
+      "p": 0.656987,
+      "owner": "CUST-0013"
+     },
+     {
+      "article_id": "CUST-0016-INT-01",
+      "p": 0.631384,
+      "owner": "CUST-0016"
+     },
+     {
+      "article_id": "CUST-0003-INT-04",
+      "p": 0.620812,
+      "owner": "CUST-0003"
+     },
+     {
+      "article_id": "CUST-0005-INT-03",
+      "p": 0.597722,
+      "owner": "CUST-0005"
+     }
+    ],
+    "no_prev_filter": [
+     {
+      "article_id": "CUST-0007-INT-02",
+      "p": 0.333903,
+      "owner": "CUST-0007"
+     },
+     {
+      "article_id": "CUST-0007-INT-04",
+      "p": 0.328374,
+      "owner": "CUST-0007"
+     },
+     {
+      "article_id": "APP-06",
+      "p": 0.325366,
+      "owner": "*"
+     },
+     {
+      "article_id": "CUST-0007-INT-03",
+      "p": 0.322213,
+      "owner": "CUST-0007"
+     },
+     {
+      "article_id": "APP-07",
+      "p": 0.306468,
+      "owner": "*"
+     }
+    ]
+   }
+  }
+ ]
+}
