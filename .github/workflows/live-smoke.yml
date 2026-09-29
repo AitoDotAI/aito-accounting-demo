@@ -12,7 +12,7 @@ name: Live demo smoke (accounting.aito.ai)
 
 on:
   schedule:
-    - cron: '15 5 * * *'           # daily, before the working day
+    - cron: '15 2 * * *'           # daily at 05:15 Helsinki: outside the 08-10 demo window
   workflow_dispatch: {}
   repository_dispatch:
     types: [demos-deployed]         # fired after a demos deploy

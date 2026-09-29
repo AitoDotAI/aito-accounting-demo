@@ -67,3 +67,17 @@ def test_cold_precompute_fails():
 def test_live_mode_never_runs_a_route_that_writes_on_a_miss():
     writers = {s.name for s in vd.steps("CUST-0001") if s.writes_on_miss}
     assert {"health", "formfill/templates", "help/search"} <= writers
+
+
+def test_landing_judges_a_card_as_the_page_shows_it():
+    # the page shows the first four clients; distinct accounts further down the
+    # list must not rescue a card that reads 4 clients / 3 accounts on screen
+    card = {"vendor": "Schuravleff Oy",
+            "tenants": _tenants("5400", "1600", "5400", "4600", "6100", "7000", "8000", "1500")}
+    with pytest.raises(AssertionError, match="four different GL accounts"):
+        vd.check_multitenancy_landing({"vendors": [card]})
+
+
+def test_a_zero_confidence_row_counts_as_hesitant():
+    body = {"invoices": [_row(0.96, [VISIBLE]), _row(0.0, [VISIBLE])]}
+    assert "1 hesitant" in vd.check_invoices_pending(body)

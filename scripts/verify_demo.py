@@ -75,11 +75,11 @@ def check_health(body: dict) -> str:
     return "server up, Aito reachable"
 
 
-def check_customers(body: dict) -> str:
+def check_customers(body: dict, customer: str = DEFAULT_CUSTOMER) -> str:
     customers = _hits(body, "customers")
     assert customers, "no customers — the tenant switcher would be empty"
-    assert any(c.get("customer_id") == DEFAULT_CUSTOMER for c in customers), \
-        f"{DEFAULT_CUSTOMER} missing from the customer list"
+    assert any(c.get("customer_id") == customer for c in customers), \
+        f"{customer} missing from the customer list"
     return f"{len(customers)} tenants"
 
 
@@ -100,7 +100,8 @@ def check_invoices_pending(body: dict) -> str:
     # a person can check, and a row where Aito hesitates ("so it goes to you").
     by_aito = [i for i in invoices if i.get("source") == "aito"]
     assert by_aito, "no Aito-predicted rows, only rules: nothing to show a why card on"
-    hesitant = [i for i in by_aito if float(i.get("confidence") or 1) < LOW_CONFIDENCE]
+    hesitant = [i for i in by_aito
+                if i.get("confidence") is not None and float(i["confidence"]) < LOW_CONFIDENCE]
     assert hesitant, (f"no Aito row below {LOW_CONFIDENCE:.0%} confidence: the "
                       "'here it hesitates' beat has no row to point at")
     explained = [i for i in by_aito if _visible_why_cards(i)]
@@ -231,7 +232,7 @@ def check_quality_predictions(body: dict) -> str:
     return f"{accuracy}% vs {baseline}% baseline on {evaluated} cases"
 
 
-def check_help_search(body: dict) -> str:
+def check_help_search(body: dict, customer: str = DEFAULT_CUSTOMER) -> str:
     """The help drawer, and its tenant scoping.
 
     A dropped eligibility filter fails open — more articles, no error —
@@ -240,7 +241,7 @@ def check_help_search(body: dict) -> str:
     articles = _hits(body, "articles", "results", "hits")
     assert articles, "help search returned nothing"
     leaked = [a for a in articles
-              if a.get("customer_id") not in (None, "*", DEFAULT_CUSTOMER)]
+              if a.get("customer_id") not in (None, "*", customer)]
     assert not leaked, \
         f"help leaked another tenant's articles: {[a.get('article_id') for a in leaked]}"
     return f"{len(articles)} articles, correctly scoped"
@@ -253,14 +254,19 @@ def check_multitenancy_landing(body: dict) -> str:
     assert body, "multitenancy landing is empty"
     vendors = _hits(body, "vendors")
     assert vendors, "the landing has no shared vendors"
+    # judge each card as the page renders it: its first LANDING_TENANTS_VISIBLE clients
+    shown = lambda v: v.get("tenants", [])[:LANDING_TENANTS_VISIBLE]
     four_by_four = [v for v in vendors
-                    if len(v.get("tenants", [])) >= 4
-                    and len({t.get("gl_code") for t in v["tenants"]}) >= 4]
+                    if len(shown(v)) >= 4 and len({t.get("gl_code") for t in shown(v)}) >= 4]
     assert four_by_four, "no vendor card shows four clients with four different GL accounts"
     first = vendors[0]
     note = ("" if first in four_by_four
             else f"; the first card ({first.get('vendor')}) does not: present {four_by_four[0]['vendor']}")
     return f"{len(vendors)} vendors, {len(four_by_four)} with 4 clients / 4 GLs{note}"
+
+
+# frontend/app/page.tsx MAX_TENANTS_VISIBLE
+LANDING_TENANTS_VISIBLE = 4
 
 
 def check_cache_warm(body: dict) -> str:
@@ -273,12 +279,15 @@ def check_cache_warm(body: dict) -> str:
 
 def steps(customer: str) -> list[Step]:
     """The demo path, in demo order, for one customer."""
+    from functools import partial
     c = {"customer_id": customer}
     return [
         Step("health", "/api/health", check_health, writes_on_miss=True),
         Step("cache/status", "/api/cache/status", check_cache_warm, c),
-        Step("customers", "/api/customers", check_customers),
-        Step("multitenancy/landing", "/api/multitenancy/landing", check_multitenancy_landing),
+        Step("customers", "/api/customers", partial(check_customers, customer=customer)),
+        # exactly as the landing page asks for it (frontend/app/page.tsx)
+        Step("multitenancy/landing", "/api/multitenancy/landing", check_multitenancy_landing,
+             {"vendor_limit": 8, "tenants_per_vendor": LANDING_TENANTS_VISIBLE}),
         Step("invoices/pending", "/api/invoices/pending", check_invoices_pending,
              {**c, "per_page": 50}),
         Step("formfill/templates", "/api/formfill/templates", check_formfill_templates, c,
@@ -288,13 +297,12 @@ def steps(customer: str) -> list[Step]:
         Step("anomalies/scan", "/api/anomalies/scan", check_anomalies, c),
         Step("quality/overview", "/api/quality/overview", check_quality_overview, c),
         Step("quality/predictions", "/api/quality/predictions", check_quality_predictions, c),
-        Step("help/search", "/api/help/search", check_help_search,
+        Step("help/search", "/api/help/search", partial(check_help_search, customer=customer),
              {**c, "q": "cost centre"}, writes_on_miss=True),
     ]
 
 
 def main() -> int:
-    global DEFAULT_CUSTOMER   # the checks read it (customers, help ownership)
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--base", default=None, help=f"server URL (default {DEFAULT_BASE}, or {LIVE_BASE} with --live)")
     parser.add_argument("--live", action="store_true",
@@ -305,7 +313,6 @@ def main() -> int:
     parser.add_argument("--timeout", type=float, default=300.0,
                         help="per-step timeout in seconds (v2 cold views are slow)")
     args = parser.parse_args()
-    DEFAULT_CUSTOMER = args.customer
     args.base = args.base or (LIVE_BASE if args.live else DEFAULT_BASE)
     plan = steps(args.customer)
     skipped = [s for s in plan if args.live and s.writes_on_miss]
@@ -336,6 +343,11 @@ def main() -> int:
                 failures.append((step.name, f"{type(exc).__name__}: {exc}"))
                 print(f"  FAIL  {step.name} ({elapsed:.1f}s)")
                 print(f"        {type(exc).__name__}: {exc}")
+                if args.live and step.name == "cache/status":
+                    # a cold view computes live and cache.set()s its result (a write,
+                    # and heavy work incl. _evaluate): stop rather than walk into it
+                    print("        stopping: --live must not read cold views")
+                    break
                 continue
 
             elapsed = time.monotonic() - started
