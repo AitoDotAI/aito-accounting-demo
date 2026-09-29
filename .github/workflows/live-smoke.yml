@@ -1,0 +1,34 @@
+name: Live demo smoke (accounting.aito.ai)
+
+# Walks the demo path on the DEPLOYED site, read-only, and fails if any step
+# errors OR comes back empty where the demo needs content (a view that returns
+# 200 with nothing renders as a blank panel mid-demo). The same script as
+# `./do verify-demo`, with --live: it skips every route that writes to Aito on a
+# cache miss, so it never writes to the demo database.
+#
+# Why: across the demos, silent empty-on-error handlers let a broken query look
+# like "no data"; one such query in the grocery demo failed for nine months
+# unnoticed (board td-20260929184223822327).
+
+on:
+  schedule:
+    - cron: '15 5 * * *'           # daily, before the working day
+  workflow_dispatch: {}
+  repository_dispatch:
+    types: [demos-deployed]         # fired after a demos deploy
+  push:
+    branches: [main]
+    paths: ['scripts/verify_demo.py', '.github/workflows/live-smoke.yml']
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install 'httpx>=0.27'
+      - name: Walk the demo path on accounting.aito.ai (read-only)
+        run: python scripts/verify_demo.py --live

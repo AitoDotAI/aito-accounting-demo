@@ -31,7 +31,10 @@ from typing import Any
 import httpx
 
 DEFAULT_BASE = "http://localhost:8200"
-DEFAULT_CUSTOMER = "CUST-0000"
+LIVE_BASE = "https://accounting.aito.ai"
+# The customer the live demo is given on (the ModernPath brief, 30.9: "CUST-0001,
+# not 0000, which has nothing to review"). Its views are precomputed.
+DEFAULT_CUSTOMER = "CUST-0001"
 
 # A step slower than this still passes, but is called out: past this
 # point a live audience reads the view as broken rather than loading.
@@ -49,6 +52,9 @@ class Step:
     path: str
     check: Any
     params: dict | None = None
+    # The route writes to Aito on a cache miss (cache.set -> cache_entries).
+    # --live skips it: the live smoke must never write to the demo database.
+    writes_on_miss: bool = False
 
 
 def _hits(body: dict, *keys: str) -> list:
@@ -89,7 +95,42 @@ def check_invoices_pending(body: dict) -> str:
     assert confidences, "no confidence values — the whole automation story is unshown"
     for confidence in confidences:
         assert 0.0 <= float(confidence) <= 1.0, f"confidence out of [0,1]: {confidence}"
-    return f"{len(invoices)} pending, {len(predicted)} predicted"
+
+    # The demo's two beats on this view: a confident prediction with a why card
+    # a person can check, and a row where Aito hesitates ("so it goes to you").
+    by_aito = [i for i in invoices if i.get("source") == "aito"]
+    assert by_aito, "no Aito-predicted rows, only rules: nothing to show a why card on"
+    hesitant = [i for i in by_aito if float(i.get("confidence") or 1) < LOW_CONFIDENCE]
+    assert hesitant, (f"no Aito row below {LOW_CONFIDENCE:.0%} confidence: the "
+                      "'here it hesitates' beat has no row to point at")
+    explained = [i for i in by_aito if _visible_why_cards(i)]
+    assert explained, "no Aito row has a why card that survives the presentation filter"
+    return (f"{len(invoices)} pending, {len(by_aito)} by Aito, {len(hesitant)} hesitant, "
+            f"{len(explained)} with a visible why card")
+
+
+# Below this an Aito row renders amber or red (frontend/lib/api.ts confClass).
+LOW_CONFIDENCE = 0.80
+# The why-card rules of frontend/lib/why-display.ts + WhyCards.tsx: a pattern
+# earns a card if its lift is material and it mentions no category, raw amount
+# or bare number. Mirrored here so the smoke fails when every card would fold.
+_MATERIAL = 1.15
+_HIDDEN_FIELDS = {"category", "amount"}
+
+
+def _visible_why_cards(invoice: dict) -> list:
+    import re
+    alternatives = invoice.get("gl_alternatives") or [{}]
+    patterns = [f for f in (alternatives[0].get("why") or []) if f.get("type") == "pattern"]
+
+    def shown(factor: dict) -> bool:
+        lift = factor.get("lift", 1.0)
+        if not (lift >= _MATERIAL or lift <= 1 / _MATERIAL):
+            return False
+        return not any(p.get("field", "").replace("invoice_id.", "") in _HIDDEN_FIELDS
+                       or re.fullmatch(r"[\d\s.,:/-]+", str(p.get("value", "")))
+                       for p in factor.get("propositions", []))
+    return [f for f in patterns if shown(f)]
 
 
 def check_formfill_templates(body: dict) -> str:
@@ -206,54 +247,85 @@ def check_help_search(body: dict) -> str:
 
 
 def check_multitenancy_landing(body: dict) -> str:
-    """The landing view that makes the multi-tenant point."""
+    """The landing view that makes the multi-tenant point: "same vendor, four
+    clients, four GL accounts". At least one card has to say exactly that; on
+    29.9 the FIRST card showed four clients but only three distinct accounts."""
     assert body, "multitenancy landing is empty"
-    return f"{len(body)} sections"
+    vendors = _hits(body, "vendors")
+    assert vendors, "the landing has no shared vendors"
+    four_by_four = [v for v in vendors
+                    if len(v.get("tenants", [])) >= 4
+                    and len({t.get("gl_code") for t in v["tenants"]}) >= 4]
+    assert four_by_four, "no vendor card shows four clients with four different GL accounts"
+    first = vendors[0]
+    note = ("" if first in four_by_four
+            else f"; the first card ({first.get('vendor')}) does not: present {four_by_four[0]['vendor']}")
+    return f"{len(vendors)} vendors, {len(four_by_four)} with 4 clients / 4 GLs{note}"
 
 
-STEPS: list[Step] = [
-    Step("health", "/api/health", check_health),
-    Step("customers", "/api/customers", check_customers),
-    Step("invoices/pending", "/api/invoices/pending", check_invoices_pending,
-         {"customer_id": DEFAULT_CUSTOMER}),
-    Step("formfill/templates", "/api/formfill/templates", check_formfill_templates,
-         {"customer_id": DEFAULT_CUSTOMER}),
-    Step("rules/candidates", "/api/rules/candidates", check_rule_candidates,
-         {"customer_id": DEFAULT_CUSTOMER}),
-    Step("matching/pairs", "/api/matching/pairs", check_matching_pairs,
-         {"customer_id": DEFAULT_CUSTOMER}),
-    Step("anomalies/scan", "/api/anomalies/scan", check_anomalies,
-         {"customer_id": DEFAULT_CUSTOMER}),
-    Step("quality/overview", "/api/quality/overview", check_quality_overview,
-         {"customer_id": DEFAULT_CUSTOMER}),
-    Step("quality/predictions", "/api/quality/predictions", check_quality_predictions,
-         {"customer_id": DEFAULT_CUSTOMER}),
-    Step("help/search", "/api/help/search", check_help_search,
-         {"customer_id": DEFAULT_CUSTOMER, "q": "cost centre"}),
-    Step("multitenancy/landing", "/api/multitenancy/landing", check_multitenancy_landing),
-]
+def check_cache_warm(body: dict) -> str:
+    """The demo customer's views are precomputed: a cold view is a 30 s+ spinner
+    in front of an audience, and on the live site a cold read also writes the cache."""
+    cold = [k for k, v in body.items() if k.endswith("_warm") and v is not True]
+    assert not cold, f"cold for {body.get('customer_id')}: {', '.join(cold)}"
+    return "every view precomputed"
+
+
+def steps(customer: str) -> list[Step]:
+    """The demo path, in demo order, for one customer."""
+    c = {"customer_id": customer}
+    return [
+        Step("health", "/api/health", check_health, writes_on_miss=True),
+        Step("cache/status", "/api/cache/status", check_cache_warm, c),
+        Step("customers", "/api/customers", check_customers),
+        Step("multitenancy/landing", "/api/multitenancy/landing", check_multitenancy_landing),
+        Step("invoices/pending", "/api/invoices/pending", check_invoices_pending,
+             {**c, "per_page": 50}),
+        Step("formfill/templates", "/api/formfill/templates", check_formfill_templates, c,
+             writes_on_miss=True),
+        Step("rules/candidates", "/api/rules/candidates", check_rule_candidates, c),
+        Step("matching/pairs", "/api/matching/pairs", check_matching_pairs, c),
+        Step("anomalies/scan", "/api/anomalies/scan", check_anomalies, c),
+        Step("quality/overview", "/api/quality/overview", check_quality_overview, c),
+        Step("quality/predictions", "/api/quality/predictions", check_quality_predictions, c),
+        Step("help/search", "/api/help/search", check_help_search,
+             {**c, "q": "cost centre"}, writes_on_miss=True),
+    ]
 
 
 def main() -> int:
+    global DEFAULT_CUSTOMER   # the checks read it (customers, help ownership)
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--base", default=DEFAULT_BASE, help=f"server URL (default {DEFAULT_BASE})")
+    parser.add_argument("--base", default=None, help=f"server URL (default {DEFAULT_BASE}, or {LIVE_BASE} with --live)")
+    parser.add_argument("--live", action="store_true",
+                        help=f"smoke the deployed demo ({LIVE_BASE}) read-only: skip every step that "
+                             "writes to Aito on a cache miss")
+    parser.add_argument("--customer", default=DEFAULT_CUSTOMER,
+                        help=f"the demo customer (default {DEFAULT_CUSTOMER})")
     parser.add_argument("--timeout", type=float, default=300.0,
                         help="per-step timeout in seconds (v2 cold views are slow)")
     args = parser.parse_args()
+    DEFAULT_CUSTOMER = args.customer
+    args.base = args.base or (LIVE_BASE if args.live else DEFAULT_BASE)
+    plan = steps(args.customer)
+    skipped = [s for s in plan if args.live and s.writes_on_miss]
+    plan = [s for s in plan if s not in skipped]
 
     try:
-        httpx.get(f"{args.base}/api/health", timeout=10)
+        # /health, not /api/health: the latter writes a cache row every minute
+        httpx.get(f"{args.base}/health", timeout=30)
     except httpx.HTTPError:
         print(f"No server at {args.base}. Start one with: ./do dev   (or ./do dev-v2)",
               file=sys.stderr)
         return 2
 
-    print(f"Demo path — {args.base}, {len(STEPS)} steps\n")
+    print(f"Demo path — {args.base}, customer {args.customer}, {len(plan)} steps"
+          + (f" (read-only: skipped {', '.join(s.name for s in skipped)})" if skipped else "") + "\n")
     failures: list[tuple[str, str]] = []
     slow: list[tuple[str, float]] = []
 
     with httpx.Client(base_url=args.base, timeout=args.timeout) as http:
-        for step in STEPS:
+        for step in plan:
             started = time.monotonic()
             try:
                 response = http.get(step.path, params=step.params)
@@ -281,12 +353,12 @@ def main() -> int:
         print()
 
     if failures:
-        print(f"{len(failures)} of {len(STEPS)} demo steps FAILED:")
+        print(f"{len(failures)} of {len(plan)} demo steps FAILED:")
         for name, reason in failures:
             print(f"  {name}: {reason}")
         return 1
 
-    print(f"All {len(STEPS)} demo steps passed.")
+    print(f"All {len(plan)} demo steps passed.")
     return 0
 
 
