@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useCustomer } from "@/lib/customer-context";
 import { apiFetch } from "@/lib/api";
 import Spinner from "@/components/ui/Spinner";
+import { withClickEvidence } from "@/lib/related-articles";
 
 interface Article {
   article_id: string;
@@ -14,6 +15,7 @@ interface Article {
   customer_id: string;
   tags?: string;
   page_context?: string;
+  supporting_clicks?: number;
 }
 
 interface HelpStats {
@@ -360,10 +362,10 @@ export default function HelpDrawer() {
                             Loading…
                           </div>
                         )}
-                        {relatedLoading !== a.article_id && (related[a.article_id] ?? []).length === 0 && (
+                        {relatedLoading !== a.article_id && withClickEvidence(related[a.article_id] ?? []).length === 0 && (
                           <div style={{ fontSize: 11, color: "var(--text3)", padding: "4px 0" }}>No related articles yet — clicks from this one are sparse.</div>
                         )}
-                        {(related[a.article_id] ?? []).map((r) => (
+                        {withClickEvidence(related[a.article_id] ?? []).map((r) => (
                           <div
                             key={r.article_id}
                             onClick={(e) => { e.stopPropagation(); onArticleClick(r); }}
