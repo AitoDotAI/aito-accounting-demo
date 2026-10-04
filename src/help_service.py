@@ -172,10 +172,28 @@ def related_articles(
             continue
         row = dict(hit)
         row["score"] = round(float(hit.get("$p", 0)), 3)
+        # `_recommend` on a link target can rank a candidate nobody clicked
+        # first, at $p of about 0.998 (td-20261001174213737932). The drawer
+        # says users read these next, so it needs the evidence itself.
+        row["supporting_clicks"] = _clicks_after(client, article_id, row["article_id"])
         out.append(row)
         if len(out) >= limit:
             break
     return out
+
+
+def _clicks_after(client: AitoClient, previous_id: str, article_id: str) -> int:
+    """How often users opened `article_id` right after `previous_id`.
+
+    Counted over the same impressions the ranking learns from: every
+    tenant's, since the recommend has the tenant only as evidence.
+    """
+    result = client.search("help_impressions", {
+        "prev_article_id": previous_id,
+        "article_id": article_id,
+        "clicked": True,
+    }, limit=0)
+    return int(result["total"])
 
 
 def customer_help_stats(client: AitoClient, customer_id: str) -> dict:

@@ -425,6 +425,27 @@ def check_help_is_tenant_scoped(client) -> str:
     return f"{len(articles)} articles, all global or {CUSTOMER}'s own"
 
 
+def check_help_related_carry_click_evidence(client) -> str:
+    """'Users also read' must rest on clicks, not on rank alone.
+
+    `_recommend` on a link target can rank a zero-click candidate first at
+    $p of about 0.998 (td-20261001174213737932), so each related article
+    carries its supporting clicks, counted with `_search`. For a well-read
+    article some candidate must have them, or the count query is broken.
+    """
+    from src.help_service import related_articles
+
+    related = related_articles(client, "APP-02", CUSTOMER, limit=4)
+    require(related, f"no related articles for APP-02 at {CUSTOMER}")
+    for article in related:
+        clicks = article.get("supporting_clicks")
+        require(isinstance(clicks, int) and clicks >= 0,
+                f"{article.get('article_id')} has supporting_clicks {clicks!r}")
+    supported = [a for a in related if a["supporting_clicks"] >= 1]
+    require(supported, "no related article has a supporting click; the count query matched nothing")
+    return f"{len(supported)} of {len(related)} related articles have supporting clicks"
+
+
 CHECKS: list[Callable[[object], str]] = [
     check_schema_has_demo_tables,
     check_search_returns_rows,
@@ -439,6 +460,7 @@ CHECKS: list[Callable[[object], str]] = [
     check_rules_route_only_when_promoted,
     check_override_patterns_are_per_pattern,
     check_help_is_tenant_scoped,
+    check_help_related_carry_click_evidence,
 ]
 
 
