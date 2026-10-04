@@ -5,7 +5,7 @@
 
 export interface RelatedArticle {
   article_id: string;
-  /** How often this customer's users opened it right after the current article. */
+  /** How often users opened it right after the current article, over the rows the ranking learns from. */
   supporting_clicks?: number;
 }
 
