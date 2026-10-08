@@ -52,6 +52,7 @@ interface MatchExplanation {
 }
 
 import type { WhyFactor } from "@/lib/types";
+import { averageExplainedScore, shownMatchScore } from "@/lib/match-score";
 
 interface MatchPair {
   /** Aito's own $p for this invoice, before the amount-proximity blend.
@@ -97,7 +98,7 @@ function connectorBadge(pair: MatchPair) {
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
         <div style={{ height: 3, width: 48, background: color, borderRadius: 2 }} />
-        <span className={badgeClass} style={{ fontSize: 10 }}>{pair.confidence.toFixed(2)}</span>
+        <span className={badgeClass} style={{ fontSize: 10 }}>{(shownMatchScore(pair) ?? pair.confidence).toFixed(2)}</span>
       </div>
     );
   }
@@ -145,7 +146,7 @@ export default function MatchingPage() {
         <div className="content">
           <div className="metrics">
             <div className="metric highlight"><div className="metric-label">Matched by Aito</div><div className="metric-value">{m?.matched_by_aito ?? "--"}</div></div>
-            <div className="metric"><div className="metric-label">Avg Aito Confidence</div><div className="metric-value">{m?.avg_confidence.toFixed(2) ?? "--"}</div></div>
+            <div className="metric"><div className="metric-label">Avg Aito Probability</div><div className="metric-value">{data ? (averageExplainedScore(data.pairs)?.toFixed(2) ?? "--") : "--"}</div></div>
             <div className="metric"><div className="metric-label">Matched by Reference</div><div className="metric-value">{m?.matched_by_reference ?? "--"}</div></div>
             <div className="metric"><div className="metric-label">Unmatched</div><div className="metric-value">{m?.unmatched ?? "--"}</div></div>
           </div>
@@ -226,9 +227,8 @@ export default function MatchingPage() {
                           </div>
                           <WhyCards
                             why={p.explanation}
-                            confidence={p.confidence}
+                            confidence={shownMatchScore(p) ?? p.confidence}
                             modelP={p.model_p}
-                            blendNote={"blended with how closely the amounts agree \u2192"}
                             keepFields={["amount"]}
                           />
                         </td>
