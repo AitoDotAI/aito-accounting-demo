@@ -1,7 +1,7 @@
 # 0031. External company data, and priors on both sides of an explanation
 
 **Date:** 2026-10-18
-**Status:** proposed
+**Status:** accepted (Antti, 2026-10-18)
 **Builds on:** ADR 0027, which parses `$why` linked priors and shows them
 as "because" lines.
 
