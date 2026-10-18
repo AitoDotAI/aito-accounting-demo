@@ -376,9 +376,21 @@ search whether the customer has 16K or 125 invoices).
 
 ## Pattern: Explanations through linked rows (`linkedPrior`)
 
-A lift in `$why` may carry `prior: {type: "linkedPrior", factors: [...]}`,
-naming properties of a linked row that carried the lift. Measured on
-Aito 2.11.6 (ADR 0031):
+A lift in `$why` may carry `prior: {type: "linkedPrior", factors: [...]}`.
+Per the 2.11.6 code, these factors are the **target the lift was smoothed
+toward**, not a breakdown of it and not terms in `$p`. Each is the lift
+between the predicted value and a property of a linked row, across all
+rows. The shown lift is the row's own evidence pulled toward that target
+and shrunk toward 1 (inference-v2.md #why-target-prior). So:
+
+- show a prior only beside a clearly non-1 lift;
+- word it "smoothed toward …", never "because …";
+- give it no multiplier.
+
+A `$group` lift never carries one, because priors are looked up by field
+path and a group has no path.
+
+Measured on Aito 2.11.6 (ADR 0031):
 
 - **Input side:** a link field in `where` (`vendor_business_id` → PRH
   company). The lift on it carries

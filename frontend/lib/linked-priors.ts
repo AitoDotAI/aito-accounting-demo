@@ -1,5 +1,10 @@
 // Readable text for the priors Aito reports through linked rows (ADR 0031).
 //
+// A linkedPrior is what a lift was SMOOTHED TOWARD, not part of the
+// evidence: it is not a term in $p (core, from the 2.11.6 code). So it is
+// worded "smoothed toward ...", never "because ...", and shown without a
+// multiplier.
+//
 // The backend keeps each lift's `linkedPrior` as priors: [{field, value, lift}].
 // - Input side: a path through a link in the query, such as
 //   `vendor_business_id.industry`. What the vendor is, from the PRH register.
@@ -38,13 +43,17 @@ function withoutRedundantCodes(priors: LinkedPrior[]): LinkedPrior[] {
   return priors.filter((p) => !(p.field.endsWith("_code") && fields.has(p.field.slice(0, -"_code".length))));
 }
 
-/** "because ..." lines for one pattern: what the linked input rows are. */
-export function becauseLines(priors: LinkedPrior[] = []): string[] {
+/** "smoothed toward ..." lines for one pattern, for its linked input rows. */
+export function smoothedTowardLines(priors: LinkedPrior[] = []): string[] {
   return withoutRedundantCodes(priors.filter((p) => !isTargetSide(p) && p.lift >= MATERIAL))
-    .map((p) => `${priorLabel(p.field)} is ${p.value}`);
+    .map((p) => {
+      const [link, ...rest] = p.field.split(".");
+      const noun = LINK_NOUNS[link] ?? link.replace(/_/g, " ");
+      return `smoothed toward ${noun}s whose ${rest.join(" ").replace(/_/g, " ")} is ${p.value}`;
+    });
 }
 
-/** What the predicted value is, from target-side priors across the explanation: one per field, strongest first. */
+/** The groups the predicted value's estimate was smoothed toward (target-side priors): one per field, strongest first. */
 export function targetProfile(patterns: { priors?: LinkedPrior[] }[]): LinkedPrior[] {
   const best = new Map<string, LinkedPrior>();
   for (const prior of patterns.flatMap((p) => p.priors ?? [])) {

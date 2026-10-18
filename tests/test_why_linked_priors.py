@@ -108,3 +108,14 @@ def test_invoice_processing_does_not_send_the_company_link():
     predict_invoice(Client(), {"invoice_id": "I1", "customer_id": "CUST-0000", "vendor": "Lapro Software Oy",
                                "vendor_business_id": "0787088-5", "amount": 9944.5})
     assert sent and all("vendor_business_id" not in where for where in sent)
+
+
+def test_a_prior_is_kept_only_on_a_clearly_non_neutral_lift():
+    # A linkedPrior is the target a lift was smoothed toward, not a term in
+    # $p (core, from the 2.11.6 code; inference-v2.md #why-target-prior).
+    # Next to a lift near 1 it would read as evidence that is not there.
+    weak = {**VENDOR_LIFT, "value": 1.12}
+    (pattern,) = patterns(why(weak))
+    assert pattern["priors"] == []
+    (strong,) = patterns(why(VENDOR_LIFT))   # lift 4.8
+    assert strong["priors"]

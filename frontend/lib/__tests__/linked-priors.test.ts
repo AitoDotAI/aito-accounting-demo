@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { becauseLines, priorLabel, targetProfile } from "../linked-priors.ts";
+import { priorLabel, smoothedTowardLines, targetProfile } from "../linked-priors.ts";
 
 // Shapes as the backend emits them from Aito 2.11.6's linkedPrior.
 const industry = { field: "vendor_business_id.industry", value: "Computer programming activities", lift: 4.16 };
@@ -13,12 +13,15 @@ test("a path through a link reads as the linked thing's property", () => {
   assert.equal(priorLabel("vendor_business_id.city"), "vendor's city");
 });
 
-test("the industry is given in words, and its code is dropped when the words are there", () => {
-  assert.deepEqual(becauseLines([industry, industryCode]), ["vendor's industry is Computer programming activities"]);
+test("an input-side prior reads as what the lift was smoothed toward, not as a reason", () => {
+  // Core, from the 2.11.6 code: a linkedPrior is the smoothing target, not
+  // a multiplicative term in $p. "because ..." would claim evidence.
+  assert.deepEqual(smoothedTowardLines([industry, industryCode]),
+    ["smoothed toward vendors whose industry is Computer programming activities"]);
 });
 
-test("target-side priors are not because-lines: they describe the predicted value", () => {
-  assert.deepEqual(becauseLines([department, role]), []);
+test("target-side priors are not input lines: they describe the predicted value", () => {
+  assert.deepEqual(smoothedTowardLines([department, role]), []);
 });
 
 test("the predicted person's profile collects target-side priors once, strongest first", () => {

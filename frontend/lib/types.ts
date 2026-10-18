@@ -50,7 +50,7 @@ export interface WhyFactor {
   target_value?: string | null;
   propositions?: WhyProposition[];
   highlights?: WhyHighlight[];
-  /** Properties of linked rows that carried this lift (Aito linkedPrior; ADR 0031). */
+  /** What this lift was smoothed toward (Aito linkedPrior; ADR 0031). Not evidence, not a term in $p. */
   priors?: LinkedPrior[];
   // Legacy flat shape from old precomputed JSON: field/value/lift at top level.
   field?: string;

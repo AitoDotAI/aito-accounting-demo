@@ -201,11 +201,21 @@ def _residual_multiplier(why: dict, kept: list[dict]) -> dict | None:
     }
 
 
-def _linked_priors(node: dict) -> list[dict]:
-    """The properties of linked rows that Aito says carried a lift (ADR 0031).
+# A linkedPrior is shown only beside a lift at least this far from 1, either way.
+PRIOR_MIN_LIFT = 1.2
 
-    A lift may carry `prior: {type: linkedPrior, factors: [...]}`. Two kinds
-    come back:
+
+def _linked_priors(node: dict) -> list[dict]:
+    """What a lift was smoothed toward, from Aito's linkedPrior (ADR 0031).
+
+    A lift may carry `prior: {type: linkedPrior, factors: [...]}`. Per the
+    2.11.6 code (inference-v2.md #why-target-prior), these factors are the
+    SMOOTHING TARGET: each is the lift between the predicted value and a
+    property of a linked row, across all rows. The shown lift is the row's
+    own evidence pulled toward that target and shrunk toward 1. The factors
+    are not terms in $p, so they must never be presented as evidence.
+
+    Two kinds come back:
 
     - input side, a path through a link in `where`, such as
       `vendor_business_id.industry`: what the vendor IS, from its PRH
@@ -370,7 +380,10 @@ def _walk_why_grouped(node: dict, out: list[dict]) -> None:
             "lift": float(f"{lift:.4g}"),
             "propositions": propositions,
             "highlights": highlights,
-            "priors": _linked_priors(node),
+            # A prior is shown only beside a lift that clearly moves the
+            # value: next to a lift near 1 it reads as evidence that is not
+            # there.
+            "priors": _linked_priors(node) if max(lift, 1 / lift) >= PRIOR_MIN_LIFT else [],
         })
     # Don't recurse into product/related children -- the top-level
     # tree usually has one product node containing the relevant
