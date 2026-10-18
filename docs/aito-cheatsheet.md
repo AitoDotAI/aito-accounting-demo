@@ -374,6 +374,28 @@ The `customer_id` column is indexed; `_search`/`_predict`/`_relate`
 all stay flat across customer sizes (measured: ~85 ms for 20-hit
 search whether the customer has 16K or 125 invoices).
 
+## Pattern: Explanations through linked rows (`linkedPrior`)
+
+A lift in `$why` may carry `prior: {type: "linkedPrior", factors: [...]}`,
+naming properties of a linked row that carried the lift. Measured on
+Aito 2.11.6 (ADR 0031):
+
+- **Input side:** a link field in `where` (`vendor_business_id` → PRH
+  company). The lift on it carries
+  `{"vendor_business_id.industry": {"$has": "Computer programming activities"}}` ×4.16.
+  The prior shows only when the link is the vendor evidence. Sent beside
+  the vendor name, Aito groups the two into one lift with no prior.
+- **Target side:** predicting a link (`approver` → `employees`) with
+  `basedOn: ["role", "department"]`. Lifts that favour the predicted
+  employee carry their own columns, `{"department": "Procurement"}` ×19.6,
+  with no path prefix.
+- Negated factors also appear (`{"$not": {"role": "Director"}}`); this
+  demo does not show them. `customer_id.*` priors come from the tenant
+  being only evidence (see "Tenant population"), and are not reasons.
+
+`src/invoice_service._linked_priors` parses them, and `aito-check` asserts
+both sides.
+
 ## Pattern: Recommendations with `_recommend`
 
 For ranking by historical click-through rate (help articles, product

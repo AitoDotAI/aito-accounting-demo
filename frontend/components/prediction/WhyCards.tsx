@@ -4,6 +4,7 @@ import LiftHint, { formatLift } from "./LiftHint";
 import type { WhyFactor } from "@/lib/types";
 import { useDeveloperMode } from "@/lib/developer-mode";
 import { isHiddenInPresentation } from "@/lib/why-display";
+import { becauseLines, priorLabel, targetProfile } from "@/lib/linked-priors";
 
 // ── $why factor cards ─────────────────────────────────────────────
 //
@@ -87,6 +88,7 @@ export default function WhyCards({
   const earnsCard = (f: WhyFactor) =>
     isMaterial(f.lift ?? 1) && (developerMode || !isHiddenInPresentation(f, keepFields));
   const patterns = allPatterns.filter(earnsCard);
+  const profile = targetProfile(allPatterns);
   const minorPatterns = allPatterns.filter((f) => !earnsCard(f));
 
   // One collapsed multiplier covering the engine's normalisation terms and
@@ -198,8 +200,23 @@ export default function WhyCards({
         </div>
       )}
 
+      {profile.length > 0 && (
+        // What the predicted value is, as Aito reports it through the
+        // predicted row's own columns (a target-side linkedPrior).
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, fontSize: 11, color: "var(--text2)" }}>
+          <span style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px" }}>Fits</span>
+          {profile.map((p) => (
+            <span key={p.field} title={`${priorLabel(p.field)} \u00d7 ${formatLift(p.lift)}`}
+              style={{ background: "var(--gold-light)", border: "1px solid var(--gold-mid)", borderRadius: 10, padding: "1px 8px" }}>
+              <span style={{ color: "var(--text3)" }}>{priorLabel(p.field)}</span> <strong>{p.value}</strong>
+            </span>
+          ))}
+        </div>
+      )}
+
       {patterns.map((f, i) => {
         const lift = f.lift ?? 1;
+        const because = becauseLines(f.priors);
         // Only call it counter-evidence when the fields it names have not
         // already been credited above. Otherwise it is a correction term.
         const fields = (f.propositions ?? []).map((p) => p.field);
@@ -278,6 +295,11 @@ export default function WhyCards({
                   </>
                 )}
               </div>
+              {because.map((line) => (
+                <div key={line} style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>
+                  because the <mark>{line}</mark>
+                </div>
+              ))}
             </div>
             <LiftHint value={lift} prefix="× " />
           </div>
