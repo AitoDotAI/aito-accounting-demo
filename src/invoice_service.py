@@ -201,6 +201,36 @@ def _residual_multiplier(why: dict, kept: list[dict]) -> dict | None:
     }
 
 
+def _linked_priors(node: dict) -> list[dict]:
+    """The properties of linked rows that Aito says carried a lift (ADR 0031).
+
+    A lift may carry `prior: {type: linkedPrior, factors: [...]}`. Two kinds
+    come back:
+
+    - input side, a path through a link in `where`, such as
+      `vendor_business_id.industry`: what the vendor IS, from its PRH
+      company record;
+    - target side, a bare column of the predicted row, such as
+      `department`: what the predicted person is.
+
+    `customer_id.*` priors are left out. With the tenant as evidence they
+    come from the cross-tenant leak (ADR 0030), so they are not a reason to
+    show.
+    """
+    prior = node.get("prior") or {}
+    if prior.get("type") != "linkedPrior":
+        return []
+    priors = []
+    for factor in prior.get("factors") or []:
+        for field, cond in (factor.get("proposition") or {}).items():
+            if field == "customer_id" or field.startswith("customer_id."):
+                continue
+            value = cond.get("$has") if isinstance(cond, dict) else cond
+            priors.append({"field": field, "value": str(value),
+                           "lift": float(f"{float(factor.get('value', 1)):.4g}")})
+    return priors
+
+
 def _walk_why_grouped(node: dict, out: list[dict]) -> None:
     """Walk the $why tree and emit one entry per top-level factor.
 
@@ -335,6 +365,7 @@ def _walk_why_grouped(node: dict, out: list[dict]) -> None:
             "lift": float(f"{lift:.4g}"),
             "propositions": propositions,
             "highlights": highlights,
+            "priors": _linked_priors(node),
         })
     # Don't recurse into product/related children -- the top-level
     # tree usually has one product node containing the relevant
