@@ -174,3 +174,32 @@ the demo needs a data load and a precompute, both Antti's to run.
   naming another company).
 - Any claim that the planted connections reflect real accounting practice
   beyond common sense.
+
+## Amendment 1 (2026-10-18): step A measured
+
+- **The company link stays out of the demo's queries for now.**
+  - Held out on 1,700 invoices (`docs/notes/company-link-measured.md`,
+    pre-registered): GL 93.2% → 92.6% with the link (p 0.12, would ship),
+    but approver 79.2% → 73.9% (p 3·10⁻¹⁰, blocked).
+  - Sent beside the vendor name, the link adds no visible prior. Aito groups
+    the two into one lift (×6.9) with no prior, and the link's own lift is
+    1.004.
+  - So for a known vendor it costs a little and shows nothing.
+- **Where the industry does reach a prediction:** for a vendor the tenant
+  has never used, with the link as the only vendor evidence. CUST-0001,
+  scoped to its own invoices, gave 4400 0.327 → 0.361, with the industry
+  prior ×2.86.
+  - It is weak for a data reason, not an engine one. All 1,922 of CUST-0001's
+    invoices from that industry come from a single vendor, and one company
+    is no industry pattern.
+  - Step C's fixtures must give each tenant several vendors per industry
+    before the industry is learnable. The link then returns, for new
+    vendors and in form fill, with its own measurement.
+- **Target-side priors need no new input.** With `basedOn [role,
+  department]`, the approver's explanation already carries the predicted
+  employee's department (×19.6 in the probe). Step A therefore ships the
+  parser and the display, which shows both sides, and `aito-check` asserts
+  the engine reports both.
+- **Open question:** what a prior on a lift close to 1 means in Aito's
+  decomposition. The app drops lifts within 0.05 of 1 as noise, together
+  with their priors. Asked of core before any display relies on it.

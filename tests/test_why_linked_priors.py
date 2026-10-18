@@ -85,17 +85,21 @@ def test_a_negated_prior_is_not_shown_as_a_property():
     assert [p["field"] for p in pattern["priors"]] == ["department"]
 
 
-def test_invoice_processing_sends_the_company_link_for_gl_but_not_for_the_approver():
-    # Held out on 1,700 invoices (docs/notes/company-link-measured.md): the
-    # link costs GL 0.6 points (p 0.12, ships), but the approver 5.3 points
-    # (p 3e-10, blocked).
+
+def test_invoice_processing_does_not_send_the_company_link():
+    # Held out on 1,700 invoices (docs/notes/company-link-measured.md) the
+    # link cost GL 0.6 points and the approver 5.3. For a known vendor it
+    # adds no visible prior either: Aito groups it with the vendor name.
+    # It returns with ADR 0031 step C, whose fixtures give each tenant
+    # several vendors per industry, which is what makes an industry
+    # learnable.
     from src.invoice_service import predict_invoice
 
     sent = []
 
     class Client:
         def predict(self, table, where, field, **kw):
-            sent.append((field, dict(where)))
+            sent.append(dict(where))
             return {"hits": [{"$p": 0.9, "feature": "6100"}]}
 
         def search(self, table, where, limit=10):
@@ -103,6 +107,4 @@ def test_invoice_processing_sends_the_company_link_for_gl_but_not_for_the_approv
 
     predict_invoice(Client(), {"invoice_id": "I1", "customer_id": "CUST-0000", "vendor": "Lapro Software Oy",
                                "vendor_business_id": "0787088-5", "amount": 9944.5})
-    by_field = dict(sent)
-    assert by_field["gl_code"]["vendor_business_id"] == "0787088-5"
-    assert "vendor_business_id" not in by_field["approver"]
+    assert sent and all("vendor_business_id" not in where for where in sent)

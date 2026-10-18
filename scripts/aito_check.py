@@ -446,12 +446,50 @@ def check_help_related_carry_click_evidence(client) -> str:
     return f"{len(supported)} of {len(related)} related articles have supporting clicks"
 
 
+def check_explanations_reach_through_links(client) -> str:
+    """$why reports properties of linked rows on both sides (ADR 0031).
+
+    Input side: with the company link as the vendor evidence in `where`
+    (as for a vendor the tenant has not used), a GL prediction carries the
+    vendor's PRH industry as a linkedPrior. Sent beside the vendor name,
+    Aito groups the two and the prior disappears. That is why the demo's
+    own GL query does not send the link yet (ADR 0031, step A finding).
+    Target side: an approver prediction with basedOn [role, department]
+    carries the predicted employee's department.
+    """
+    from src.invoice_service import _extract_why_factors
+
+    found = client.search("invoices", {"customer_id": CUSTOMER, "category": "software"}, limit=1)["hits"]
+    require(found, f"no software invoice for {CUSTOMER}")
+    invoice = found[0]
+    gl = client.predict("invoices", {"customer_id": CUSTOMER, "amount": invoice["amount"],
+                                     "vendor_business_id": invoice["vendor_business_id"]}, "gl_code")
+    # Read the raw tree: the link's own lift is close to 1 and carries the
+    # prior, and the app's parser drops near-1 lifts as noise.
+    gl_priors = [{"field": next(iter(p["proposition"])), "lift": round(p["value"], 2),
+                  "value": str(next(iter(p["proposition"].values())).get("$has"))}
+                 for f in gl["hits"][0]["$why"].get("factors", [])
+                 for p in (f.get("prior") or {}).get("factors", [])]
+    require(any(p["field"] == "vendor_business_id.industry" for p in gl_priors),
+            f"no vendor industry prior in the GL $why for {invoice['vendor']}: {gl_priors[:3]}")
+    approver = client.predict("invoices", {"customer_id": CUSTOMER, "vendor": invoice["vendor"],
+                                           "amount": invoice["amount"], "approver.customer_id": CUSTOMER},
+                              "approver", based_on=["role", "department"])
+    target = [p for f in _extract_why_factors(approver["hits"][0]["$why"]) for p in f.get("priors", [])]
+    require(any(p["field"] == "department" for p in target),
+            f"no department prior on the approver explanation: {target[:3]}")
+    industry = next(p for p in gl_priors if p["field"] == "vendor_business_id.industry")
+    department = next(p for p in target if p["field"] == "department")
+    return f"vendor industry '{industry['value']}' x{industry['lift']}, approver department '{department['value']}'"
+
+
 CHECKS: list[Callable[[object], str]] = [
     check_schema_has_demo_tables,
     check_search_returns_rows,
     check_predict_gl_code,
     check_predict_approver,
     check_why_factors_parse,
+    check_explanations_reach_through_links,
     check_relate_returns_statistics,
     check_rule_mining_returns_structured_propositions,
     check_on_diagnostic_shows_exceptions,

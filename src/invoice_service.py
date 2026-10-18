@@ -225,6 +225,11 @@ def _linked_priors(node: dict) -> list[dict]:
         for field, cond in (factor.get("proposition") or {}).items():
             if field == "customer_id" or field.startswith("customer_id."):
                 continue
+            if field.startswith("$"):
+                # A negation such as {"$not": {"role": "Director"}}: "is not
+                # a Director" is no property to show, and as a chip it
+                # would read as if she were one.
+                continue
             value = cond.get("$has") if isinstance(cond, dict) else cond
             priors.append({"field": field, "value": str(value),
                            "lift": float(f"{float(factor.get('value', 1)):.4g}")})
