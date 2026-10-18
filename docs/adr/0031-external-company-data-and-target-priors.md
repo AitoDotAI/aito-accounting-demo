@@ -203,3 +203,31 @@ the demo needs a data load and a precompute, both Antti's to run.
 - **Open question:** what a prior on a lift close to 1 means in Aito's
   decomposition. The app drops lifts within 0.05 of 1 as noise, together
   with their priors. Asked of core before any display relies on it.
+
+## Amendment 2 (2026-10-18): a prior is a smoothing target, not a reason
+
+Core read the 2.11.6 code (inference-v2.md #why-target-prior;
+`DefaultInference2`, `ScoringF.shrinkLift`):
+
+- A linkedPrior is the target a lift was smoothed toward. It is not a
+  term in `$p` and not a breakdown of the lift.
+- A `$group` lift never carries one, because priors are looked up by field
+  path and a group has no path.
+
+The display in step A therefore changes:
+
+- **Wording:** priors read "smoothed toward vendors whose industry is …"
+  and "Smoothed toward: department Procurement · role Manager", not
+  "because …" or "Fits …".
+- **No multiplier:** none is shown, since the prior's factors are not
+  terms in the probability.
+- **Threshold:** a prior is shown only beside a lift at least ×1.2 from 1,
+  either way.
+
+The Decision's wording above ("because the vendor's industry is …") is
+superseded by this.
+
+The goal of showing external data in the explanation still stands, but
+its honest form is narrower. Aito says what it leaned on when the
+evidence was thin, not that the vendor's industry caused the
+prediction. The evidence itself, the lifts, comes from the rows.

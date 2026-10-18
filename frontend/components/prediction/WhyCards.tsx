@@ -4,7 +4,7 @@ import LiftHint, { formatLift } from "./LiftHint";
 import type { WhyFactor } from "@/lib/types";
 import { useDeveloperMode } from "@/lib/developer-mode";
 import { isHiddenInPresentation } from "@/lib/why-display";
-import { becauseLines, priorLabel, targetProfile } from "@/lib/linked-priors";
+import { priorLabel, smoothedTowardLines, targetProfile } from "@/lib/linked-priors";
 
 // ── $why factor cards ─────────────────────────────────────────────
 //
@@ -201,12 +201,13 @@ export default function WhyCards({
       )}
 
       {profile.length > 0 && (
-        // What the predicted value is, as Aito reports it through the
-        // predicted row's own columns (a target-side linkedPrior).
+        // What the estimate for the predicted value was smoothed toward: a
+        // target-side linkedPrior over the predicted row's own columns. It
+        // is not evidence and not a term in $p, so no multiplier is shown.
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, fontSize: 11, color: "var(--text2)" }}>
-          <span style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px" }}>Fits</span>
+          <span style={{ fontSize: 10, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px" }}>Smoothed toward</span>
           {profile.map((p) => (
-            <span key={p.field} title={`${priorLabel(p.field)} \u00d7 ${formatLift(p.lift)}`}
+            <span key={p.field} title="Aito's estimate leans on how values like this usually behave; this is not extra evidence"
               style={{ background: "var(--gold-light)", border: "1px solid var(--gold-mid)", borderRadius: 10, padding: "1px 8px" }}>
               <span style={{ color: "var(--text3)" }}>{priorLabel(p.field)}</span> <strong>{p.value}</strong>
             </span>
@@ -216,7 +217,7 @@ export default function WhyCards({
 
       {patterns.map((f, i) => {
         const lift = f.lift ?? 1;
-        const because = becauseLines(f.priors);
+        const smoothedToward = smoothedTowardLines(f.priors);
         // Only call it counter-evidence when the fields it names have not
         // already been credited above. Otherwise it is a correction term.
         const fields = (f.propositions ?? []).map((p) => p.field);
@@ -295,9 +296,9 @@ export default function WhyCards({
                   </>
                 )}
               </div>
-              {because.map((line) => (
+              {smoothedToward.map((line) => (
                 <div key={line} style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>
-                  because the <mark>{line}</mark>
+                  {line}
                 </div>
               ))}
             </div>
