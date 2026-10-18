@@ -1,3 +1,5 @@
+import type { LinkedPrior } from "./linked-priors";
+
 export interface InvoicePrediction {
   invoice_id: string;
   vendor: string;
@@ -48,6 +50,8 @@ export interface WhyFactor {
   target_value?: string | null;
   propositions?: WhyProposition[];
   highlights?: WhyHighlight[];
+  /** Properties of linked rows that carried this lift (Aito linkedPrior; ADR 0031). */
+  priors?: LinkedPrior[];
   // Legacy flat shape from old precomputed JSON: field/value/lift at top level.
   field?: string;
   value?: string;
