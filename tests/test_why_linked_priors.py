@@ -72,3 +72,37 @@ def test_a_lift_without_a_prior_has_an_empty_list_not_a_missing_key():
     plain = {"type": "relatedPropositionLift", "value": 3.0, "proposition": {"category": "software"}}
     (pattern,) = patterns(why(plain))
     assert pattern["priors"] == []
+
+
+def test_a_negated_prior_is_not_shown_as_a_property():
+    # Measured on 2.11.6: {"$not": {"role": "Director"}} x1.09. "Is not a
+    # Director" is weak, and as a chip it would read as if she were one.
+    negated = {"type": "relatedPropositionLift", "value": 2.0, "proposition": {"category": "software"},
+               "prior": {"type": "linkedPrior", "factors": [
+                   {"proposition": {"$not": {"role": "Director"}}, "value": 1.09},
+                   {"proposition": {"department": "Procurement"}, "value": 19.6}]}}
+    (pattern,) = patterns(why(negated))
+    assert [p["field"] for p in pattern["priors"]] == ["department"]
+
+
+def test_invoice_processing_sends_the_company_link_for_gl_but_not_for_the_approver():
+    # Held out on 1,700 invoices (docs/notes/company-link-measured.md): the
+    # link costs GL 0.6 points (p 0.12, ships), but the approver 5.3 points
+    # (p 3e-10, blocked).
+    from src.invoice_service import predict_invoice
+
+    sent = []
+
+    class Client:
+        def predict(self, table, where, field, **kw):
+            sent.append((field, dict(where)))
+            return {"hits": [{"$p": 0.9, "feature": "6100"}]}
+
+        def search(self, table, where, limit=10):
+            return {"hits": []}
+
+    predict_invoice(Client(), {"invoice_id": "I1", "customer_id": "CUST-0000", "vendor": "Lapro Software Oy",
+                               "vendor_business_id": "0787088-5", "amount": 9944.5})
+    by_field = dict(sent)
+    assert by_field["gl_code"]["vendor_business_id"] == "0787088-5"
+    assert "vendor_business_id" not in by_field["approver"]
