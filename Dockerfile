@@ -23,7 +23,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_LINK_MODE=copy
 
 # uv is the fast resolver/installer the project uses locally
-COPY --from=ghcr.io/astral-sh/uv:0.5.18 /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.5 /uv /uvx /usr/local/bin/
 
 WORKDIR /app
 
