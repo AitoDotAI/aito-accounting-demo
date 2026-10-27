@@ -503,7 +503,14 @@ def check_formfill_approver_is_the_customers_own(client) -> str:
     require(approver and approver["alternatives"], "form fill predicted no approver")
     foreign = [a["value"] for a in approver["alternatives"] if a["value"] not in roster]
     require(not foreign, f"form fill offered another tenant's staff to {tenant}: {foreign}")
-    return f"{len(approver['alternatives'])} approver alternative(s), all {tenant}'s own staff"
+    # The filter limits candidates; it must not become evidence. A condition
+    # on the target's own linked field could come back as a lift in the
+    # explanation, an artefact of the filter rather than of the data.
+    in_explanation = [p["field"] for a in approver["alternatives"] for w in a["why"]
+                      if w.get("type") == "pattern" for p in w["propositions"]
+                      if p["field"].startswith("approver.")]
+    require(not in_explanation, f"the approver filter appears in the explanation: {in_explanation}")
+    return f"{len(approver['alternatives'])} approver alternative(s), all {tenant}'s own staff, filter not in the explanation"
 
 
 CHECKS: list[Callable[[object], str]] = [
