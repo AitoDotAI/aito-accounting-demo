@@ -4,6 +4,8 @@ Tests verify multi-field prediction from any input combination,
 value formatting, alternatives with $why, and graceful error handling.
 """
 
+import re
+
 import pytest
 import httpx
 
@@ -15,6 +17,17 @@ TEST_CONFIG = Config(
     aito_api_url="https://test.aito.app/db/demo",
     aito_api_key="test-key",
 )
+
+@pytest.fixture(autouse=True)
+def tenant_roster(httpx_mock):
+    """The customer's staff names, looked up to show the approver.
+
+    Matched by URL so the _predict mocks below stay in order. Optional because
+    the roster is cached per customer.
+    """
+    httpx_mock.add_response(url=re.compile(r".*/_search$"), json={"offset": 0, "total": 0, "hits": []},
+                            is_optional=True, is_reusable=True)
+
 
 
 def _mock_predict_response(feature, p=0.90):
@@ -50,7 +63,7 @@ class TestPredictFields:
             httpx_mock.add_response(json=_mock_predict_response("test", 0.90))
 
         client = AitoClient(TEST_CONFIG)
-        result = predict_fields(client, {"vendor": "Kesko Oyj"})
+        result = predict_fields(client, {"customer_id": "CUST-0000", "vendor": "Kesko Oyj"})
 
         # vendor is provided, so 6 other fields should be predicted
         assert result["predicted_count"] == 6
@@ -67,7 +80,7 @@ class TestPredictFields:
             httpx_mock.add_response(json=_mock_predict_response("test", 0.80))
 
         client = AitoClient(TEST_CONFIG)
-        result = predict_fields(client, {"amount": 4220})
+        result = predict_fields(client, {"customer_id": "CUST-0000", "amount": 4220})
 
         field_names = [f["field"] for f in result["fields"]]
         assert "vendor" in field_names
@@ -86,7 +99,7 @@ class TestPredictFields:
             httpx_mock.add_response(json=_mock_predict_response("test", 0.90))
 
         client = AitoClient(TEST_CONFIG)
-        result = predict_fields(client, {"vendor": "Kesko Oyj", "gl_code": "4400"})
+        result = predict_fields(client, {"customer_id": "CUST-0000", "vendor": "Kesko Oyj", "gl_code": "4400"})
 
         field_names = [f["field"] for f in result["fields"]]
         assert "vendor" not in field_names
@@ -117,7 +130,7 @@ class TestPredictFields:
         httpx_mock.add_callback(respond, is_reusable=True)
 
         client = AitoClient(TEST_CONFIG)
-        result = predict_fields(client, {"vendor": "Kesko Oyj"})
+        result = predict_fields(client, {"customer_id": "CUST-0000", "vendor": "Kesko Oyj"})
 
         gl = next(f for f in result["fields"] if f["field"] == "gl_code")
         assert "alternatives" in gl
@@ -130,7 +143,7 @@ class TestPredictFields:
             httpx_mock.add_response(json=_mock_predict_response("test", 0.05))
 
         client = AitoClient(TEST_CONFIG)
-        result = predict_fields(client, {"vendor": "Unknown Corp"})
+        result = predict_fields(client, {"customer_id": "CUST-0000", "vendor": "Unknown Corp"})
 
         assert result["predicted_count"] == 0
 
@@ -145,7 +158,7 @@ class TestPredictFields:
         httpx_mock.add_callback(fail, is_reusable=True)
 
         client = AitoClient(TEST_CONFIG)
-        result = predict_fields(client, {"vendor": "Kesko Oyj"})
+        result = predict_fields(client, {"customer_id": "CUST-0000", "vendor": "Kesko Oyj"})
 
         assert result["predicted_count"] == 0
         assert all(not f["predicted"] for f in result["fields"])
@@ -156,7 +169,7 @@ class TestPredictFields:
             httpx_mock.add_response(json=_mock_predict_response("test", 0.90))
 
         client = AitoClient(TEST_CONFIG)
-        predict_fields(client, {"vendor": "Kesko Oyj", "amount": 4220})
+        predict_fields(client, {"customer_id": "CUST-0000", "vendor": "Kesko Oyj", "amount": 4220})
 
         import json
         body = json.loads(httpx_mock.get_requests()[0].content)
