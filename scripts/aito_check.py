@@ -483,6 +483,29 @@ def check_explanations_reach_through_links(client) -> str:
     return f"vendor industry '{industry['value']}' x{industry['lift']}, approver department '{department['value']}'"
 
 
+def check_formfill_approver_is_the_customers_own(client) -> str:
+    """Form Fill offers only the customer's own staff as approver.
+
+    `customer_id` in a predict's `where` is evidence, not a boundary: with
+    the old query CUST-0127, which has one approver, was offered other
+    tenants' employees as alternatives (td-20260901082623647538). Only a
+    filter on the linked row limits the candidates. Asserts on the ids.
+    """
+    from src.formfill_service import predict_fields
+
+    tenant = "CUST-0127"   # the worst case: a single approver, 125 invoices
+    roster = {e["employee_id"] for e in client.search("employees", {"customer_id": tenant}, limit=200)["hits"]}
+    require(roster, f"no employees for {tenant}")
+    invoices = client.search("invoices", {"customer_id": tenant}, limit=1)["hits"]
+    require(invoices, f"no invoices for {tenant}")
+    result = predict_fields(client, {"customer_id": tenant, "vendor": invoices[0]["vendor"]})
+    approver = next((f for f in result["fields"] if f["field"] == "approver"), None)
+    require(approver and approver["alternatives"], "form fill predicted no approver")
+    foreign = [a["value"] for a in approver["alternatives"] if a["value"] not in roster]
+    require(not foreign, f"form fill offered another tenant's staff to {tenant}: {foreign}")
+    return f"{len(approver['alternatives'])} approver alternative(s), all {tenant}'s own staff"
+
+
 CHECKS: list[Callable[[object], str]] = [
     check_schema_has_demo_tables,
     check_search_returns_rows,
@@ -498,6 +521,7 @@ CHECKS: list[Callable[[object], str]] = [
     check_rules_route_only_when_promoted,
     check_override_patterns_are_per_pattern,
     check_help_is_tenant_scoped,
+    check_formfill_approver_is_the_customers_own,
     check_help_related_carry_click_evidence,
 ]
 

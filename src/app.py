@@ -1224,11 +1224,14 @@ def formfill_predict(body: dict):
     """Predict form fields — live Aito call with customer_id."""
     from src.formfill_service import INPUT_FIELDS
     customer_id = body.get("customer_id", "")
+    if not customer_id:
+        # Without a customer the approver candidates would be every
+        # tenant's staff (td-20260901082623647538).
+        raise HTTPException(status_code=400, detail="customer_id is required")
     where = {k: v for k, v in body.items() if k in INPUT_FIELDS and v}
-    if customer_id:
-        where["customer_id"] = customer_id
     if not where:
         return {"error": "at least one field is required"}
+    where["customer_id"] = customer_id
 
     cache_key = f"formfill:{_V2}" + json.dumps(where, sort_keys=True)
     cached = cache.get(cache_key)

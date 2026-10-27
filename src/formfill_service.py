@@ -162,6 +162,12 @@ def predict_fields(client: AitoClient, where: dict) -> dict:
         fd for fd in PREDICT_FIELDS
         if fd["field"] not in provided
     ]
+    customer_id = where.get("customer_id")
+    if not customer_id and any(fd["field"] == "approver" for fd in fields_to_predict):
+        # No customer, no staff to limit the candidates to: every tenant's
+        # employees would compete for the answer.
+        raise ValueError("Predicting an approver needs a customer_id: without one, "
+                         "every tenant's employees are candidates")
 
     # Each predicted field is an independent _predict call against the
     # same (customer, vendor, …) context. Running them in series means
@@ -195,7 +201,16 @@ def predict_fields(client: AitoClient, where: dict) -> dict:
             # so re-attach the log explicitly before the Aito call.
             if log is not None:
                 aito_call_log.set(log)
-            result = client.predict("invoices", where, field_name)
+            # `approver` links to `employees`. `customer_id` in `where` is
+            # evidence about the invoice; it does not limit which employees
+            # Aito ranks, so the form offered CUST-0127, which has one
+            # approver, two of CUST-0046's staff as alternatives
+            # (td-20260901082623647538). Only a filter on the linked row
+            # limits the candidates, as Invoice Processing already does.
+            field_where = where
+            if field_name == "approver":
+                field_where = {**where, "approver.customer_id": customer_id}
+            result = client.predict("invoices", field_where, field_name)
         except AitoError:
             return empty
 
@@ -211,10 +226,12 @@ def predict_fields(client: AitoClient, where: dict) -> dict:
         if field_name == "approver":
             # `approver` holds an employee_id. Submit the id, SHOW the name:
             # this rendered "CUST-0000-EMP-0015" to the person filling the form.
-            names = tenant_employee_names(client, where.get("customer_id", ""))
+            names = tenant_employee_names(client, customer_id)
             display_value = resolve(names, raw_value) or raw_value
             label_map = names
-        alternatives = _extract_alternatives(hits, label_map)
+        # An employee id is an internal key, so for the approver the name
+        # replaces it; a GL code is shown beside its meaning.
+        alternatives = _extract_alternatives(hits, label_map, label_replaces_value=field_name == "approver")
         auto_prefill = confidence >= threshold
         return {
             "field": field_name,
