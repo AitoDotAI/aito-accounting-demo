@@ -41,7 +41,7 @@ def test_evaluate_gl_code(t: bt.TestCaseRun):
     t.iln(f"  Test samples:  {result['testSamples']}")
     t.iln(f"  Geom mean p:   {result.get('geomMeanP', 0):.4f}")
     t.tln("")
-    t.assertln("GL accuracy > 50%", result["accuracy"] > 0.50)
+    t.assertln(result["accuracy"] > 0.50, "GL accuracy > 50%")
 
 
 @bt.snapshot_httpx()

@@ -38,7 +38,7 @@ def test_predict_template_for_recurring_vendor(t: bt.TestCaseRun):
     template = predict_template(c, "CUST-0000", top_vendor)
     if template is None:
         t.iln("(no confident template; vendor's pattern is too noisy)")
-        t.assertln("template can be None for noisy vendors", True)
+        t.assertln(True, "template can be None for noisy vendors")
         return
 
     t.iln(f"  match_count:    {template['match_count']}/{template['total_history']}")
@@ -49,7 +49,7 @@ def test_predict_template_for_recurring_vendor(t: bt.TestCaseRun):
     t.iln(f"  vat_pct:        {template['fields']['vat_pct']}")
     t.iln(f"  payment_method: {template['fields']['payment_method']}")
     t.tln("")
-    t.assertln("confidence >= 0.20", template["confidence"] >= 0.20)
+    t.assertln(template["confidence"] >= 0.20, "confidence >= 0.20")
 
 
 @bt.snapshot_httpx()
@@ -72,9 +72,9 @@ def test_mine_rules_for_customer(t: bt.TestCaseRun):
               f"approver {r['approver']}")
 
     t.tln("")
-    t.assertln("at least 1 rule mined", len(rules) >= 1)
+    t.assertln(len(rules) >= 1, "at least 1 rule mined")
     if rules:
-        t.assertln("first rule has support_ratio >= 0.95", rules[0]["support_ratio"] >= 0.95)
+        t.assertln(rules[0]["support_ratio"] >= 0.95, "first rule has support_ratio >= 0.95")
 
 
 @bt.snapshot_httpx()
@@ -88,7 +88,7 @@ def test_prediction_log_schema_exists(t: bt.TestCaseRun):
     schema = c.get_schema()["schema"]
     if "prediction_log" not in schema:
         t.iln("prediction_log table not yet created — run ./do reset-data")
-        t.assertln("prediction_log table exists", False)
+        t.assertln(False, "prediction_log table missing - run ./do reset-data")
         return
 
     cols = sorted(schema["prediction_log"]["columns"].keys())
@@ -99,4 +99,4 @@ def test_prediction_log_schema_exists(t: bt.TestCaseRun):
     t.tln("")
     expected = {"log_id", "customer_id", "field", "predicted_value",
                 "user_value", "source", "confidence", "accepted", "timestamp"}
-    t.assertln("all expected columns present", expected.issubset(set(cols)))
+    t.assertln(expected.issubset(set(cols)), "all expected columns present")
