@@ -124,9 +124,15 @@ export default function MatchingPage() {
   // carries them inline, and those are used as they are.
   const [why, setWhy] = useState<Record<string, WhyFactor[]>>({});
   const [whyFailed, setWhyFailed] = useState<Record<string, true>>({});
+  // Asked-for rows, so a click during the background pass does not ask
+  // twice. A ref, not state: the click handler needs today's value, not
+  // the one captured when it rendered.
+  const asked = React.useRef<Set<string>>(new Set());
 
-  const fetchWhy = useCallback((txnId: string) => {
-    apiFetch<{ explanation: WhyFactor[] }>(
+  const fetchWhy = useCallback((txnId: string): Promise<unknown> => {
+    if (asked.current.has(txnId)) return Promise.resolve();
+    asked.current.add(txnId);
+    return apiFetch<{ explanation: WhyFactor[] }>(
       `/api/matching/explain?customer_id=${customerId}&transaction_id=${encodeURIComponent(txnId)}`,
     )
       .then((d) => setWhy((prev) => ({ ...prev, [txnId]: d.explanation })))
@@ -135,7 +141,7 @@ export default function MatchingPage() {
 
   useEffect(() => {
     setData(null); setLive(false); setError(null); setExpanded(null);
-    setWhy({}); setWhyFailed({});
+    setWhy({}); setWhyFailed({}); asked.current = new Set();
     apiFetch<MatchResponse>(`/api/matching/pairs?customer_id=${customerId}`)
       .then((d) => {
         setData(d); setLive(true);
@@ -146,10 +152,21 @@ export default function MatchingPage() {
           (p) => p.status === "matched"
             && (p.matched_by === "aito" || (p.explanation?.length ?? 0) > 0),
         );
-        if (firstMatched?.bank_txn_id) {
-          setExpanded(firstMatched.bank_txn_id);
-          if (!(firstMatched.explanation?.length)) fetchWhy(firstMatched.bank_txn_id);
-        }
+        if (firstMatched?.bank_txn_id) setExpanded(firstMatched.bank_txn_id);
+
+        // Then warm the rest in the background. A first open costs a live
+        // Aito query -- measured at 3.5 s median per row against
+        // env.master -- which is a broken-feeling click even though the
+        // list itself is now fast. Serially and in row order: the user is
+        // looking at the top row, six at once would queue inside Aito
+        // anyway, and this way the list is never blocked on any of them.
+        const needWhy = d.pairs.filter(
+          (p) => p.matched_by === "aito" && !(p.explanation?.length) && p.bank_txn_id,
+        );
+        void needWhy.reduce<Promise<unknown>>(
+          (chain, p) => chain.then(() => fetchWhy(p.bank_txn_id as string)),
+          Promise.resolve(),
+        );
       })
       .catch((e) => setError(e));
   }, [customerId, fetchWhy]);
