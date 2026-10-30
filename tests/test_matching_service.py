@@ -12,6 +12,7 @@ from src.config import Config
 from src.matching_service import (
     _amount_match_score,
     _build_explanation,
+    explain_match,
     match_bank_txn_to_invoice,
     MatchPair,
 )
@@ -200,6 +201,12 @@ class TestExplanationBelongsToTheMatchedInvoice:
     Aito's `$why` from the invoice it ranked, so the panel showed a base
     rate for an id that appeared nowhere on screen and labelled the
     payment's own description as counter-evidence.
+
+    The invariant is unchanged; the entry point moved. Since
+    td-20260909115133919692 the ranking carries no explanation at all and
+    `explain_match` fetches one for the row the user expands, so these
+    assert there. Left against `match_bank_txn_to_invoice` they would have
+    passed on an empty list -- an assertion that cannot fail.
     """
 
     def test_direct_match_keeps_aitos_explanation(self):
@@ -207,11 +214,13 @@ class TestExplanationBelongsToTheMatchedInvoice:
             {"invoice_id": "INV-1", "vendor": "ACME Oy", "amount": 1000.0,
              "$p": 0.9, "$why": _why_for("INV-1")},
         ])
-        pair = match_bank_txn_to_invoice(
-            client, _TXN, [{"invoice_id": "INV-1", "vendor": "ACME Oy", "amount": 1000.0}])
+        ledger = [{"invoice_id": "INV-1", "vendor": "ACME Oy", "amount": 1000.0}]
+        pair = match_bank_txn_to_invoice(client, _TXN, ledger)
 
         assert pair.invoice_id == "INV-1"
-        base = next(f for f in pair.explanation if f["type"] == "base")
+        factors = explain_match(client, _TXN, ledger, pair.invoice_id,
+                                pair.ranked_invoice_id, pair.model_p)
+        base = next(f for f in factors if f["type"] == "base")
         assert base["target_value"] == "INV-1", "explanation must describe the matched invoice"
 
     def test_substituted_match_does_not_borrow_the_other_invoices_why(self):
@@ -221,11 +230,13 @@ class TestExplanationBelongsToTheMatchedInvoice:
             {"invoice_id": "INV-9", "vendor": "ACME Oy", "amount": 250.0,
              "$p": 0.4, "$why": _why_for("INV-9")},
         ])
-        pair = match_bank_txn_to_invoice(
-            client, _TXN, [{"invoice_id": "INV-2", "vendor": "ACME Oy", "amount": 1000.0}])
+        ledger = [{"invoice_id": "INV-2", "vendor": "ACME Oy", "amount": 1000.0}]
+        pair = match_bank_txn_to_invoice(client, _TXN, ledger)
 
         assert pair.invoice_id == "INV-2"
-        targets = [f.get("target_value") for f in pair.explanation if f["type"] == "base"]
+        factors = explain_match(client, _TXN, ledger, pair.invoice_id,
+                                pair.ranked_invoice_id, pair.model_p)
+        targets = [f.get("target_value") for f in factors if f["type"] == "base"]
         assert "INV-9" not in targets, \
             "the substituted match must not present INV-9's explanation as its own"
 
@@ -234,11 +245,13 @@ class TestExplanationBelongsToTheMatchedInvoice:
             {"invoice_id": "INV-9", "vendor": "ACME Oy", "amount": 250.0,
              "$p": 0.4, "$why": _why_for("INV-9")},
         ])
-        pair = match_bank_txn_to_invoice(
-            client, _TXN, [{"invoice_id": "INV-2", "vendor": "ACME Oy", "amount": 1000.0}])
+        ledger = [{"invoice_id": "INV-2", "vendor": "ACME Oy", "amount": 1000.0}]
+        pair = match_bank_txn_to_invoice(client, _TXN, ledger)
 
+        factors = explain_match(client, _TXN, ledger, pair.invoice_id,
+                                pair.ranked_invoice_id, pair.model_p)
         rendered = " ".join(
-            p["value"] for f in pair.explanation for p in f.get("propositions", []))
+            p["value"] for f in factors for p in f.get("propositions", []))
         assert "INV-9" in rendered and "same vendor" in rendered, \
             "the panel should say the pairing came from the vendor, naming what Aito ranked"
 

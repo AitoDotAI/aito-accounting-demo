@@ -377,9 +377,9 @@ def check_payment_matching_ranks(client) -> str:
     `_match`. A 128k-cardinality target makes every probability tiny,
     so this asserts ranking and range, not magnitude.
     """
-    from src.matching_service import match_all
+    from src.matching_service import explain_match, match_all
 
-    result = match_all(client, CUSTOMER)
+    result = match_all(client, CUSTOMER, include_explain_contexts=True)
     pairs = result.get("pairs", [])
     require(pairs, f"matching produced no pairs for {CUSTOMER}")
 
@@ -396,9 +396,30 @@ def check_payment_matching_ranks(client) -> str:
     require(len(by_aito) >= 6,
             f"only {len(by_aito)} of {len(pairs)} visible payments were matched by Aito — "
             "the page should lead with six that quote no reference")
+    # The list ranks and does not explain (td-20260909115133919692): an
+    # explanation in it would mean Aito computed one per candidate to
+    # render one row. What has to hold is that every Aito match CAN be
+    # explained, so this asserts the context exists and then fetches one
+    # for real -- the check the old "explanation is present" could not make.
+    contexts = result.get("explain_contexts", {})
     for pair in by_aito:
-        require(pair.get("explanation"), f"Aito match has no explanation: {pair['bank_txn_id']}")
-    return f"{len(by_aito)} matched by Aito, {len(matched) - len(by_aito)} by reference / {len(pairs)} pairs"
+        require(not pair.get("explanation"),
+                f"the list carries an explanation again: {pair['bank_txn_id']}")
+        require(contexts.get(pair["bank_txn_id"]),
+                f"Aito match cannot be explained, no context: {pair['bank_txn_id']}")
+
+    sample = by_aito[0]
+    context = contexts[sample["bank_txn_id"]]
+    factors = explain_match(client, context["txn"], context["open_invoices"],
+                            context["invoice_id"], context.get("ranked_invoice_id"),
+                            context.get("model_p", 0.0))
+    require(factors, f"the expanded row got no explanation: {sample['bank_txn_id']}")
+    base = [f for f in factors if f["type"] == "base"]
+    require(base and base[0].get("target_value") == sample["invoice_id"],
+            f"the explanation describes {base[0].get('target_value') if base else None}, "
+            f"not the matched invoice {sample['invoice_id']}")
+    return (f"{len(by_aito)} matched by Aito, {len(matched) - len(by_aito)} by reference / "
+            f"{len(pairs)} pairs; {len(factors)} factors fetched for one row, none in the list")
 
 
 def check_help_is_tenant_scoped(client) -> str:

@@ -30,6 +30,11 @@ class MatchPair:
     # no prediction was made; "aito" when `_predict` chose the invoice.
     matched_by: str | None = None
     explanation: list[dict] = field(default_factory=list)
+    # Set when this pairing is a same-vendor SUBSTITUTE: the invoice Aito
+    # actually ranked. The expanded row's explanation has to say so, and
+    # it is deliberately NOT in `to_dict` -- it is how the match was made,
+    # not something the page renders.
+    ranked_invoice_id: str | None = None
     # Aito's own $p for this invoice, distinct from `confidence`, which
     # blends it with amount proximity. The panel needs both: the factor
     # chain is a decomposition of THIS number, not of the blend.
@@ -68,6 +73,79 @@ def _amount_match_score(invoice_amount: float, bank_amount: float) -> float:
     return 0.0
 
 
+# The explanation's own select. `highlight` returns the matched description
+# tokens already wrapped in <mark> tags -- Aito's text analyzer marks
+# whichever spans of the bank description carried the signal.
+WHY_SELECT = {"$why": {"highlight": {"posPreTag": "<mark>", "posPostTag": "</mark>"}}}
+
+
+def ranking_query(txn: dict, open_ids: set[str], explain: bool = False) -> dict:
+    """The question both paths ask: which open invoice settles this payment?
+
+    One builder, because `$why` decomposes `$p` *within a candidate
+    domain*. An explanation fetched under a different `where` would be a
+    correct answer to a question the page never asked, and would not
+    reconcile with the probability on screen. `explain=True` adds the
+    explanation to the same request and changes nothing else.
+
+    _predict invoice_id traverses the link and returns invoice rows ranked
+    by association with the bank transaction's features.
+
+    `customer_id` in `where` is EVIDENCE about the transaction; it does not
+    restrict which invoices Aito may rank. Without the linked-path scope the
+    candidate universe is every invoice in the instance, so a CUST-0002
+    payment gets ranked against CUST-0000's invoices -- measured at 17
+    foreign candidates in the top 5 over 8 payments. `invoice_id.customer_id`
+    scopes the candidate domain through the link instead, which is the
+    tenant boundary this page needs. It also happens to cut latency ~6x and
+    the probability's under-confidence ~48x, but the boundary is the reason.
+
+    `vendor_name` rides on the bank transaction and was not being passed.
+    Four of five wrong assignments in a 640-invoice evaluation picked an
+    invoice from the WRONG VENDOR while the description named the right
+    one, so the field the bank already gives us was the missing evidence.
+
+    The candidate domain is the OPEN LEDGER, not the whole invoice table.
+    The question this page asks is "which outstanding invoice does this
+    payment settle?" -- roughly 30 candidates. Without that clause Aito
+    ranks all ~2000 of the tenant's invoices and we filter to the open
+    ones afterwards, so the true invoice has to beat 1970 rows that were
+    never eligible. It frequently does not: a payment quoting no
+    reference number left CUST-0007-INV-000006 out of the top 20
+    entirely, and the matcher settled on a different vendor at p=0.023.
+    Scoped to the ledger the same payment ranks it FIRST at p=0.482.
+
+    Use the linked key `invoice_id.invoice_id`, not the bare target
+    `invoice_id`. Both rank correctly, but `$or` on the predict target
+    itself returns `invoice_id: null` on every hit after the first --
+    the matcher reads that field, so it would silently drop candidates.
+    """
+    where = {"description": txn["description"], "amount": txn["amount"]}
+    customer_id = txn.get("customer_id")
+    if customer_id is not None:
+        where["customer_id"] = customer_id
+        where["invoice_id.customer_id"] = customer_id
+    if txn.get("vendor_name"):
+        where["vendor_name"] = txn["vendor_name"]
+    if open_ids:
+        where["invoice_id.invoice_id"] = {"$or": sorted(open_ids)}
+
+    select: list = ["$p", "invoice_id", "vendor", "amount"]
+    if explain:
+        select.append(WHY_SELECT)
+
+    return {
+        "from": "bank_transactions",
+        "where": where,
+        "predict": "invoice_id",
+        "select": select,
+        # Every open invoice, because the candidate domain is the ledger
+        # itself. A fixed cut here is what truncated the true invoice out
+        # of the ranking when the domain was all 2000.
+        "limit": max(len(open_ids), 1),
+    }
+
+
 def match_bank_txn_to_invoice(
     client: AitoClient,
     txn: dict,
@@ -88,67 +166,9 @@ def match_bank_txn_to_invoice(
     for inv in open_invoices:
         open_by_vendor.setdefault(inv["vendor"], []).append(inv)
 
-    # _predict invoice_id traverses the link and returns invoice rows
-    # ranked by association with the bank transaction's features.
-    # $why with `highlight` returns the matched description tokens
-    # already wrapped in <mark> tags (Aito's text analyzer marks
-    # whichever spans of the bank description carried the signal).
-    # `customer_id` in `where` is EVIDENCE about the transaction; it does not
-    # restrict which invoices Aito may rank. Without the linked-path scope the
-    # candidate universe is every invoice in the instance, so a CUST-0002
-    # payment gets ranked against CUST-0000's invoices -- measured at 17
-    # foreign candidates in the top 5 over 8 payments. `invoice_id.customer_id`
-    # scopes the candidate domain through the link instead, which is the
-    # tenant boundary this page needs. It also happens to cut latency ~6x and
-    # the probability's under-confidence ~48x, but the boundary is the reason.
-    #
-    # `vendor_name` rides on the bank transaction and was not being passed.
-    # Four of five wrong assignments in a 640-invoice evaluation picked an
-    # invoice from the WRONG VENDOR while the description named the right
-    # one, so the field the bank already gives us was the missing evidence.
-    customer_id = txn.get("customer_id")
-    where = {"description": txn["description"], "amount": txn["amount"]}
-    if customer_id is not None:
-        where["customer_id"] = customer_id
-        where["invoice_id.customer_id"] = customer_id
-    if txn.get("vendor_name"):
-        where["vendor_name"] = txn["vendor_name"]
-
-    # Rank the OPEN LEDGER, not the whole invoice table.
-    #
-    # The question this page asks is "which outstanding invoice does this
-    # payment settle?" -- roughly 30 candidates. Without this clause Aito
-    # ranks all ~2000 of the tenant's invoices and we filter to the open
-    # ones afterwards, so the true invoice has to beat 1970 rows that were
-    # never eligible. It frequently does not: a payment quoting no
-    # reference number left CUST-0007-INV-000006 out of the top 20
-    # entirely, and the matcher settled on a different vendor at p=0.023.
-    # Scoped to the ledger the same payment ranks it FIRST at p=0.482.
-    #
-    # Use the linked key `invoice_id.invoice_id`, not the bare target
-    # `invoice_id`. Both rank correctly, but `$or` on the predict target
-    # itself returns `invoice_id: null` on every hit after the first --
-    # the matcher reads that field, so it would silently drop candidates.
-    if open_ids:
-        where["invoice_id.invoice_id"] = {"$or": sorted(open_ids)}
-
     try:
-        result = client._request("POST", "/_predict", json={
-            "from": "bank_transactions",
-            "where": where,
-            "predict": "invoice_id",
-            "select": [
-                "$p",
-                "invoice_id",
-                "vendor",
-                "amount",
-                {"$why": {"highlight": {"posPreTag": "<mark>", "posPostTag": "</mark>"}}},
-            ],
-            # Every open invoice, because the candidate domain is now the
-            # ledger itself. A fixed cut here is what truncated the true
-            # invoice out of the ranking when the domain was all 2000.
-            "limit": max(len(open_ids), 1),
-        })
+        result = client._request(
+            "POST", "/_predict", json=ranking_query(txn, open_ids))
     except AitoError:
         return None
 
@@ -167,7 +187,7 @@ def match_bank_txn_to_invoice(
     # Aito was right and the arithmetic threw it away. A substitute is a
     # fallback for when Aito ranked nothing we hold, never an improvement
     # on something it did.
-    best_direct: tuple[float, dict, float, dict | None] | None = None
+    best_direct: tuple[float, dict, float] | None = None
     best_sub: tuple[float, dict, float, str] | None = None
 
     for hit in result.get("hits", []):
@@ -180,7 +200,7 @@ def match_bank_txn_to_invoice(
             amt_score = _amount_match_score(open_by_id[inv_id]["amount"], txn["amount"])
             combined = aito_p * 0.5 + amt_score * 0.5
             if best_direct is None or combined > best_direct[0]:
-                best_direct = (combined, open_by_id[inv_id], aito_p, hit.get("$why"))
+                best_direct = (combined, open_by_id[inv_id], aito_p)
             continue
 
         # Indirect: Aito ranked a different invoice from the same vendor, so
@@ -189,8 +209,9 @@ def match_bank_txn_to_invoice(
         # Aito's `$why` explains the invoice Aito ranked, NOT the one we
         # substitute, so it must not be carried over -- doing so rendered one
         # invoice's explanation under another invoice's match, with the base
-        # rate naming an id that appeared nowhere on screen.
-        # `_build_explanation` describes the substitution instead.
+        # rate naming an id that appeared nowhere on screen. `explain_match`
+        # states the substitution instead, which is why the pair records
+        # `ranked_invoice_id`.
         if vendor and vendor in open_by_vendor:
             for inv in open_by_vendor[vendor]:
                 amt_score = _amount_match_score(inv["amount"], txn["amount"])
@@ -200,12 +221,11 @@ def match_bank_txn_to_invoice(
 
     best_ranked_id: str | None = None
     if best_direct is not None:
-        best_score, best_invoice, best_p, best_why = best_direct
+        best_score, best_invoice, best_p = best_direct
     elif best_sub is not None:
         best_score, best_invoice, best_p, best_ranked_id = best_sub
-        best_why = None
     else:
-        best_score, best_invoice, best_p, best_why = 0.0, None, 0.0, None
+        best_score, best_invoice, best_p = 0.0, None, 0.0
 
     if best_invoice is None:
         return None
@@ -220,9 +240,9 @@ def match_bank_txn_to_invoice(
     else:
         return None
 
-    # Build explanation showing what drove the match
-    explanation = _build_explanation(txn, best_invoice, best_p, best_why, best_ranked_id)
-
+    # No explanation here: this is the list, and an explanation costs a
+    # $why for every candidate to render one row. `explain_match` fetches
+    # it for the row the user expands (td-20260909115133919692).
     return MatchPair(
         invoice_id=best_invoice["invoice_id"],
         invoice_vendor=best_invoice["vendor"],
@@ -235,8 +255,55 @@ def match_bank_txn_to_invoice(
         model_p=best_p,
         status=status,
         matched_by="aito",
-        explanation=explanation,
+        ranked_invoice_id=best_ranked_id,
     )
+
+
+def explain_match(
+    client: AitoClient,
+    txn: dict,
+    open_invoices: list[dict],
+    invoice_id: str,
+    ranked_invoice_id: str | None = None,
+    model_p: float = 0.0,
+) -> list[dict]:
+    """Explain one pairing: the row the user expanded, and only that row.
+
+    Re-issues the ranking with `$why` added -- the same `where`, the same
+    limit, the same candidate domain -- and reads the explanation of the
+    invoice WE chose out of that ranking. Asking about the invoice on its
+    own would decompose a different `$p` than the one on screen.
+
+    A same-vendor substitute is not in Aito's ranking at all, so there is
+    no `$why` to read for it and `_build_explanation` states the
+    substitution instead. If the chosen invoice turns up in the ranking
+    while the caller says it was substituted, the two disagree -- the data
+    moved under a cached pairing -- and that is raised rather than
+    rendered, because the alternative is a panel that explains one invoice
+    and labels it another.
+    """
+    invoice = next((inv for inv in open_invoices if inv["invoice_id"] == invoice_id), None)
+    if invoice is None:
+        raise ValueError(
+            f"{invoice_id} is not in the ledger this payment was matched against")
+
+    open_ids = {inv["invoice_id"] for inv in open_invoices}
+    try:
+        result = client._request(
+            "POST", "/_predict", json=ranking_query(txn, open_ids, explain=True))
+    except AitoError:
+        # The pairing stands -- it was made from a ranking that succeeded.
+        # Only its explanation is missing, so say what we know without it.
+        return _build_explanation(txn, invoice, model_p, None, ranked_invoice_id)
+
+    why = next((hit.get("$why") for hit in result.get("hits", [])
+                if hit.get("invoice_id") == invoice_id), None)
+    if ranked_invoice_id is not None and why is not None:
+        raise ValueError(
+            f"{invoice_id} was recorded as a substitute for {ranked_invoice_id}, "
+            "but Aito now ranks it directly -- the ranking changed under the pairing")
+
+    return _build_explanation(txn, invoice, model_p, why, ranked_invoice_id)
 
 
 def _build_explanation(
@@ -346,6 +413,7 @@ def match_all(
     referenced_count: int = 2,
     payment_window: int = 40,
     ledger_decoys: int = 30,
+    include_explain_contexts: bool = False,
 ) -> dict:
     """Assign each incoming payment to an invoice in the open ledger.
 
@@ -371,6 +439,14 @@ def match_all(
     them quote no reference (ADR 0026). The first eight of the table are
     typically 5-7 referenced payments, whose answer is printed on the
     bank line.
+
+    `include_explain_contexts` adds what `explain_match` needs to answer
+    "why this invoice?" later: the payment, and the open ledger as it
+    stood when that payment was ranked. The ledger shrinks as payments
+    are assigned, so it cannot be reconstructed from the result -- and
+    without the same ledger the explanation would decompose a different
+    probability. It is off by default because it belongs to the request
+    that served the page, not in a precompute file or an audit report.
     """
     try:
         where = {"customer_id": customer_id} if customer_id else {}
@@ -427,11 +503,23 @@ def match_all(
     } for t in payments]
 
     pairs: list[MatchPair] = []
+    explain_contexts: dict[str, dict] = {}
     remaining = list(ledger.values())
     for txn in bank_txns:
+        # The ledger as this payment saw it, before its invoice is taken
+        # out of circulation: the candidate domain its $p was computed in.
+        ledger_at_ranking = list(remaining)
         pair = match_reference_first(client, txn, remaining)
         if pair is not None:
             pairs.append(pair)
+            if pair.matched_by == "aito":
+                explain_contexts[txn["txn_id"]] = {
+                    "txn": txn,
+                    "open_invoices": ledger_at_ranking,
+                    "invoice_id": pair.invoice_id,
+                    "ranked_invoice_id": pair.ranked_invoice_id,
+                    "model_p": pair.model_p,
+                }
             # One invoice settles one payment.
             remaining = [inv for inv in remaining if inv["invoice_id"] != pair.invoice_id]
         else:
@@ -450,7 +538,7 @@ def match_all(
     confidences = [p.confidence for p in pairs if p.matched_by == "aito"]
     avg_conf = sum(confidences) / len(confidences) if confidences else 0.0
 
-    return {
+    result = {
         "pairs": [p.to_dict() for p in pairs],
         "metrics": {
             "matched": matched,
@@ -464,3 +552,6 @@ def match_all(
             "match_rate": round((matched + suggested) / len(pairs), 2) if pairs else 0,
         },
     }
+    if include_explain_contexts:
+        result["explain_contexts"] = explain_contexts
+    return result
