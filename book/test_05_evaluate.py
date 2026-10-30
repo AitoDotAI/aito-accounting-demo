@@ -132,23 +132,27 @@ def test_evaluate_approver_what_the_tenant_filter_costs(t: bt.TestCaseRun):
     """What scoping the candidates does to the numbers the pages publish.
 
     The filter changes a published accuracy, so its cost is measured
-    rather than assumed. Measured read-only on `env.master`, 50 test
-    samples, unscoped -> scoped:
+    rather than assumed. Measured read-only on `env.master`, unscoped ->
+    scoped, at 200 test samples:
 
-    | tenant    | accuracy    | base | meanRank    | geomMeanP     |
-    |-----------|-------------|------|-------------|---------------|
-    | CUST-0127 | 1.00 - 1.00 | 1.00 | 0.00 - 0.00 | 0.958 - 1.000 |
-    | CUST-0007 | 0.80 - 0.80 | 0.64 | 0.22 - 0.22 | 0.590 - 0.542 |
-    | CUST-0032 | 0.86 - 0.82 | 0.56 | 0.14 - 0.18 | 0.681 - 0.648 |
-    | CUST-0000 | 0.88 - 0.90 | 0.40 | 0.12 - 0.10 | 0.743 - 0.757 |
+    | tenant    | accuracy      | base | meanRank      | geomMeanP     |
+    |-----------|---------------|------|---------------|---------------|
+    | CUST-0032 | 0.835 - 0.845 | 0.62 | 0.18 - 0.16   | 0.648 - 0.652 |
+    | CUST-0000 | 0.895 - 0.895 | 0.43 | 0.55 - 0.23   | 0.646 - 0.667 |
+    | CUST-0007 | 0.845 - 0.840 | 0.60 | 4.92 - 0.17   | 0.548 - 0.576 |
 
-    Accuracy moves at most 4 points, in both directions -- two cases in
-    fifty, which is sampling noise, not a cost. `geomMeanP` is the one
-    number that moves systematically: a filter on a linked row is still a
-    condition in the model, so the probabilities are renormalised rather
-    than merely having candidates removed. CUST-0127, with one employee,
-    goes to a flat 1.000, which is the honest answer for a single
-    candidate and not a calibration result to quote.
+    Accuracy is flat within a point: scoping the candidates costs nothing.
+    `meanRank` is what actually moves, and it improves -- for CUST-0007,
+    when Aito was wrong the correct approver sat nearly five ranks down,
+    because other tenants' staff were ranked in between; scoped, it sits
+    just behind the top. `geomMeanP` rises slightly too, so the published
+    numbers get better, not worse.
+
+    At 50 samples (what this test runs, to stay quick) the same tenants
+    look noisier and can point the other way -- CUST-0032 reads
+    0.86 -> 0.82 and 0.681 -> 0.648, which is two cases in fifty. The
+    assertions below are therefore loose on purpose; the 200-sample table
+    above is the measurement, not the test output.
     """
     c = get_client()
     tenant = "CUST-0032"   # the one tenant whose accuracy moved down
