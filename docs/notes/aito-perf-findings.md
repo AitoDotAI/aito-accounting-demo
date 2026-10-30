@@ -17,10 +17,13 @@ around the workarounds.
 | 5 | `_search` `limit:0` count is ~1 s on cold table | `/api/help/stats` 2.1 s cold, 14 ms warm | included in startup warmup |
 | 6 | Cache `set` has no upsert primitive | 2× round-trip per write (delete + insert) | combine with #3 — delete is 404 anyway, so we're effectively just inserting |
 | 7 | `httpx.request(...)` per call repeats TLS handshake every request | ~110 ms steady-state vs ~280 ms per call (~3× faster after fix) | Pooled `httpx.Client` held on `AitoClient` instance |
+| 8 | `_predict` with `$why` varies 0.44 s – 6.6 s **for the same query**, server-side | the first click on a matching row felt broken at ~4 s | prefetch after render; measure with `X-Aito-Ms`, never wall clock |
 
 Items 1, 2, 4 are documented in detail in the original sections.
 Items 3, 5, 6 are new flags from the May 2 deploy iteration —
 captured below in §3. Item 7 (May 2026) is documented in §4.
+Item 8 (October 2026) is documented in §8, together with the claim it
+disproves.
 
 ---
 
@@ -371,3 +374,84 @@ call.
 
 The pattern: anything that touches Aito live the *first time* eats the
 cold-load cost. Anything served from `data/precomputed/` is sub-30 ms.
+
+---
+
+## 8. Aito's own response time is the variance, and it is wide (Oct 2026)
+
+### The claim under test
+
+While making payment matching explain only the expanded row
+(td-20260909115133919692), the same `_predict` with `$why` looked about
+three times slower inside the running app (~3.3 s) than from a script
+(~1.2 s) on the same tenant. A 3× on every live call would matter more
+than any single view, so it was raised as td-20261030214404054563.
+
+**It does not reproduce. The app is not the variable.**
+
+### What made the first measurements misleading
+
+They were taken minutes apart, one setting at a time, against a shared
+instance. On this query that is not good enough: Aito's own server time
+for the *same body* swings between 0.44 s and 6.6 s.
+
+Nine distinct explain bodies, each asked twice back to back from one
+script (`x-aitoai-response-time`, so no client overhead is included):
+
+| ask | median | range |
+|---|---|---|
+| first  | 1001 ms | 444 – 3514 ms |
+| second |  749 ms | 555 – 3280 ms |
+
+The slowest single measurement in the set is a *second* ask of a body
+whose first ask took 1620 ms. So "new query" does not explain it either.
+
+### The paired test
+
+Same explain, through the app and from a script, interleaved, alternating
+which goes first, a fresh tenant per pair so no cache serves a repeat.
+Comparing Aito's server time on both sides (`X-Aito-Ms` from the app,
+`x-aitoai-response-time` from the script):
+
+| | median | values |
+|---|---|---|
+| script | 3621 ms | 4399, 6585, 893, 4316, 1172, 4369, 1190, 3621, 832 |
+| app    | 1036 ms | 823, 1175, 673, 1164, 1236, 791, 1036, 1254, 544 |
+
+n = 9 pairs. App minus script: median **−2367 ms**; the app was slower in
+**1 of 9**. If anything the script side drew the outliers — every pair
+where the app went first left the script's identical call measuring
+3.6 s or worse, which is worth its own look.
+
+### What the app does cost
+
+Small and stable. Each `/api/matching/explain` is `_search` 13–66 ms (the
+cache read) plus one `_predict`, and end to end the app adds roughly
+100–350 ms around Aito's time: two cache round trips (`get` ~61 ms, `set`
+~107 ms, measured against the L2 table), FastAPI, and serialisation. Of a
+3.65 s first open, instrumented: 3.43 s the `_predict`, 0.07 s cache
+reads, 0.15 s the cache write, 4 ms everything else.
+
+### How to measure this here, so the next person does not redo it
+
+- `AitoV2Client._request` already reads `x-aitoai-response-time`, and
+  `src/app.py` exposes the per-request sum as `X-Aito-Ms`, the count as
+  `X-Aito-Calls` and the breakdown as `X-Aito-Ops`
+  (`_search:16.7,_predict:1139.7`). Use those. Wall clock on a shared
+  instance cannot tell a slow client from a busy server.
+- Compare settings **paired and interleaved**, alternating order, not one
+  batch after the other. Unpaired samples minutes apart are how a 3×
+  that is not there gets reported — by me, in this case.
+- Nine pairs was enough to invert the sign of the result. Fewer would not
+  have been: at n=5 the same test read −35 ms with the app slower in 2.
+
+### What to do about the real finding
+
+The demo-visible consequence is that a cold explanation can take four
+seconds. That is handled where the user meets it: the matching page
+prefetches each row's explanation once the list has rendered, so nobody
+waits on the first call, and our cache makes a reopen 3 ms.
+
+The width itself — 0.44 s to 6.6 s for one query class on a warm table —
+is an Aito-side question, not an app one, and belongs with the core team
+alongside flag 2 (cold load).
