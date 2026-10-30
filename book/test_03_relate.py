@@ -17,9 +17,11 @@ def test_relate_vendor_to_gl(t: bt.TestCaseRun):
     t.h1("Rule mining: vendor -> GL code (CUST-0000)")
     t.tln("")
 
-    # Get some vendors for this customer
+    # Get some vendors for this customer. Sorted, not set order: a book
+    # replays recorded HTTP by request, so a set's per-process iteration
+    # order would ask for vendors no capture ever recorded.
     r = c.search("invoices", {"customer_id": "CUST-0000"}, limit=20)
-    vendors = list({inv["vendor"] for inv in r["hits"]})[:5]
+    vendors = sorted({inv["vendor"] for inv in r["hits"]})[:5]
 
     for vendor in vendors:
         result = c.relate("invoices", {"customer_id": "CUST-0000", "vendor": vendor}, "gl_code")

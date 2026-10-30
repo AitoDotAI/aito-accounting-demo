@@ -13,6 +13,8 @@ Run with:
                                  # interactive review with latencies
 """
 
+from collections import Counter
+
 import booktest as bt
 
 from book.aito_env import get_client
@@ -124,12 +126,21 @@ def test_relate_latency(t: bt.TestCaseRun):
 
     for cid, label in cases:
         t.h2(f"{cid} — {label}")
+        # Condition on a category this tenant actually has. The corpus has
+        # moved under this book before: it asked both tenants about
+        # "telecom", which CUST-0000 no longer has a single row of, so the
+        # measurement documented an empty result.
+        sample = c.search("invoices", {"customer_id": cid}, limit=200)
+        counts = Counter(h["category"] for h in sample["hits"] if h.get("category"))
+        category = min(counts, key=lambda name: (-counts[name], name))
+        t.tln(f"  condition: category = {category}")
+
         # Discover what gl_code values relate to a fixed condition.
         # The dual call (relate vendor, condition by gl_code) would also
         # work; this shape mirrors what compute_rule_performance uses.
-        r = t.imsln(lambda c_id=cid: c.relate(
+        r = t.imsln(lambda c_id=cid, cat=category: c.relate(
             "invoices",
-            {"customer_id": c_id, "category": "telecom"},
+            {"customer_id": c_id, "category": cat},
             "gl_code",
         ))
         rules = r.get("hits", [])

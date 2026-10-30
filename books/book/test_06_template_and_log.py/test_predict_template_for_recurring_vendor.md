@@ -5,7 +5,7 @@ Top vendor: EEE Energy Ecology Engineering Oy (59 invoices)
 
   match_count:    40/50
   confidence:     0.8
-  gl_code:        4400 (Materials & Supplies)
+  gl_code:        4400 (Aineet ja tarvikkeet)
   approver:       CUST-0000-EMP-0006
   cost_centre:    CC-600
   vat_pct:        25.5

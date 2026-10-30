@@ -6,16 +6,18 @@ association rules between fields.
 
 ## CUST-0000 — enterprise
 
-0.622 ms (was 276.301 ms)
+  condition: category = supplies
+0.287 ms
   rules returned: 10
-  top related gl_code lift=21.94
+  top related gl_code lift=4.97
   rules > 0: True
 
 
 ## CUST-0015 — midmarket
 
-0.283 ms (was 125.365 ms)
-  rules returned: 10
-  top related gl_code lift=21.94
+  condition: category = it_equipment
+0.227 ms
+  rules returned: 4
+  top related gl_code lift=3.30
   rules > 0: True
 
