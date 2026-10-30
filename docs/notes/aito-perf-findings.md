@@ -513,3 +513,46 @@ repo is smart form fill (up to 7 fields at once, `formfill_service.py`)
 and the startup warmup (`app.py`), both held to `AITO_INFLIGHT_LIMIT`
 (default 4) by the process-wide semaphore in `src/aito_client.py`. That
 default is the only lever these numbers argue about.
+
+### Holding the fan-out to 2 does not help (so the default stays 4)
+
+The obvious follow-up from the table above: if the engine gives us about
+two slots, cap our own fan-out at two and stop paying for queue depth.
+Measured on smart form fill, the one user-facing fan-out in the repo —
+with (customer, vendor, description, amount) given it predicts 6 fields
+as 6 concurrent `_predict`s. Same context under both limits,
+interleaved, alternating which limit went first:
+
+| limit | median | range |
+|---|---|---|
+| 2 | 947 ms | 514 – 2056 ms |
+| 4 | 897 ms | 501 – 1698 ms |
+
+n = 12 pairs. Limit 2 minus limit 4: median **+29 ms**, limit 2 slower
+in 6 of 12 — no effect. The mechanism is visible in the earlier table:
+6 fields at limit 2 is three rounds instead of two, and the per-query
+time is lower at 2 in flight by about as much as the extra round costs.
+
+**Read the per-pair deltas before trusting any version of this test.**
+All six pairs where limit 2 ran first came out positive and all six
+where limit 4 ran first came out negative: the *second* arm was faster
+every time, by 100–235 ms, whichever limit it was. That order effect is
+bigger than the effect under test, so an unalternated run of this
+comparison would "prove" whichever limit you scheduled second. (Note it
+contradicts the repeat-gap result for `$why` ranking queries, which
+found no second-ask advantage at all. Warm-repeat behaviour is not
+uniform across query classes; do not carry one class's result to
+another.)
+
+A control worth keeping, because without it the null above is
+unreadable: the probe patches the module-global semaphore, so it must be
+shown to bind. Instrumenting the high-water mark of holders gives peak 1
+at limit 1 and peak 4 at limit 4, with medians 1432 ms and 1038 ms over
+4 contexts. Which also says 4× the concurrency buys about 1.4×, not 4× —
+`formfill_service.predict_fields`'s comment estimating "roughly 1s"
+saved is optimistic at tonight's numbers, though 4 samples is too thin
+to rewrite it on.
+
+Not measured: whether a cap helps during the daytime tail. If that tail
+is other tenants' load, our own limit cannot touch it; that is the
+assumption, not a result.
