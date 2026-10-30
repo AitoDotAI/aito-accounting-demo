@@ -38,6 +38,7 @@ Commands:
     book-update       Update book test HTTP snapshots (not the baselines)
     book-accept       Accept current output as the expected baseline (review first!)
     book-capture      Capture fresh snapshots from live Aito
+    prove-assertions  Break every book assertion and require it to fail
 
   Deployment:
     docker-build      Build the Docker image (frontend + API + precomputed)
@@ -379,6 +380,15 @@ cmd_book_accept() {
   uv run booktest -v -c -a book/ "$@"
 }
 
+# A book assertion that cannot fail is worse than none: it prints "ok"
+# and the reader takes the invariant as checked. This breaks each one in
+# turn and requires the run to notice. Replays snapshots, so no network.
+cmd_prove_assertions() {
+  export AITO_V2_ENV="${AITO_V2_ENV:-v2-demo}"
+  cd "$SCRIPT_DIR"
+  uv run python -u scripts/prove_book_assertions.py "$@"
+}
+
 cmd_book_capture() {
   echo "Capturing fresh snapshots from live Aito..."
   cd "$SCRIPT_DIR"
@@ -464,6 +474,7 @@ case "${1:-help}" in
   book-update)     cmd_book_update ;;
   book-accept)     cmd_book_accept "${@:2}" ;;
   book-capture)    cmd_book_capture ;;
+  prove-assertions) cmd_prove_assertions "${@:2}" ;;
   docker-build)    cmd_docker_build ;;
   docker-run)      cmd_docker_run ;;
   azure-deploy)    cmd_azure_deploy ;;
