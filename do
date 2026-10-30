@@ -37,6 +37,8 @@ Commands:
     book              Run book tests (Aito examination notebooks)
     book-update       Update book test HTTP snapshots (not the baselines)
     book-accept       Accept current output as the expected baseline (review first!)
+                      Refuses a baseline where two entities share one
+                      measurement; override with --i-know
     book-capture      Capture fresh snapshots from live Aito
     prove-assertions  Break every book assertion and require it to fail
 
@@ -373,11 +375,32 @@ cmd_book_update() {
 # did at capture time, defect included — a silently dropped filter
 # returning 200 with extra rows snapshots perfectly cleanly. Review with
 # `./do book` and the files under books/.out/ before running this.
+# Before accepting, refuse a baseline in which two different entities
+# share one measurement -- the shape a dropped condition leaves behind
+# (8324912 removed two such baselines). `--i-know` accepts anyway.
 cmd_book_accept() {
   export AITO_V2_ENV="${AITO_V2_ENV:-v2-demo}"
-  echo "Accepting current output as the expected baseline... ($AITO_V2_ENV)"
   cd "$SCRIPT_DIR"
-  uv run booktest -v -c -a book/ "$@"
+
+  local check=1 args=()
+  for arg in "$@"; do
+    if [ "$arg" = "--i-know" ]; then check=0; else args+=("$arg"); fi
+  done
+
+  if [ "$check" -eq 1 ]; then
+    if ! uv run python -u scripts/baseline_collisions.py books/.out/book; then
+      echo ""
+      echo "Refusing to accept. Read the diff before you decide: the numbers above"
+      echo "are the same for subjects that cannot share them."
+      echo "If the repetition is real, accept with: ./do book-accept --i-know"
+      return 1
+    fi
+  else
+    echo "Skipping the shared-measurement check (--i-know)."
+  fi
+
+  echo "Accepting current output as the expected baseline... ($AITO_V2_ENV)"
+  uv run booktest -v -c -a book/ "${args[@]}"
 }
 
 # A book assertion that cannot fail is worse than none: it prints "ok"

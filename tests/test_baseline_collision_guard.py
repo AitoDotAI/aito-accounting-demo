@@ -19,6 +19,7 @@ were actually committed, must be refused.
 """
 
 import importlib.util
+import sys
 from pathlib import Path
 
 import pytest
@@ -30,6 +31,9 @@ def load_guard():
     spec = importlib.util.spec_from_file_location(
         "baseline_collisions", REPO / "scripts" / "baseline_collisions.py")
     module = importlib.util.module_from_spec(spec)
+    # Register before exec: @dataclass resolves annotations through
+    # sys.modules[__module__], which is None for an unregistered module.
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
