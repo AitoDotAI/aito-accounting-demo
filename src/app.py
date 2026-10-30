@@ -1068,6 +1068,11 @@ def quality_evaluate(
 
     Cached 10 min per (customer, domain, predict, inputs, limit).
     """
+    if not customer_id:
+        # Without a customer there is nothing to scope a linked target's
+        # candidates to -- for `approver`, every tenant's staff would
+        # compete (td-20261030202058894219, as in formfill/predict).
+        raise HTTPException(status_code=400, detail="customer_id is required")
     fields = sorted([f.strip() for f in input_fields.split(",") if f.strip()])
     cache_key = f"eval:{_V2}{customer_id}:{domain}:{predict}:{','.join(fields)}:{limit}"
     cached = cache.get(cache_key)

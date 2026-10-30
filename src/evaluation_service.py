@@ -24,7 +24,14 @@ DOMAINS: dict[str, dict] = {
         "id_field": "invoice_id",
         "predict_targets": [
             {"field": "gl_code", "label": "GL code"},
-            {"field": "approver", "label": "Approver"},
+            # `approver` holds an employee_id and links to `employees`, so
+            # `customer_id` in the where is evidence about the invoice, not a
+            # bound on which employees Aito may rank. Only a filter on the
+            # linked row is one. Form Fill learned this in PR #58
+            # (td-20260901082623647538); this surface is
+            # td-20261030202058894219.
+            {"field": "approver", "label": "Approver",
+             "scope_candidates_by": "approver.customer_id"},
             {"field": "cost_centre", "label": "Cost centre"},
             {"field": "category", "label": "Category"},
             {"field": "vat_pct", "label": "VAT rate"},
@@ -144,10 +151,29 @@ def run_evaluation(
     cfg = DOMAINS[domain]
     table = cfg["table"]
 
+    # `predict` arrives as a query parameter (src/app.py). Candidate
+    # scoping is declared per target below, so a target nobody declared
+    # cannot be scoped -- it must not reach Aito unscoped either.
+    target = next((t for t in cfg["predict_targets"] if t["field"] == predict), None)
+    if target is None:
+        return {"error": f"Unknown predict target for {domain}: {predict}"}
+
     # Build the where clause: customer_id + each $get-bound input field
     where: dict = {"customer_id": customer_id}
     for f in input_fields:
         where[f] = {"$get": f}
+
+    # A target whose values live in a linked, tenant-scoped table needs the
+    # filter on that table: see `scope_candidates_by` above.
+    scope_candidates_by = target.get("scope_candidates_by")
+    if scope_candidates_by:
+        if not customer_id:
+            raise ValueError(
+                f"Evaluating {predict} needs a customer_id: without one there is "
+                "nothing to limit the candidates to, and every tenant's rows "
+                "would compete."
+            )
+        where[scope_candidates_by] = customer_id
 
     query = {
         "testSource": {

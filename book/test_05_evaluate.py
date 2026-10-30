@@ -125,3 +125,65 @@ def test_evaluate_approver_candidates_are_the_tenants_own(t: bt.TestCaseRun):
         t.tln(f"  First foreign candidate:        rank {foreign[0][0]}, {foreign[0][1]}")
     t.tln("")
     t.assertln(not foreign, "a candidate belongs to another tenant")
+
+
+@bt.snapshot_httpx()
+def test_evaluate_approver_what_the_tenant_filter_costs(t: bt.TestCaseRun):
+    """What scoping the candidates does to the numbers the pages publish.
+
+    The filter changes a published accuracy, so its cost is measured
+    rather than assumed. Measured read-only on `env.master`, 50 test
+    samples, unscoped -> scoped:
+
+    | tenant    | accuracy    | base | meanRank    | geomMeanP     |
+    |-----------|-------------|------|-------------|---------------|
+    | CUST-0127 | 1.00 - 1.00 | 1.00 | 0.00 - 0.00 | 0.958 - 1.000 |
+    | CUST-0007 | 0.80 - 0.80 | 0.64 | 0.22 - 0.22 | 0.590 - 0.542 |
+    | CUST-0032 | 0.86 - 0.82 | 0.56 | 0.14 - 0.18 | 0.681 - 0.648 |
+    | CUST-0000 | 0.88 - 0.90 | 0.40 | 0.12 - 0.10 | 0.743 - 0.757 |
+
+    Accuracy moves at most 4 points, in both directions -- two cases in
+    fifty, which is sampling noise, not a cost. `geomMeanP` is the one
+    number that moves systematically: a filter on a linked row is still a
+    condition in the model, so the probabilities are renormalised rather
+    than merely having candidates removed. CUST-0127, with one employee,
+    goes to a flat 1.000, which is the honest answer for a single
+    candidate and not a calibration result to quote.
+    """
+    c = get_client()
+    tenant = "CUST-0032"   # the one tenant whose accuracy moved down
+
+    t.h1("Approver accuracy with and without the tenant filter (CUST-0032)")
+    t.tln("")
+
+    def evaluate(scoped: bool) -> dict:
+        where = {"customer_id": tenant, "vendor": {"$get": "vendor"},
+                 "amount": {"$get": "amount"}, "category": {"$get": "category"}}
+        if scoped:
+            where["approver.customer_id"] = tenant
+        return c.evaluate({
+            "testSource": {"from": "invoices", "where": {"customer_id": tenant},
+                           "limit": 50},
+            "evaluate": {"from": "invoices", "where": where, "predict": "approver"},
+            "select": ["accuracy", "baseAccuracy", "meanRank", "geomMeanP",
+                       "testSamples"],
+        })
+
+    # The unscoped query is what shipped before td-20261030202058894219;
+    # it is run here only as the comparison.
+    unscoped, scoped = evaluate(False), evaluate(True)
+
+    for label, r in (("every tenant's staff", unscoped), ("this tenant's staff", scoped)):
+        t.iln(f"  candidates: {label}")
+        t.iln(f"    accuracy      {r['accuracy']:.1%}  (base {r['baseAccuracy']:.1%})")
+        t.iln(f"    meanRank      {r.get('meanRank', 0):.2f}")
+        t.iln(f"    geomMeanP     {r.get('geomMeanP', 0):.4f}")
+        t.iln(f"    testSamples   {r['testSamples']}")
+    t.tln("")
+
+    # Both sides are one sample of fifty: the gate is "the filter does not
+    # cost real accuracy", not an exact number.
+    t.assertln(scoped["accuracy"] >= unscoped["accuracy"] - 0.10,
+               f"scoping cost {unscoped['accuracy'] - scoped['accuracy']:.1%} of accuracy")
+    t.assertln(scoped["meanRank"] <= unscoped["meanRank"] + 0.10,
+               "scoping pushed the correct approver down the ranking")
