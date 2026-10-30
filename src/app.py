@@ -455,23 +455,6 @@ def _load_known_customers() -> set[str]:
     return _KNOWN_CUSTOMER_IDS
 
 
-def validate_customer(customer_id: str) -> None:
-    """Raise 400 for empty or unknown customer_id.
-
-    Per CLAUDE.md prime directive #2 -- fail loudly on unexpected
-    data instead of returning a slow 200 with empty body.
-    """
-    from fastapi import HTTPException
-    if not customer_id:
-        raise HTTPException(status_code=400, detail="customer_id is required")
-    known = _load_known_customers()
-    if known and customer_id not in known:
-        raise HTTPException(
-            status_code=400,
-            detail=f"unknown customer_id: {customer_id!r}",
-        )
-
-
 @app.get("/api/customers")
 def list_customers():
     """List all customers with their sizes."""

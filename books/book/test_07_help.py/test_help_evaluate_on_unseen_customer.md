@@ -5,4 +5,4 @@
 
   Only 0 impressions — cold start by design.
   Real production: this customer's CTR ranking falls back to global.
-ok
+  cold start is allowed: ranking falls back to global

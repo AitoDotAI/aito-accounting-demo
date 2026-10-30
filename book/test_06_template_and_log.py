@@ -38,7 +38,9 @@ def test_predict_template_for_recurring_vendor(t: bt.TestCaseRun):
     template = predict_template(c, "CUST-0000", top_vendor)
     if template is None:
         t.iln("(no confident template; vendor's pattern is too noisy)")
-        t.assertln(True, "template can be None for noisy vendors")
+        # Not an assertion: None is a documented outcome here, and
+        # `assertln(True, ...)` would only look like a check.
+        t.tln("  no template is allowed: no pattern dominates this vendor")
         return
 
     t.iln(f"  match_count:    {template['match_count']}/{template['total_history']}")
