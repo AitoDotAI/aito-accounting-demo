@@ -17,7 +17,7 @@ around the workarounds.
 | 5 | `_search` `limit:0` count is ~1 s on cold table | `/api/help/stats` 2.1 s cold, 14 ms warm | included in startup warmup |
 | 6 | Cache `set` has no upsert primitive | 2× round-trip per write (delete + insert) | combine with #3 — delete is 404 anyway, so we're effectively just inserting |
 | 7 | `httpx.request(...)` per call repeats TLS handshake every request | ~110 ms steady-state vs ~280 ms per call (~3× faster after fix) | Pooled `httpx.Client` held on `AitoClient` instance |
-| 8 | `_predict` with `$why` varies 0.44 s – 6.6 s **for the same query**, server-side | the first click on a matching row felt broken at ~4 s | prefetch after render; measure with `X-Aito-Ms`, never wall clock |
+| 8 | `_predict` with `$why` varies 0.44 s – 6.6 s **for the same query**, server-side — daytime only, and not caused by our own concurrency | the first click on a matching row felt broken at ~4 s | prefetch after render; compare settings with `X-Aito-Ms`, but record wall time too — above 2 calls in flight the header under-reports the wait |
 
 Items 1, 2, 4 are documented in detail in the original sections.
 Items 3, 5, 6 are new flags from the May 2 deploy iteration —
@@ -455,3 +455,61 @@ waits on the first call, and our cache makes a reopen 3 ms.
 The width itself — 0.44 s to 6.6 s for one query class on a warm table —
 is an Aito-side question, not an app one, and belongs with the core team
 alongside flag 2 (cold load).
+
+### The width is not our own concurrency, and it is not there at night
+
+Measured 2026-10-30, 23:00–23:08, same query class
+(`matching_service.ranking_query(..., explain=True)`), to answer the
+obvious suspicion: that we cause the tail ourselves by asking several
+things at once. We do not.
+
+Quiet hours, one query in flight, ≤1 qps, five fresh tenants, 30 bodies
+each asked twice:
+
+| n | median | p90 | max | over 2 s |
+|---|---|---|---|---|
+| 60 | 603 ms | 1077 ms | 1247 ms | 0 |
+
+Against the daytime table above (first-ask median 1001 ms, 444–3514 ms),
+the median is ~40% faster at night and the multi-second tail is gone
+entirely. Then the same bodies driven at 1, 2 and 4 of our own queries in
+flight, 45–120 s per step:
+
+| in flight | aito p50 | p90 | max | wall p50 | wall max |
+|---|---|---|---|---|---|
+| 1 | 612 ms | 1086 ms | 1259 ms | 749 ms | 1429 ms |
+| 2 | 1174 ms | 1632 ms | 1917 ms | 1356 ms | 2202 ms |
+| 4 | 1225 ms | 1702 ms | 1948 ms | 2487 ms | 5115 ms |
+
+Across 401 queries that night the worst single server-side time was
+**1948 ms**. Our own concurrency cannot produce the 3.5–6.6 s times, so
+the width tracks time of day — load from elsewhere on the shared
+instance. Written down beforehand, the prediction was that 4 in flight
+would reproduce the tail; it did not.
+
+Two things the concurrency numbers do say:
+
+- The cost of asking at all is paid once, between 1 and 2 in flight
+  (612 → 1174 ms). Going on to 4 adds 51 ms to the engine's own time.
+- Past 2 in flight the engine's reported time stops growing and the
+  waiting moves into wall time: wall minus `x-aitoai-response-time` is
+  134 ms at 1 in flight, 178 ms at 2, and 1157 ms at 4 (max 3805 ms).
+  So roughly two effective slots for this query class, with the queue
+  ahead of them not counted in the header. Caveat: the probe is a
+  4-thread Python client parsing ~75 KiB responses, so GIL contention
+  may own part of that gap — read 1157 ms as an upper bound on the
+  server's share, not a measurement of it.
+
+Which sharpens the measurement advice above: `X-Aito-Ms` is the right
+number for comparing two settings, and the wrong number for asking what
+a page costs a user. Above two concurrent calls it under-reports the
+wait by about a second. Record both.
+
+Where this leaves the app: payment matching is sequential and has to be
+— each payment removes its invoice from the candidate set the next one
+is ranked against — so it never has more than one call in flight, and
+the row prefetch is a serial chain after render. The fan-out in this
+repo is smart form fill (up to 7 fields at once, `formfill_service.py`)
+and the startup warmup (`app.py`), both held to `AITO_INFLIGHT_LIMIT`
+(default 4) by the process-wide semaphore in `src/aito_client.py`. That
+default is the only lever these numbers argue about.
