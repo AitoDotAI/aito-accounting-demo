@@ -1073,6 +1073,11 @@ def quality_evaluate(
         # candidates to -- for `approver`, every tenant's staff would
         # compete (td-20261030202058894219, as in formfill/predict).
         raise HTTPException(status_code=400, detail="customer_id is required")
+    from src.evaluation_service import refuse_unusable_request
+    try:
+        refuse_unusable_request(domain, predict, limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
     fields = sorted([f.strip() for f in input_fields.split(",") if f.strip()])
     cache_key = f"eval:{_V2}{customer_id}:{domain}:{predict}:{','.join(fields)}:{limit}"
     cached = cache.get(cache_key)

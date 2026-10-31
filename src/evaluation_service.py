@@ -115,6 +115,21 @@ DOMAINS: dict[str, dict] = {
 }
 
 
+# The Quality page's slider stops here ("Capped at 300 to keep latency
+# bounded"); the server enforces it too, because the URL does not.
+MAX_LIMIT = 300
+
+
+def refuse_unusable_request(domain: str, predict: str, limit: int) -> None:
+    """Raise ValueError for a request that must never reach Aito."""
+    if not 1 <= limit <= MAX_LIMIT:
+        raise ValueError(f"limit must be between 1 and {MAX_LIMIT}, got {limit}")
+    if domain not in DOMAINS:
+        raise ValueError(f"Unknown domain: {domain}")
+    if not any(t["field"] == predict for t in DOMAINS[domain]["predict_targets"]):
+        raise ValueError(f"Unknown predict target for {domain}: {predict}")
+
+
 def get_domains_catalog() -> dict:
     """Return the domain catalog for the frontend configurator."""
     return {"domains": [
@@ -152,6 +167,8 @@ def run_evaluation(
               predicted, $p, correct}
         meta:  {operator, query} so the frontend can display it
     """
+    if not 1 <= limit <= MAX_LIMIT:
+        raise ValueError(f"limit must be between 1 and {MAX_LIMIT}, got {limit}")
     if domain not in DOMAINS:
         return {"error": f"Unknown domain: {domain}"}
     cfg = DOMAINS[domain]
