@@ -679,8 +679,16 @@ def matching_pairs(customer_id: str = Query(...)):
 
 
 @app.get("/api/matching/explain")
-def matching_explain(customer_id: str = Query(...), transaction_id: str = Query(...)):
+def matching_explain(customer_id: str = Query(...), transaction_id: str = Query(...),
+                     invoice_id: str = Query(...)):
     """Why this invoice? -- for the row the user expanded, and only that row.
+
+    `invoice_id` is the invoice the ROW is showing, and it is required.
+    /api/matching/pairs serves the precompute when there is one and the
+    precompute carries no explain contexts, so this re-runs the pairing
+    live -- which can choose a different invoice than the row if the
+    ledger moved in between. Answering anyway would decompose one
+    invoice's $p under another's heading, so a disagreement is a 409.
 
     The ranking asks which invoice settles the payment and nothing else.
     An explanation costs Aito a decomposition for every candidate in the
@@ -695,6 +703,13 @@ def matching_explain(customer_id: str = Query(...), transaction_id: str = Query(
     explain_key = f"matching_why:{_V2}{customer_id}:{transaction_id}"
     cached = cache.get(explain_key)
     if cached:
+        if cached.get("invoice_id") != invoice_id:
+            # Cached from an earlier pairing that chose differently.
+            raise HTTPException(
+                status_code=409,
+                detail=(f"the row shows invoice {invoice_id} but the cached "
+                        f"explanation is for {cached.get('invoice_id')}"),
+            )
         return cached
 
     contexts = cache.get(f"matching_ctx:{_V2}{customer_id}")
@@ -721,6 +736,7 @@ def matching_explain(customer_id: str = Query(...), transaction_id: str = Query(
             context["invoice_id"],
             context.get("ranked_invoice_id"),
             context.get("model_p", 0.0),
+            expected_invoice_id=invoice_id,
         )
     except ValueError as exc:
         # The pairing and the ranking disagree -- the data moved under a

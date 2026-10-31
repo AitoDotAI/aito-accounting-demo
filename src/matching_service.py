@@ -266,6 +266,7 @@ def explain_match(
     invoice_id: str,
     ranked_invoice_id: str | None = None,
     model_p: float = 0.0,
+    expected_invoice_id: str | None = None,
 ) -> list[dict]:
     """Explain one pairing: the row the user expanded, and only that row.
 
@@ -281,7 +282,21 @@ def explain_match(
     moved under a cached pairing -- and that is raised rather than
     rendered, because the alternative is a panel that explains one invoice
     and labels it another.
+
+    `expected_invoice_id` is the invoice the caller is displaying. The
+    pairing this explains is recomputed live when no explain context is
+    cached -- which is every time the page was served from a precompute --
+    so it can disagree with the row on screen if the ledger moved in
+    between. Checked before the query, since the answer would be thrown
+    away.
     """
+    if expected_invoice_id is not None and expected_invoice_id != invoice_id:
+        raise ValueError(
+            f"the row shows invoice {expected_invoice_id} but this pairing "
+            f"chose {invoice_id}: the ledger moved since the row was "
+            f"rendered, so there is no explanation for what is on screen"
+        )
+
     invoice = next((inv for inv in open_invoices if inv["invoice_id"] == invoice_id), None)
     if invoice is None:
         raise ValueError(

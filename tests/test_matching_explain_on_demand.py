@@ -139,3 +139,69 @@ def test_the_explanation_costs_one_query():
     ])
     explain_match(client, TXN, LEDGER, "INV-1", model_p=0.9)
     assert len(client.bodies) == 1
+
+
+# ── The row and the explanation must be about the same invoice ──────
+#
+# /api/matching/pairs serves the precompute when there is one, and the
+# precompute carries no explain contexts. So /explain finds an empty
+# context cache, reruns match_all live, and explains whatever the LIVE
+# pairing chose. If the data moved since the precompute was generated --
+# a new invoice, a settled one, a re-run after ADR 0026 -- the live
+# pairing can land on a different invoice than the row on screen, and
+# the row then shows a decomposition of a different invoice's $p under
+# its own heading. Exactly the defect
+# TestExplanationBelongsToTheMatchedInvoice guards inside one
+# computation, reappearing at the seam between two.
+#
+# The row knows which invoice it is showing, so it says so, and a
+# disagreement is refused rather than rendered.
+
+
+def test_explaining_a_different_invoice_than_the_row_shows_is_refused():
+    client = RecordingClient([
+        {"invoice_id": "INV-1", "vendor": "ACME Oy", "amount": 1000.0,
+         "$p": 0.9, "$why": why_for("INV-1")},
+    ])
+    try:
+        explain_match(client, TXN, LEDGER, "INV-1", None, 0.9,
+                      expected_invoice_id="INV-2")
+    except ValueError as exc:
+        assert "INV-1" in str(exc) and "INV-2" in str(exc)
+    else:
+        raise AssertionError("explained INV-1 under a row showing INV-2")
+
+
+def test_the_disagreement_is_caught_before_the_query_is_spent():
+    # The explanation costs a full ranking with $why over the whole
+    # ledger. There is no reason to pay for one we are going to discard.
+    client = RecordingClient([
+        {"invoice_id": "INV-1", "vendor": "ACME Oy", "amount": 1000.0,
+         "$p": 0.9, "$why": why_for("INV-1")},
+    ])
+    try:
+        explain_match(client, TXN, LEDGER, "INV-1", None, 0.9,
+                      expected_invoice_id="INV-2")
+    except ValueError:
+        pass
+    assert client.bodies == [], "asked Aito before checking the row agreed"
+
+
+def test_an_agreeing_row_is_explained_as_before():
+    client = RecordingClient([
+        {"invoice_id": "INV-1", "vendor": "ACME Oy", "amount": 1000.0,
+         "$p": 0.9, "$why": why_for("INV-1")},
+    ])
+    factors = explain_match(client, TXN, LEDGER, "INV-1", None, 0.9,
+                            expected_invoice_id="INV-1")
+    assert factors, "the agreeing case must still explain"
+
+
+def test_a_row_that_states_no_invoice_is_still_explained():
+    # Back-compatible on purpose: the guard is for a row that names a
+    # DIFFERENT invoice, not for one that names none.
+    client = RecordingClient([
+        {"invoice_id": "INV-1", "vendor": "ACME Oy", "amount": 1000.0,
+         "$p": 0.9, "$why": why_for("INV-1")},
+    ])
+    assert explain_match(client, TXN, LEDGER, "INV-1", None, 0.9)

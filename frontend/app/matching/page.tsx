@@ -8,7 +8,7 @@ import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
 import ConfidenceBar from "@/components/prediction/ConfidenceBar";
 import WhyCards from "@/components/prediction/WhyCards";
-import { apiFetch, fmtAmount } from "@/lib/api";
+import { ApiError, apiFetch, fmtAmount } from "@/lib/api";
 import type { AitoPanelConfig } from "@/lib/types";
 
 const PANEL: AitoPanelConfig = {
@@ -123,20 +123,40 @@ export default function MatchingPage() {
   // to render one (td-20260909115133919692). A precomputed payload still
   // carries them inline, and those are used as they are.
   const [why, setWhy] = useState<Record<string, WhyFactor[]>>({});
-  const [whyFailed, setWhyFailed] = useState<Record<string, true>>({});
+  const [whyFailed, setWhyFailed] = useState<Record<string, "error" | "mismatch">>({});
   // Asked-for rows, so a click during the background pass does not ask
   // twice. A ref, not state: the click handler needs today's value, not
   // the one captured when it rendered.
   const asked = React.useRef<Set<string>>(new Set());
 
-  const fetchWhy = useCallback((txnId: string): Promise<unknown> => {
+  const fetchWhy = useCallback((txnId: string, invoiceId: string): Promise<unknown> => {
     if (asked.current.has(txnId)) return Promise.resolve();
     asked.current.add(txnId);
-    return apiFetch<{ explanation: WhyFactor[] }>(
-      `/api/matching/explain?customer_id=${customerId}&transaction_id=${encodeURIComponent(txnId)}`,
+    return apiFetch<{ explanation: WhyFactor[]; invoice_id: string }>(
+      `/api/matching/explain?customer_id=${customerId}`
+        + `&transaction_id=${encodeURIComponent(txnId)}`
+        + `&invoice_id=${encodeURIComponent(invoiceId)}`,
     )
-      .then((d) => setWhy((prev) => ({ ...prev, [txnId]: d.explanation })))
-      .catch(() => setWhyFailed((prev) => ({ ...prev, [txnId]: true })));
+      .then((d) => {
+        // The server refuses a mismatch with a 409, so this is the second
+        // of two locks on the same door: an explanation must never be
+        // rendered under a row it is not about.
+        if (d.invoice_id !== invoiceId) {
+          setWhyFailed((prev) => ({ ...prev, [txnId]: "mismatch" }));
+          return;
+        }
+        setWhy((prev) => ({ ...prev, [txnId]: d.explanation }));
+      })
+      .catch((e: unknown) => {
+        // Let a later expand try again: the common causes -- a lapsed
+        // cache, a slow live rerun -- are transient. Without this the
+        // `asked` guard made the first failure permanent for the row.
+        asked.current.delete(txnId);
+        const mismatch = e instanceof ApiError && (e.status === 409 || e.status === 404);
+        setWhyFailed((prev) => ({
+          ...prev, [txnId]: mismatch ? "mismatch" : "error",
+        }));
+      });
   }, [customerId]);
 
   useEffect(() => {
@@ -161,10 +181,11 @@ export default function MatchingPage() {
         // looking at the top row, six at once would queue inside Aito
         // anyway, and this way the list is never blocked on any of them.
         const needWhy = d.pairs.filter(
-          (p) => p.matched_by === "aito" && !(p.explanation?.length) && p.bank_txn_id,
+          (p) => p.matched_by === "aito" && !(p.explanation?.length)
+            && p.bank_txn_id && p.invoice_id,
         );
         void needWhy.reduce<Promise<unknown>>(
-          (chain, p) => chain.then(() => fetchWhy(p.bank_txn_id as string)),
+          (chain, p) => chain.then(() => fetchWhy(p.bank_txn_id as string, p.invoice_id)),
           Promise.resolve(),
         );
       })
@@ -228,7 +249,7 @@ export default function MatchingPage() {
                     if (!canExplain) return;
                     if (isExpanded) { setExpanded(null); return; }
                     setExpanded(rowKey);
-                    if (!inlineWhy && !whyFailed[rowKey] && p.bank_txn_id) fetchWhy(p.bank_txn_id);
+                    if (!inlineWhy && !whyFailed[rowKey] && p.bank_txn_id) fetchWhy(p.bank_txn_id, p.invoice_id);
                   };
                   return (
                     <React.Fragment key={rowKey}>
@@ -281,10 +302,19 @@ export default function MatchingPage() {
                               modelP={p.model_p}
                               keepFields={["amount"]}
                             />
+                          ) : whyFailed[rowKey] === "mismatch" ? (
+                            <div style={{ fontSize: 12, color: "var(--text3)", paddingBottom: 8 }}>
+                              This row cannot be explained: the ledger has changed since the
+                              list was built, so re-running the pairing no longer arrives at
+                              this match. Reload to see the current matches.
+                            </div>
                           ) : whyFailed[rowKey] ? (
                             <div style={{ fontSize: 12, color: "var(--text3)", paddingBottom: 8 }}>
-                              The explanation could not be fetched. The match itself stands --
-                              it was made from a ranking that succeeded.
+                              The explanation could not be fetched.{" "}
+                              <button
+                                onClick={() => { setWhyFailed((prev) => { const n = { ...prev }; delete n[rowKey]; return n; }); if (p.bank_txn_id) fetchWhy(p.bank_txn_id, p.invoice_id); }}
+                                style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", cursor: "pointer", font: "inherit", textDecoration: "underline" }}
+                              >Try again</button>
                             </div>
                           ) : (
                             <div className="skeleton" style={{ height: 56, marginBottom: 8 }} />
