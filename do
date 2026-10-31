@@ -184,7 +184,11 @@ cmd_precompute_v2() {
 # it was launched from.
 cmd_test() {
   cd "$SCRIPT_DIR"
-  env -u AITO_V2_ENV uv run pytest tests/ -v
+  # PYTHONPATH is unset for the same reason the servers unset it: on a
+  # NixOS host it puts python3.11 site-packages ahead of this venv, and
+  # pydantic_core then fails to import Sentinel from a 4.11
+  # typing_extensions. Harmless anywhere PYTHONPATH is already empty.
+  env -u AITO_V2_ENV -u PYTHONPATH uv run pytest tests/ -v
 }
 
 # ── Deployment ────────────────────────────────────────────────────
