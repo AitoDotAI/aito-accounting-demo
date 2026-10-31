@@ -119,6 +119,13 @@ precompute_store.init(aito)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
+# Importing this module starts two background warmups that call Aito.
+# That is right for a server and wrong for anything that only wants the
+# route functions -- a test importing src.app would open connections to a
+# shared instance. Same shape as CACHE_WATCH_SECONDS=0.
+_SKIP_WARMUP = os.environ.get("AITO_SKIP_STARTUP_WARMUP", "") not in ("", "0")
+
+
 def _warm_aito_tables():
     """Take the cold-load cost off the first user's path.
 
@@ -129,6 +136,9 @@ def _warm_aito_tables():
     docs/notes/aito-perf-findings.md.
     """
     import threading
+
+    if _SKIP_WARMUP:
+        return
 
     def go():
         if not aito.check_connectivity():
@@ -151,6 +161,8 @@ def _warm_top_customers():
     Skipped entirely when data/precomputed/ contains any customer
     folder — precomputed JSON serves as the warm layer.
     """
+    if _SKIP_WARMUP:
+        return
     if (_PROJECT_ROOT / "data" / "precomputed").is_dir() and any(
         (_PROJECT_ROOT / "data" / "precomputed").iterdir()
     ):
