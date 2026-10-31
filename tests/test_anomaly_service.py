@@ -148,3 +148,81 @@ class TestAnomalyFlag:
         assert d["invoice_id"] == "INV-001"
         assert d["anomaly_score"] == 0.71
         assert d["severity"] == "medium"
+
+
+def _mock_search(httpx_mock, rows):
+    httpx_mock.add_response(
+        json={"offset": 0, "total": len(rows), "hits": rows},
+    )
+
+
+class TestTheGlMismatchSentenceSaysOnlyTrueThings:
+    """The explanation a controller reads must not dress $p as a row count.
+
+    `gl_p` is a `$p` off a `_predict` hit: a smoothed posterior over a
+    candidate domain that spans the whole instance, with `customer_id`
+    supplying evidence rather than a filter (docs/notes/
+    matching-confidence-is-not-aitos.md). "87 of 100 historical invoices"
+    is therefore two untrue claims in one sentence — that the number is a
+    count, and that the population is this customer's.
+
+    Either say the real count, scoped to the customer, or say the
+    probability and call it one.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _forget_the_roster(self):
+        """The employee roster is cached process-wide, so the second test in
+        this class would skip its `employees` request and consume the next
+        registered response as the invoice history instead."""
+        from src import employee_directory
+        employee_directory._cache.clear()
+        yield
+        employee_directory._cache.clear()
+
+    def _scan(self, httpx_mock, invoice, history):
+        _mock_predict(httpx_mock, "4400", 0.91)      # gl_code
+        _mock_predict(httpx_mock, "Sanna L.", 0.88)  # approver
+        _mock_search(httpx_mock, [{"employee_id": "E-1", "name": "Sanna L."}])
+        if history is not None:
+            _mock_search(httpx_mock, history)
+        return scan_invoice(AitoClient(TEST_CONFIG), invoice)
+
+    INVOICE = {
+        "invoice_id": "INV-003",
+        "customer_id": "CUST-0000",
+        "vendor": "Kesko Oyj",
+        "amount": 4220.00,
+        "gl_code": "5100",     # stated GL differs from the predicted 4400
+    }
+
+    def test_the_mismatch_is_flagged_at_all(self, httpx_mock):
+        """Guards the branch the rest of this class asserts on."""
+        result = self._scan(httpx_mock, self.INVOICE, [])
+        assert result is not None
+        assert result.category == "gl_mismatch"
+
+    def test_a_count_claim_is_the_customers_own_count(self, httpx_mock):
+        """9 of this customer's 12 Kesko invoices use 4400 — so say that."""
+        history = ([{"gl_code": "4400"}] * 9) + ([{"gl_code": "5100"}] * 3)
+        result = self._scan(httpx_mock, self.INVOICE, history)
+
+        assert "9 of 12" in result.description
+        assert "this customer's" in result.description
+        # 91, from gl_p 0.91, is the number that must not appear as a count.
+        assert "91 of 100" not in result.description
+
+    def test_without_history_it_states_a_probability_as_a_probability(self, httpx_mock):
+        """A vendor new to the customer has no count to report."""
+        result = self._scan(httpx_mock, self.INVOICE, [])
+
+        assert "of 100" not in result.description
+        assert "p=0.91" in result.description
+
+    def test_a_predicted_gl_the_customer_never_used_is_not_hidden(self, httpx_mock):
+        """0 of 12 is the interesting case, not one to round away."""
+        result = self._scan(httpx_mock, self.INVOICE, [{"gl_code": "5100"}] * 12)
+
+        assert "none" in result.description.lower()
+        assert "12" in result.description
+        assert "p=0.91" in result.description

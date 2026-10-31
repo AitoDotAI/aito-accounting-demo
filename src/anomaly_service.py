@@ -50,6 +50,36 @@ def classify_severity(score: float) -> str:
     return "low"
 
 
+def vendor_gl_history(client: AitoClient, customer_id: str, vendor: str,
+                      limit: int = 50) -> dict[str, int]:
+    """How this customer booked its own invoices from this vendor: gl_code -> count.
+
+    `_search` and not `_predict`, for the same reason
+    `predict_template` uses it: we need a frequency the UI can state as a
+    frequency. A `$p` cannot be turned into one — it is smoothed, it
+    combines several evidence fields, and its candidate domain spans the
+    whole instance while `customer_id` only supplies evidence
+    (docs/notes/matching-confidence-is-not-aitos.md).
+
+    `{}` when there is nothing to count, which the caller must render as
+    "no history" rather than as a zero count.
+    """
+    if not customer_id:
+        return {}
+    try:
+        result = client.search(
+            "invoices", {"customer_id": customer_id, "vendor": vendor}, limit=limit)
+    except AitoError:
+        return {}
+
+    counts: dict[str, int] = {}
+    for row in result.get("hits", []):
+        gl = row.get("gl_code")
+        if gl:
+            counts[gl] = counts.get(gl, 0) + 1
+    return counts
+
+
 def scan_invoice(client: AitoClient, invoice: dict) -> AnomalyFlag | None:
     """Scan a single invoice for anomalies using inverse prediction.
 
@@ -100,7 +130,8 @@ def scan_invoice(client: AitoClient, invoice: dict) -> AnomalyFlag | None:
     # GL mismatch is a separate signal: Aito is confident about
     # what the GL should be, but the stated GL is different
     stated_gl = invoice.get("gl_code")
-    if stated_gl and stated_gl != gl_predicted and gl_p > 0.50:
+    is_gl_mismatch = bool(stated_gl) and stated_gl != gl_predicted and gl_p > 0.50
+    if is_gl_mismatch:
         # Override anomaly score — the mismatch itself is the anomaly
         anomaly_score = max(anomaly_score, gl_p * 0.8)
 
@@ -108,9 +139,17 @@ def scan_invoice(client: AitoClient, invoice: dict) -> AnomalyFlag | None:
     if anomaly_score < 0.15:
         return None
 
+    # Only the mismatch sentence quotes a count, so only it pays for the
+    # extra round trip. scan_all runs this per invoice.
+    gl_history = (
+        vendor_gl_history(client, invoice.get("customer_id", ""), vendor)
+        if is_gl_mismatch else {}
+    )
+
     # Build human-readable description
     title, desc, recommendation, category = _describe_anomaly(
         invoice, gl_predicted, gl_p, approver_predicted, approver_p,
+        gl_history=gl_history,
     )
 
     return AnomalyFlag(
@@ -132,6 +171,7 @@ def _describe_anomaly(
     gl_p: float,
     approver_predicted: str,
     approver_p: float,
+    gl_history: dict[str, int] | None = None,
 ) -> tuple[str, str, str, str]:
     """Generate (title, description, recommendation, category) for an anomaly.
 
@@ -163,10 +203,29 @@ def _describe_anomaly(
     if stated_gl and stated_gl != gl_predicted and gl_p > 0.50:
         pred_label = GL_LABELS.get(gl_predicted, gl_predicted)
         stated_label = GL_LABELS.get(stated_gl, stated_gl)
+        counted = (gl_history or {}).get(gl_predicted, 0)
+        total = sum((gl_history or {}).values())
+        if counted:
+            evidence = (
+                f"{counted} of {total} of this customer's invoices from {vendor} "
+                f"use GL {gl_predicted} ({pred_label}). "
+                f"This invoice uses GL {stated_gl} ({stated_label}) instead.")
+        elif total:
+            # The model expects a GL the customer has never used here. That
+            # is the more interesting flag, not one to round into the above.
+            evidence = (
+                f"None of this customer's {total} invoices from {vendor} use "
+                f"GL {gl_predicted} ({pred_label}); Aito predicts it at "
+                f"p={gl_p:.2f} on wider evidence. "
+                f"This invoice uses GL {stated_gl} ({stated_label}).")
+        else:
+            evidence = (
+                f"This customer has no prior invoices from {vendor}. Aito "
+                f"predicts GL {gl_predicted} ({pred_label}) at p={gl_p:.2f}. "
+                f"This invoice uses GL {stated_gl} ({stated_label}).")
         return (
             f"GL code mismatch — uses {stated_gl} ({stated_label}), expected {gl_predicted} ({pred_label})",
-            f"For {vendor}, {int(gl_p * 100)} of 100 historical invoices use GL {gl_predicted} ({pred_label}). "
-            f"This invoice uses GL {stated_gl} ({stated_label}) instead.",
+            evidence,
             f"Send back to processor — confirm whether GL {stated_gl} is intentional or a data-entry error.",
             "gl_mismatch",
         )

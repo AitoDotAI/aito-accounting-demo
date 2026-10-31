@@ -46,8 +46,32 @@ def _matching_pairs_staleness(payload: dict) -> str | None:
 # Only for outputs whose readers have moved on. A name absent from here
 # is served unchanged: this is a guard against a known kind of drift, not
 # a schema for every precompute.
+# The exact sentence anomaly_service used to render, where `int($p * 100)`
+# was printed as a count out of 100 invoices (and over a population that was
+# never scoped to the customer). Matched literally, not by a general
+# "probability dressed as a frequency" heuristic: this check has to stay
+# quiet enough that nobody deletes it.
+_PROBABILITY_AS_A_COUNT = "of 100 historical invoices"
+
+
+def _anomalies_scan_staleness(payload: dict) -> str | None:
+    """Why this anomaly payload cannot be served, or None.
+
+    A controller reads `description` to decide whether to send an invoice
+    back. The old wording asserted a frequency it did not have: `gl_p` is
+    a smoothed `$p` whose candidate domain spans the instance, so neither
+    the count nor "historical invoices" was this customer's.
+    """
+    for flag in payload.get("flags") or []:
+        if _PROBABILITY_AS_A_COUNT in (flag.get("description") or ""):
+            return (f"flag {flag.get('invoice_id', '?')} states a probability "
+                    f"as a count of the customer's invoices")
+    return None
+
+
 STALENESS_CHECKS: dict[str, Callable[[dict], str | None]] = {
     "matching_pairs": _matching_pairs_staleness,
+    "anomalies_scan": _anomalies_scan_staleness,
 }
 
 # One line per (customer, name), not per request: 255 tenants on every
