@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from src.aito_client import AitoClient, AitoError
 from src import admin_ops, cache, precomputed
 from src.config import load_config
+from src.customer_roster import load_roster, roster_status
 from src.formfill_service import predict_fields
 from src.invoice_service import predict_batch, compute_metrics
 from src.matching_service import match_all
@@ -340,7 +341,7 @@ def healthz():
     demos so nginx per-demo health proxies work uniformly) and /healthz
     (preserved for any existing pingers).
     """
-    return {"ok": True}
+    return {"ok": True, "roster_count": len(_load_known_customers())}
 
 
 # ── Customer list ─────────────────────────────────────────────────
@@ -446,12 +447,8 @@ def _load_known_customers() -> set[str]:
     hit Aito on every request."""
     global _KNOWN_CUSTOMER_IDS
     if _KNOWN_CUSTOMER_IDS is None:
-        try:
-            from pathlib import Path
-            with open(Path(__file__).resolve().parent.parent / "data" / "customers.json") as f:
-                _KNOWN_CUSTOMER_IDS = {c["customer_id"] for c in json.load(f)}
-        except Exception:
-            _KNOWN_CUSTOMER_IDS = set()
+        _KNOWN_CUSTOMER_IDS = load_roster(
+            Path(__file__).resolve().parent.parent / "data" / "customers.json")
     return _KNOWN_CUSTOMER_IDS
 
 
@@ -507,7 +504,8 @@ def health():
         return cached
     connected = aito.check_connectivity()
     result = {
-        "status": "ok",
+        "status": roster_status(_load_known_customers()),
+        "roster_count": len(_load_known_customers()),
         "aito_connected": connected,
         "aito_url": config.aito_api_url,
         "demo_mode": DEMO_MODE,
