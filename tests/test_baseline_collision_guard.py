@@ -118,3 +118,17 @@ def test_every_accepted_baseline_in_the_repo_is_clean(baseline):
     # The guard is only usable if today's accepted baselines pass it.
     found = guard.collisions(baseline.read_text())
     assert found == [], "\n".join(c.describe() for c in found)
+
+
+def test_one_lift_written_two_ways_is_still_one_measurement():
+    # 2.3 and 2.30 are the same number. Comparing the text would let a
+    # dropped condition through whenever the formatter's precision differed
+    # between rows.
+    baseline = (
+        "  Alpha Oy -> GL 4400  lift=2.3\n"
+        "  Beta Oy  -> GL 4400  lift=2.30\n"
+    )
+
+    found = guard.collisions(baseline)
+
+    assert [c.measurement for c in found] == ["lift=2.3"]

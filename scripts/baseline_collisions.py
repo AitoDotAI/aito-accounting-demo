@@ -66,8 +66,9 @@ def _measurements(line: str) -> list[str]:
             found.append(f"{numerator}/{denominator}")
     for value in LIFT.findall(line):
         # A zero lift is "no association", which many rows share honestly.
+        # Compared as numbers: "2.3" and "2.30" are one measurement.
         if float(value) != 0.0:
-            found.append(f"lift={value}")
+            found.append(f"lift={float(value):g}")
     return found
 
 
