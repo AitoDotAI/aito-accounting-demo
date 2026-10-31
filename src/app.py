@@ -704,7 +704,11 @@ def matching_explain(customer_id: str = Query(...), transaction_id: str = Query(
     cached = cache.get(explain_key)
     if cached:
         if cached.get("invoice_id") != invoice_id:
-            # Cached from an earlier pairing that chose differently.
+            # Cached from an earlier pairing that chose differently. Drop
+            # it: keeping it would answer 409 for the rest of the TTL even
+            # after a reload has brought page and ledger back into
+            # agreement, and recomputing is what resolves the drift.
+            cache.delete(explain_key)
             raise HTTPException(
                 status_code=409,
                 detail=(f"the row shows invoice {invoice_id} but the cached "
