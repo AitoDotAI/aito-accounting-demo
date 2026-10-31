@@ -158,3 +158,31 @@ def test_the_unlinked_targets_in_those_domains_keep_no_filter():
 def test_a_linked_target_is_never_evaluated_without_a_customer(domain, predict, inputs):
     with pytest.raises(ValueError, match="needs a customer_id"):
         run_evaluation(RecordingClient(), "", domain, predict, inputs, limit=50)
+
+
+# OPEN QUESTION for the daytime verification slot, raised in the CPO
+# review of 2026-10-31 and not answerable locally.
+#
+# `bank_transactions.invoice_id` is nullable (src/data_loader.py:118) --
+# an unmatched payment has no invoice. The filter this module now adds,
+# `invoice_id.customer_id = <tenant>`, is a condition on the LINKED row,
+# so a transaction with no invoice_id has no linked row to satisfy it and
+# is presumably excluded from what Aito trains on. `testSource` is built
+# separately, from `{"customer_id": customer_id}` on the table itself,
+# and still includes those transactions.
+#
+# If that reading is right, the evaluation now tests cases it cannot get
+# right and the reported accuracy for `invoice_id` drops -- a worse
+# number for a more correct question, which is defensible, but it must be
+# a deliberate choice and not a surprise in a demo.
+#
+# Three things to settle with live Aito, and to write into
+# docs/verification/ for this branch:
+#   1. Does the linked-row filter actually exclude null-invoice_id rows
+#      from training? Compare trainSamples with and without the filter.
+#   2. Does reported accuracy change, and by how much?
+#   3. If it does, should testSource match -- i.e. gain
+#      `"invoice_id": {"$exists": True}` or the equivalent -- so the test
+#      set and the candidate domain agree?
+# The approver target does not have this problem: `approver` is
+# non-nullable (data_loader.py:88).
