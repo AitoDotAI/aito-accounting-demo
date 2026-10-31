@@ -105,3 +105,56 @@ def test_an_unknown_predict_target_is_refused_rather_than_sent_to_aito():
                             ["vendor", "amount", "category"], limit=50)
     assert "error" in result
     assert client.bodies == []
+
+
+# ── The other two linked targets ────────────────────────────────────
+#
+# `approver` was the one the P1 named, so it was the one that got the
+# filter. It is not the only target whose values live in a linked,
+# tenant-scoped table: the matching domain predicts `invoice_id`
+# (bank_transactions.invoice_id -> invoices.invoice_id) and the help
+# domain predicts `article_id` (help_impressions.article_id ->
+# help_articles.article_id). Both linked tables carry customer_id, so
+# both candidate sets span all 255 tenants without a filter.
+#
+# This is worse than the approver case on one axis and better on
+# another. Worse: `cases[].predicted` prints the predicted id verbatim,
+# and an invoice_id or article_id belonging to another tenant is a
+# recognisable foreign identifier, not a name that happens to lose.
+# Better: the quality matrix predicts `vendor_name` and `clicked` for
+# these domains, not the ids, so only the evaluation surface is exposed.
+
+
+def test_the_linked_invoice_target_ranks_only_the_customers_own_invoices():
+    client = RecordingClient()
+    run_evaluation(client, TENANT, "matching", "invoice_id",
+                   ["description", "amount"], limit=50)
+    assert client.where_for("invoice_id")["invoice_id.customer_id"] == TENANT
+
+
+def test_the_linked_article_target_ranks_only_the_customers_own_articles():
+    client = RecordingClient()
+    run_evaluation(client, TENANT, "help", "article_id",
+                   ["page"], limit=50)
+    assert client.where_for("article_id")["article_id.customer_id"] == TENANT
+
+
+def test_the_unlinked_targets_in_those_domains_keep_no_filter():
+    # vendor_name is a plain column on bank_transactions and `clicked` is
+    # a boolean: neither has a linked table to bound, and a filter there
+    # would narrow the training evidence for no reason.
+    client = RecordingClient()
+    run_evaluation(client, TENANT, "matching", "vendor_name",
+                   ["description", "amount"], limit=50)
+    run_evaluation(client, TENANT, "help", "clicked", ["page"], limit=50)
+    assert "invoice_id.customer_id" not in client.where_for("vendor_name")
+    assert "article_id.customer_id" not in client.where_for("clicked")
+
+
+@pytest.mark.parametrize("domain,predict,inputs", [
+    ("matching", "invoice_id", ["description", "amount"]),
+    ("help", "article_id", ["page"]),
+])
+def test_a_linked_target_is_never_evaluated_without_a_customer(domain, predict, inputs):
+    with pytest.raises(ValueError, match="needs a customer_id"):
+        run_evaluation(RecordingClient(), "", domain, predict, inputs, limit=50)
