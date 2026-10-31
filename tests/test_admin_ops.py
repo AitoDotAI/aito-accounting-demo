@@ -46,7 +46,10 @@ class TestWhoMayCall:
     def test_correct_token_is_accepted(self, monkeypatch):
         monkeypatch.setenv("ADMIN_TOKEN", "s3cret")
 
-        admin_ops.check_admin_token("s3cret")  # does not raise
+        # No assert by design: the absence of an exception is the assertion.
+        # Mutation-checked 2026-10-31 (invert the compare_digest test and
+        # this goes red). scripts/find_unfalsifiable_tests.py flags it.
+        admin_ops.check_admin_token("s3cret")
 
     def test_a_prefix_of_the_token_is_not_enough(self, monkeypatch):
         monkeypatch.setenv("ADMIN_TOKEN", "s3cret")

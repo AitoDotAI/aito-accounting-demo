@@ -89,14 +89,18 @@ class TestScanInvoice:
             "gl_code": "5100",  # stated GL differs from predicted
         })
 
-        # This should flag because of the GL mismatch
-        # Note: anomaly score is 1-max(0.91,0.88) = 0.09, below threshold
-        # The GL mismatch is detected in the description, but the invoice
-        # itself has normal confidence. This is correct — the anomaly is
-        # in the stated GL, not in the pattern.
-        # With our threshold of 0.15, this won't flag.
-        # This is actually the right behavior: the prediction is confident,
-        # meaning the vendor pattern is known. The issue is the stated value.
+        # The comment that used to stand here argued this would NOT flag,
+        # because 1 - max(0.91, 0.88) = 0.09 is under the 0.15 threshold --
+        # and asserted nothing, so it never noticed that scan_invoice
+        # overrides the score for exactly this case. A confident prediction
+        # contradicted by the stated GL is the anomaly; the score comes from
+        # gl_p * 0.8, not from 1 - max_p.
+        assert result is not None
+        assert result.category == "gl_mismatch"
+        assert result.anomaly_score == pytest.approx(0.91 * 0.8)
+        assert result.anomaly_score > 0.15, \
+            "1 - max_p would be 0.09 here and the mismatch would go unreported"
+        assert "5100" in result.title and "4400" in result.title
 
     def test_moderate_confidence_flags_as_low(self, httpx_mock):
         """Moderate confidence should flag as low severity."""
