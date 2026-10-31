@@ -1,0 +1,244 @@
+{
+  "pairs": [
+    {
+      "invoice_id": "CUST-0000-INV-000003",
+      "invoice_vendor": "Kuljetusliike Rosenberg-Boman Oy",
+      "invoice_amount": 12699.0,
+      "bank_txn_id": "CUST-0000-TXN-000002",
+      "bank_description": "KULJETUSLIIKE ROSENBERG-BOMAN OY 15052025 Viite: 55395731",
+      "bank_amount": 12699.0,
+      "bank_name": "Nordea",
+      "confidence": 0.54,
+      "status": "matched",
+      "explanation": [
+        {
+          "type": "base",
+          "base_p": 0.0,
+          "target_value": "CUST-0000-INV-000003"
+        },
+        {
+          "type": "pattern",
+          "lift": 31474.87,
+          "propositions": [
+            {
+              "field": "description",
+              "value": "55395731"
+            },
+            {
+              "field": "description",
+              "value": "kuljetusliike"
+            }
+          ],
+          "highlights": [
+            {
+              "field": "description",
+              "html": "<mark>KULJETUSLIIKE</mark> ROSENBERG-BOMAN OY 15052025 Viite: <mark>55395731</mark>"
+            }
+          ]
+        },
+        {
+          "type": "pattern",
+          "lift": 31474.87,
+          "propositions": [
+            {
+              "field": "amount",
+              "value": "12699.0"
+            },
+            {
+              "field": "description",
+              "value": "rosenberg"
+            },
+            {
+              "field": "description",
+              "value": "boman"
+            },
+            {
+              "field": "description",
+              "value": "15052025"
+            }
+          ],
+          "highlights": [
+            {
+              "field": "description",
+              "html": "KULJETUSLIIKE <mark>ROSENBERG</mark>-<mark>BOMAN</mark> OY <mark>15052025</mark> Viite: 55395731"
+            },
+            {
+              "field": "amount",
+              "html": "<mark>12699.0</mark>"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "invoice_id": "CUST-0000-INV-000004",
+      "invoice_vendor": "Arkkitehtiryhm\u00e4 Reino Koivula Oy - Architectgroup Reino Koivula Inc",
+      "invoice_amount": 7806.0,
+      "bank_txn_id": "CUST-0000-TXN-000003",
+      "bank_description": "ARKKITEHTIRYHM\u00c4 REINO KOIVULA OY - 07042026 Viite: 3886111",
+      "bank_amount": 7807.0,
+      "bank_name": "Nordea",
+      "confidence": 0.58,
+      "status": "matched",
+      "explanation": [
+        {
+          "type": "base",
+          "base_p": 0.0,
+          "target_value": "CUST-0000-INV-000136"
+        },
+        {
+          "type": "pattern",
+          "lift": 0.67,
+          "propositions": [
+            {
+              "field": "amount",
+              "value": "7807.0"
+            },
+            {
+              "field": "description",
+              "value": "arkkitehtiryhm\u00e4"
+            },
+            {
+              "field": "description",
+              "value": "reino"
+            },
+            {
+              "field": "description",
+              "value": "3886111"
+            },
+            {
+              "field": "description",
+              "value": "koivula"
+            },
+            {
+              "field": "description",
+              "value": "07042026"
+            }
+          ],
+          "highlights": [
+            {
+              "field": "description",
+              "html": "<font color=\"red\">ARKKITEHTIRYHM&Auml;</font> <font color=\"red\">REINO</font> <font color=\"red\">KOIVULA</font> OY - <font color=\"red\">07042026</font> Viite: <font color=\"red\">3886111</font>"
+            },
+            {
+              "field": "amount",
+              "html": "<font color=\"red\">7807.0</font>"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "invoice_id": "CUST-0000-INV-000013",
+      "invoice_vendor": "Arkkitehtiryhm\u00e4 Reino Koivula Oy - Architectgroup Reino Koivula Inc",
+      "invoice_amount": 6742.5,
+      "bank_txn_id": "CUST-0000-TXN-000004",
+      "bank_description": "VERSOWOOD KERAVA / VIITE 295343828 / PVM 25.08.24",
+      "bank_amount": 6639.91,
+      "bank_name": "OP Bank",
+      "confidence": 0.49,
+      "status": "matched",
+      "explanation": [
+        {
+          "type": "base",
+          "base_p": 0.0,
+          "target_value": "CUST-0000-INV-000136"
+        },
+        {
+          "type": "pattern",
+          "lift": 0.67,
+          "propositions": [
+            {
+              "field": "amount",
+              "value": "6639.91"
+            },
+            {
+              "field": "description",
+              "value": "versowood"
+            },
+            {
+              "field": "description",
+              "value": "kerava"
+            },
+            {
+              "field": "description",
+              "value": "25.08.24"
+            },
+            {
+              "field": "description",
+              "value": "295343828"
+            }
+          ],
+          "highlights": [
+            {
+              "field": "description",
+              "html": "<font color=\"red\">VERSOWOOD</font> <font color=\"red\">KERAVA</font> / VIITE <font color=\"red\">295343828</font> / PVM <font color=\"red\">25.08.24</font>"
+            },
+            {
+              "field": "amount",
+              "html": "<font color=\"red\">6639.91</font>"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "invoice_id": "CUST-0000-INV-000011",
+      "invoice_vendor": "Kardex Finland Oy",
+      "invoice_amount": 3632.17,
+      "bank_txn_id": "CUST-0000-TXN-000006",
+      "bank_description": "DB-FIN KARDEX FINLAND VIITE 119052567",
+      "bank_amount": 3632.17,
+      "bank_name": "Danske Bank",
+      "confidence": 0.61,
+      "status": "matched",
+      "explanation": [
+        {
+          "type": "base",
+          "base_p": 0.0,
+          "target_value": "CUST-0000-INV-000035"
+        },
+        {
+          "type": "pattern",
+          "lift": 0.67,
+          "propositions": [
+            {
+              "field": "description",
+              "value": "119052567"
+            },
+            {
+              "field": "description",
+              "value": "finland"
+            },
+            {
+              "field": "amount",
+              "value": "3632.17"
+            },
+            {
+              "field": "description",
+              "value": "kardex"
+            }
+          ],
+          "highlights": [
+            {
+              "field": "description",
+              "html": "DB-FIN <font color=\"red\">KARDEX</font> <font color=\"red\">FINLAND</font> VIITE <font color=\"red\">119052567</font>"
+            },
+            {
+              "field": "amount",
+              "html": "<font color=\"red\">3632.17</font>"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "metrics": {
+    "matched": 5,
+    "suggested": 0,
+    "unmatched": 15,
+    "total": 20,
+    "avg_confidence": 0.58,
+    "match_rate": 0.25
+  }
+}

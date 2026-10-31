@@ -97,10 +97,19 @@ def test_nothing_in_the_store_is_still_nothing(monkeypatch):
     assert precomputed.load("CUST-0000", "matching_pairs") is None
 
 
-def test_the_committed_matching_precompute_is_refused_as_it_stands(monkeypatch):
-    # Not a hypothetical: this is the file in the repo today.
-    path = REPO / "data" / "precomputed" / "CUST-0000" / "matching_pairs.json"
+def test_a_real_captured_payload_is_refused(monkeypatch):
+    """Not a hand-built shape: four pairs and the metrics block as
+    `./do precompute-v2` actually wrote them for CUST-0000 before ADR
+    0026, captured into tests/fixtures/ so this runs on a clean checkout.
+
+    The first version of this test read
+    data/precomputed/CUST-0000/matching_pairs.json directly, which
+    .gitignore excludes (only landing.json and help_related.json are
+    tracked). It passed here and failed anywhere the generator had not
+    been run -- the test asserted the state of my working copy.
+    """
+    path = REPO / "tests" / "fixtures" / "stale_matching_pairs.json"
     served(monkeypatch, json.loads(path.read_text()))
     precomputed._warned.clear()
     assert precomputed.load("CUST-0000", "matching_pairs") is None, \
-        f"{path} predates matched_by and would show 0 matched by Aito"
+        f"{path.name} predates matched_by and would show 0 matched by Aito"
