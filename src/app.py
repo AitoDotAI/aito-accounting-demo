@@ -660,9 +660,9 @@ def _match_and_cache(customer_id: str, ttl: int = cache.DEFAULT_TTL) -> dict:
     own default because the keep-warm pass wants the long one.
     """
     result = match_all(v2_client, customer_id=customer_id, include_explain_contexts=True)
-    cache.set(f"matching_ctx:{_V2}{customer_id}",
-              result.pop("explain_contexts", {}), ttl=ttl)
-    cache.set(f"matching:{_V2}{customer_id}", result, ttl=ttl)
+    cache.set(page_cache_key("matching_ctx", customer_id),
+              result.pop("explain_contexts", {}), ttl=ttl, local_only=True)
+    cache.set(page_cache_key("matching", customer_id), result, ttl=ttl)
     return result
 
 
@@ -700,7 +700,7 @@ def matching_explain(customer_id: str = Query(...), transaction_id: str = Query(
     its own: `$why` decomposes `$p` within a candidate domain, so a
     narrower question would explain a number the page never showed.
     """
-    explain_key = f"matching_why:{_V2}{customer_id}:{transaction_id}"
+    explain_key = f"{page_cache_key('matching_why', customer_id)}:{transaction_id}"
     cached = cache.get(explain_key)
     if cached:
         if cached.get("invoice_id") != invoice_id:
@@ -716,12 +716,18 @@ def matching_explain(customer_id: str = Query(...), transaction_id: str = Query(
             )
         return cached
 
-    contexts = cache.get(f"matching_ctx:{_V2}{customer_id}")
+    contexts_key = page_cache_key("matching_ctx", customer_id)
+    contexts = cache.get(contexts_key)
     if contexts is None:
-        # The pairs were cached by the keep-warm pass, or the TTL lapsed
-        # under an open page. Rebuilding is correct, just slower.
-        _match_and_cache(customer_id, ttl=_ttl(300))
-        contexts = cache.get(f"matching_ctx:{_V2}{customer_id}") or {}
+        # The contexts are process-local, so they are missing after a
+        # restart, on another instance, or once the TTL lapsed under an
+        # open page. Rebuilding is correct, just slower -- and concurrent
+        # asks share one rebuild instead of each running the pairing.
+        with cache.compute_lock(contexts_key):
+            contexts = cache.get(contexts_key)
+            if contexts is None:
+                _match_and_cache(customer_id, ttl=_ttl(300))
+                contexts = cache.get(contexts_key) or {}
 
     context = contexts.get(transaction_id)
     if context is None:
