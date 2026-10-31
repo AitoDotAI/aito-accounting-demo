@@ -68,6 +68,17 @@ else:
 _V2 = "v2:" if _use_v2 else ""
 
 
+def page_cache_key(name: str, customer_id: str) -> str:
+    """The L1/L2 cache key for one page's payload for one tenant.
+
+    One builder because the prefix is the whole problem: `_V2` is "v2:"
+    whenever the demo runs against a v2 environment, and /api/cache/status
+    used to spell these keys by hand without it, so a fully warm cache
+    reported cold on all five surfaces.
+    """
+    return f"{name}:{_V2}{customer_id}"
+
+
 def _ttl(seconds: int) -> int:
     """Cache TTL, stretched on v2.
 
@@ -200,14 +211,14 @@ def _warm_top_customers():
                         result.get("hits", []),
                     ))
                 data = {"invoices": [p.to_dict() for p in preds], "metrics": compute_metrics(preds)}
-                cache.set(f"invoices:{_V2}{cid}", data)
-                cache.set(f"quality:{_V2}{cid}", get_quality_overview(v2_client, customer_id=cid))
+                cache.set(page_cache_key("invoices", cid), data)
+                cache.set(page_cache_key("quality", cid), get_quality_overview(v2_client, customer_id=cid))
 
                 # Deep: matching + anomalies + rules (only for top customers)
                 if deep:
-                    cache.set(f"matching:{_V2}{cid}", match_all(v2_client, customer_id=cid))
-                    cache.set(f"anomalies:{_V2}{cid}", scan_all(v2_client, customer_id=cid))
-                    cache.set(f"rules:{_V2}{cid}", mine_rules(v2_client, customer_id=cid))
+                    cache.set(page_cache_key("matching", cid), match_all(v2_client, customer_id=cid))
+                    cache.set(page_cache_key("anomalies", cid), scan_all(v2_client, customer_id=cid))
+                    cache.set(page_cache_key("rules", cid), mine_rules(v2_client, customer_id=cid))
                     print(f"  {cid}: cached (deep)")
                 else:
                     print(f"  {cid}: cached (fast)")
@@ -362,23 +373,23 @@ def cache_status(customer_id: str = Query(...)):
         "customer_id": customer_id,
         "invoices_warm": (
             precomputed.has(customer_id, "invoices_pending")
-            or cache.get(f"invoices:{customer_id}") is not None
+            or cache.get(page_cache_key("invoices", customer_id)) is not None
         ),
         "quality_warm": (
             precomputed.has(customer_id, "quality_overview")
-            or cache.get(f"quality:{customer_id}") is not None
+            or cache.get(page_cache_key("quality", customer_id)) is not None
         ),
         "matching_warm": (
             precomputed.has(customer_id, "matching_pairs")
-            or cache.get(f"matching:{customer_id}") is not None
+            or cache.get(page_cache_key("matching", customer_id)) is not None
         ),
         "rules_warm": (
             precomputed.has(customer_id, "rules_candidates")
-            or cache.get(f"rules:{customer_id}") is not None
+            or cache.get(page_cache_key("rules", customer_id)) is not None
         ),
         "anomalies_warm": (
             precomputed.has(customer_id, "anomalies_scan")
-            or cache.get(f"anomalies:{customer_id}") is not None
+            or cache.get(page_cache_key("anomalies", customer_id)) is not None
         ),
     }
 
@@ -611,7 +622,7 @@ def invoices_pending(customer_id: str = Query(...), page: int = 1, per_page: int
     if pre is not None:
         data = pre
     else:
-        cache_key = f"invoices:{_V2}{customer_id}"
+        cache_key = page_cache_key("invoices", customer_id)
         data = cache.get(cache_key)
         if data is None:
             with cache.compute_lock(cache_key):
@@ -661,7 +672,7 @@ def matching_pairs(customer_id: str = Query(...)):
     pre = precomputed.load(customer_id, "matching_pairs")
     if pre is not None:
         return pre
-    cache_key = f"matching:{_V2}{customer_id}"
+    cache_key = page_cache_key("matching", customer_id)
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -863,7 +874,7 @@ def rules_candidates(customer_id: str = Query(...)):
     pre = precomputed.load(customer_id, "rules_candidates")
     if pre is not None:
         return pre
-    cache_key = f"rules:{_V2}{customer_id}"
+    cache_key = page_cache_key("rules", customer_id)
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -878,7 +889,7 @@ def anomalies_scan(customer_id: str = Query(...)):
     pre = precomputed.load(customer_id, "anomalies_scan")
     if pre is not None:
         return pre
-    cache_key = f"anomalies:{_V2}{customer_id}"
+    cache_key = page_cache_key("anomalies", customer_id)
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -893,7 +904,7 @@ def quality_overview(customer_id: str = Query(...)):
     pre = precomputed.load(customer_id, "quality_overview")
     if pre is not None:
         return pre
-    cache_key = f"quality:{_V2}{customer_id}"
+    cache_key = page_cache_key("quality", customer_id)
     cached = cache.get(cache_key)
     if cached:
         return cached
