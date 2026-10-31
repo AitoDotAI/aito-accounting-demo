@@ -51,7 +51,7 @@ def classify_severity(score: float) -> str:
 
 
 def vendor_gl_history(client: AitoClient, customer_id: str, vendor: str,
-                      limit: int = 50) -> dict[str, int]:
+                      limit: int = 1000) -> dict[str, int] | None:
     """How this customer booked its own invoices from this vendor: gl_code -> count.
 
     `_search` and not `_predict`, for the same reason
@@ -61,19 +61,43 @@ def vendor_gl_history(client: AitoClient, customer_id: str, vendor: str,
     whole instance while `customer_id` only supplies evidence
     (docs/notes/matching-confidence-is-not-aitos.md).
 
-    `{}` when there is nothing to count, which the caller must render as
-    "no history" rather than as a zero count.
+    Three outcomes, and the caller must keep them apart:
+
+    - a dict of counts, complete: every row the customer has from this
+      vendor was counted, so N and the total are both real;
+    - `{}`: the customer genuinely has no invoices from this vendor;
+    - `None`: unknown. The query failed, or `total` exceeded what came
+      back so the sample is partial. A partial sample must not be quoted:
+      30 of the 50 rows returned says nothing about the other 187, and
+      "30 of 50" would pass off the page size as the history.
+
+    Raises ValueError without a customer_id. Every invoice has one; its
+    absence is a caller bug, and silently counting across all tenants is
+    the leak this service already guards against elsewhere.
     """
     if not customer_id:
-        return {}
+        raise ValueError(
+            f"counting {vendor!r} history needs a customer_id: without one the "
+            "count would run across every tenant's invoices"
+        )
     try:
         result = client.search(
             "invoices", {"customer_id": customer_id, "vendor": vendor}, limit=limit)
-    except AitoError:
-        return {}
+    except AitoError as exc:
+        # Not fatal -- the flag itself came from predictions that
+        # succeeded -- but it must not read as "no history".
+        print(f"anomaly: cannot count {vendor} history for {customer_id}: {exc}")
+        return None
+
+    hits = result.get("hits", [])
+    total = result.get("total", len(hits))
+    if total > len(hits):
+        print(f"anomaly: {customer_id} has {total} invoices from {vendor}, "
+              f"{len(hits)} returned at limit={limit}; not quoting a count")
+        return None
 
     counts: dict[str, int] = {}
-    for row in result.get("hits", []):
+    for row in hits:
         gl = row.get("gl_code")
         if gl:
             counts[gl] = counts.get(gl, 0) + 1
@@ -141,9 +165,11 @@ def scan_invoice(client: AitoClient, invoice: dict) -> AnomalyFlag | None:
 
     # Only the mismatch sentence quotes a count, so only it pays for the
     # extra round trip. scan_all runs this per invoice.
+    # No customer on the invoice means no history to count -- scan_invoice
+    # accepts one (see the `where` above), vendor_gl_history does not.
     gl_history = (
-        vendor_gl_history(client, invoice.get("customer_id", ""), vendor)
-        if is_gl_mismatch else {}
+        vendor_gl_history(client, invoice["customer_id"], vendor)
+        if is_gl_mismatch and invoice.get("customer_id") else None
     )
 
     # Build human-readable description
@@ -205,7 +231,13 @@ def _describe_anomaly(
         stated_label = GL_LABELS.get(stated_gl, stated_gl)
         counted = (gl_history or {}).get(gl_predicted, 0)
         total = sum((gl_history or {}).values())
-        if counted:
+        if gl_history is None:
+            # Unknown history: say only what the prediction supports.
+            evidence = (
+                f"Aito predicts GL {gl_predicted} ({pred_label}) for this "
+                f"{vendor} invoice at p={gl_p:.2f}. "
+                f"This invoice uses GL {stated_gl} ({stated_label}).")
+        elif counted:
             evidence = (
                 f"{counted} of {total} of this customer's invoices from {vendor} "
                 f"use GL {gl_predicted} ({pred_label}). "

@@ -230,3 +230,91 @@ class TestTheGlMismatchSentenceSaysOnlyTrueThings:
         assert "none" in result.description.lower()
         assert "12" in result.description
         assert "p=0.91" in result.description
+
+
+class TestTheCountIsCompleteOrItIsNotQuoted:
+    """A partial sample is not a count, and an error is not an empty history.
+
+    Two holes the CPO review found in the fix above
+    (2026-10-31). `vendor_gl_history` asked for 50 rows and summed what
+    came back, so a vendor with 237 invoices produced "N of 50" -- a
+    denominator that is the page size, not the customer's history. And it
+    answered `{}` for a failed query, a missing customer and a genuinely
+    new vendor alike, which rendered the "this customer has no prior
+    invoices from X" sentence over an error. The same class of untrue
+    sentence the fix was for, one level down.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _forget_the_roster(self):
+        from src import employee_directory
+        employee_directory._cache.clear()
+        yield
+        employee_directory._cache.clear()
+
+    INVOICE = {
+        "invoice_id": "INV-003",
+        "customer_id": "CUST-0000",
+        "vendor": "Kesko Oyj",
+        "amount": 4220.00,
+        "gl_code": "5100",
+    }
+
+    def _scan(self, httpx_mock, history_response):
+        _mock_predict(httpx_mock, "4400", 0.91)
+        _mock_predict(httpx_mock, "Sanna L.", 0.88)
+        _mock_search(httpx_mock, [{"employee_id": "E-1", "name": "Sanna L."}])
+        history_response(httpx_mock)
+        return scan_invoice(AitoClient(TEST_CONFIG), dict(self.INVOICE))
+
+    def test_a_truncated_sample_is_not_quoted_as_a_count(self, httpx_mock):
+        """50 rows back out of 237 says nothing about the other 187."""
+        def truncated(mock):
+            mock.add_response(json={
+                "offset": 0, "total": 237,
+                "hits": [{"gl_code": "4400"}] * 30 + [{"gl_code": "5100"}] * 20,
+            })
+        result = self._scan(httpx_mock, truncated)
+
+        assert "of 50" not in result.description, \
+            "50 is the page size, not the number of invoices this customer has"
+        assert "30 of" not in result.description
+        assert "p=0.91" in result.description
+
+    def test_a_complete_sample_is_quoted_as_a_count(self, httpx_mock):
+        def complete(mock):
+            mock.add_response(json={
+                "offset": 0, "total": 12,
+                "hits": [{"gl_code": "4400"}] * 9 + [{"gl_code": "5100"}] * 3,
+            })
+        result = self._scan(httpx_mock, complete)
+        assert "9 of 12" in result.description
+
+    def test_a_failed_history_query_does_not_claim_an_empty_history(self, httpx_mock):
+        def failing(mock):
+            # The client retries once, as test_aito_error_returns_none shows.
+            for _ in range(2):
+                mock.add_response(status_code=500, json={"error": "boom"})
+        result = self._scan(httpx_mock, failing)
+
+        assert "no prior invoices" not in result.description, \
+            "the query failed; whether the customer has history is unknown"
+        assert "p=0.91" in result.description
+
+    def test_counting_without_a_customer_is_a_programming_error(self):
+        """Every invoice has a customer_id; counting without one would
+        count across all 255 tenants, which is the leak this service
+        guards against elsewhere. scan_invoice tolerates an invoice with
+        no customer (it is the documented input) and simply does not ask
+        for a count -- but a direct caller gets told."""
+        from src.anomaly_service import vendor_gl_history
+        with pytest.raises(ValueError, match="customer_id"):
+            vendor_gl_history(AitoClient(TEST_CONFIG), "", "Kesko Oyj")
+
+    def test_an_invoice_with_no_customer_quotes_no_count(self, httpx_mock):
+        _mock_predict(httpx_mock, "4400", 0.91)
+        _mock_predict(httpx_mock, "Sanna L.", 0.88)
+        invoice = {k: v for k, v in self.INVOICE.items() if k != "customer_id"}
+        result = scan_invoice(AitoClient(TEST_CONFIG), invoice)
+        assert "no prior invoices" not in result.description
+        assert "p=0.91" in result.description
