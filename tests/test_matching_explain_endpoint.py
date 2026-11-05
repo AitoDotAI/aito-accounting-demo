@@ -41,12 +41,12 @@ def _no_precompute_file(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _clean_cache():
-    for key in (f"matching_why:{V2}{TENANT}:{TXN}",
-                f"matching_ctx:{V2}{TENANT}"):
+    keys = (f"matching_why:{V2}{TENANT}:{TXN}", f"matching_ctx:{V2}{TENANT}",
+            f"matching_nopre:{V2}{TENANT}")
+    for key in keys:
         cache.delete(key)
     yield
-    for key in (f"matching_why:{V2}{TENANT}:{TXN}",
-                f"matching_ctx:{V2}{TENANT}"):
+    for key in keys:
         cache.delete(key)
 
 
@@ -155,3 +155,43 @@ def test_a_transaction_with_no_aito_match_is_a_404(monkeypatch):
         app_module.matching_explain(
             customer_id=TENANT, transaction_id=TXN, invoice_id="INV-1")
     assert caught.value.status_code == 404
+
+
+def test_a_stale_cached_explanation_does_not_override_the_served_page(monkeypatch):
+    # After a rebuild the page says INV-2 while an hour-long L2 entry still
+    # explains INV-1. The page is what the user sees, so it decides: the stale
+    # entry must not 409 a correct request, it is recomputed over.
+    _serve_page(monkeypatch, [{"bank_txn_id": TXN, "invoice_id": "INV-2",
+                               "matched_by": "aito", "explanation": []}])
+    _cache_an_explanation("INV-1")
+    cache.set(f"matching_ctx:{V2}{TENANT}", {
+        TXN: {"txn": {"txn_id": TXN}, "open_invoices": [{"invoice_id": "INV-2"}],
+              "invoice_id": "INV-2", "ranked_invoice_id": None, "model_p": 0.9},
+    }, ttl=300)
+    monkeypatch.setattr(app_module, "explain_match",
+                        lambda *a, **k: [{"type": "base", "target_value": "INV-2"}])
+    try:
+        payload = app_module.matching_explain(
+            customer_id=TENANT, transaction_id=TXN, invoice_id="INV-2")
+        assert payload["invoice_id"] == "INV-2"
+    finally:
+        cache.delete(f"matching:{V2}{TENANT}")
+
+
+def test_a_tenant_with_no_precompute_does_not_search_aito_on_every_click(monkeypatch):
+    # precompute_store.get does not cache a miss, so each explain click on a
+    # tenant without a precompute would pay an Aito _search just to learn that.
+    lookups = []
+    monkeypatch.setattr(app_module.precomputed, "load",
+                        lambda cid, name: lookups.append(name))
+    cache.set(f"matching:{V2}{TENANT}", {"pairs": [{
+        "bank_txn_id": TXN, "invoice_id": "INV-1", "matched_by": "aito",
+        "explanation": [{"type": "base", "target_value": "INV-1"}]}], "metrics": {}}, ttl=300)
+    try:
+        for _ in range(3):
+            app_module.matching_explain(
+                customer_id=TENANT, transaction_id=TXN, invoice_id="INV-1")
+        assert len(lookups) == 1, f"{len(lookups)} precompute lookups for 3 clicks"
+    finally:
+        cache.delete(f"matching:{V2}{TENANT}")
+        cache.delete(f"matching_nopre:{V2}{TENANT}")

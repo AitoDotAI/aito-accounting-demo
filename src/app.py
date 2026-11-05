@@ -678,6 +678,22 @@ def matching_pairs(customer_id: str = Query(...)):
     return _match_and_cache(customer_id, ttl=_ttl(300))
 
 
+def _precomputed_matching(customer_id: str) -> dict | None:
+    """The precomputed matching page, remembering for a minute that there is none.
+
+    `precompute_store.get` does not cache a miss, so a tenant without a
+    precompute would pay an Aito _search on every explain click just to learn
+    that again.
+    """
+    miss_key = page_cache_key("matching_nopre", customer_id)
+    if cache.get(miss_key):
+        return None
+    page = precomputed.load(customer_id, "matching_pairs")
+    if page is None:
+        cache.set(miss_key, True, ttl=60, local_only=True)
+    return page
+
+
 @app.get("/api/matching/explain")
 def matching_explain(customer_id: str = Query(...), transaction_id: str = Query(...),
                      invoice_id: str = Query(...)):
@@ -703,24 +719,14 @@ def matching_explain(customer_id: str = Query(...), transaction_id: str = Query(
     narrower question would explain a number the page never showed.
     """
     explain_key = f"{page_cache_key('matching_why', customer_id)}:{transaction_id}"
-    cached = cache.get(explain_key)
-    if cached:
-        if cached.get("invoice_id") != invoice_id:
-            # Not evicted: the entry is right for the row it was made for,
-            # and a visitor's wrong invoice_id must not cost the real row
-            # its cache. A 409 is the whole answer.
-            raise HTTPException(
-                status_code=409,
-                detail=(f"the row shows invoice {invoice_id} but the cached "
-                        f"explanation is for {cached.get('invoice_id')}"),
-            )
-        return cached
 
     # Settle what can be settled from the page the user is looking at,
     # before any recompute. A wrong invoice_id or an unknown payment
     # costs a lookup, not a pairing; a precomputed page already carries
-    # its explanations, so it answers here without touching Aito.
-    page = precomputed.load(customer_id, "matching_pairs") \
+    # its explanations, so it answers here without touching Aito. The page
+    # is checked before the cached explanation: after a rebuild the cache
+    # can hold an explanation for the previous pairing for up to an hour.
+    page = _precomputed_matching(customer_id) \
         or cache.get(page_cache_key("matching", customer_id))
     if page:
         pair = next((p for p in page.get("pairs", [])
@@ -739,6 +745,22 @@ def matching_explain(customer_id: str = Query(...), transaction_id: str = Query(
         if pair.get("explanation"):
             return {"transaction_id": transaction_id, "invoice_id": invoice_id,
                     "explanation": pair["explanation"]}
+
+    cached = cache.get(explain_key)
+    if cached:
+        if cached.get("invoice_id") == invoice_id:
+            return cached
+        if not page:
+            # No page to say which is right. Not evicted: the entry is
+            # right for the row it was made for, and a visitor's wrong
+            # invoice_id must not cost the real row its cache.
+            raise HTTPException(
+                status_code=409,
+                detail=(f"the row shows invoice {invoice_id} but the cached "
+                        f"explanation is for {cached.get('invoice_id')}"),
+            )
+        # The page agrees with the request, so the cached entry is the
+        # stale one: fall through and recompute over it.
 
     contexts_key = page_cache_key("matching_ctx", customer_id)
     contexts = cache.get(contexts_key)
