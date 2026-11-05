@@ -155,3 +155,24 @@ def test_a_transaction_with_no_aito_match_is_a_404(monkeypatch):
         app_module.matching_explain(
             customer_id=TENANT, transaction_id=TXN, invoice_id="INV-1")
     assert caught.value.status_code == 404
+
+
+def test_a_stale_cached_explanation_does_not_override_the_served_page(monkeypatch):
+    # After a rebuild the page says INV-2 while an hour-long L2 entry still
+    # explains INV-1. The page is what the user sees, so it decides: the stale
+    # entry must not 409 a correct request, it is recomputed over.
+    _serve_page(monkeypatch, [{"bank_txn_id": TXN, "invoice_id": "INV-2",
+                               "matched_by": "aito", "explanation": []}])
+    _cache_an_explanation("INV-1")
+    cache.set(f"matching_ctx:{V2}{TENANT}", {
+        TXN: {"txn": {"txn_id": TXN}, "open_invoices": [{"invoice_id": "INV-2"}],
+              "invoice_id": "INV-2", "ranked_invoice_id": None, "model_p": 0.9},
+    }, ttl=300)
+    monkeypatch.setattr(app_module, "explain_match",
+                        lambda *a, **k: [{"type": "base", "target_value": "INV-2"}])
+
+    payload = app_module.matching_explain(
+        customer_id=TENANT, transaction_id=TXN, invoice_id="INV-2")
+
+    assert payload["invoice_id"] == "INV-2"
+    cache.delete(f"matching:{V2}{TENANT}")

@@ -703,23 +703,13 @@ def matching_explain(customer_id: str = Query(...), transaction_id: str = Query(
     narrower question would explain a number the page never showed.
     """
     explain_key = f"{page_cache_key('matching_why', customer_id)}:{transaction_id}"
-    cached = cache.get(explain_key)
-    if cached:
-        if cached.get("invoice_id") != invoice_id:
-            # Not evicted: the entry is right for the row it was made for,
-            # and a visitor's wrong invoice_id must not cost the real row
-            # its cache. A 409 is the whole answer.
-            raise HTTPException(
-                status_code=409,
-                detail=(f"the row shows invoice {invoice_id} but the cached "
-                        f"explanation is for {cached.get('invoice_id')}"),
-            )
-        return cached
 
     # Settle what can be settled from the page the user is looking at,
     # before any recompute. A wrong invoice_id or an unknown payment
     # costs a lookup, not a pairing; a precomputed page already carries
-    # its explanations, so it answers here without touching Aito.
+    # its explanations, so it answers here without touching Aito. The page
+    # is checked before the cached explanation: after a rebuild the cache
+    # can hold an explanation for the previous pairing for up to an hour.
     page = precomputed.load(customer_id, "matching_pairs") \
         or cache.get(page_cache_key("matching", customer_id))
     if page:
@@ -739,6 +729,22 @@ def matching_explain(customer_id: str = Query(...), transaction_id: str = Query(
         if pair.get("explanation"):
             return {"transaction_id": transaction_id, "invoice_id": invoice_id,
                     "explanation": pair["explanation"]}
+
+    cached = cache.get(explain_key)
+    if cached:
+        if cached.get("invoice_id") == invoice_id:
+            return cached
+        if not page:
+            # No page to say which is right. Not evicted: the entry is
+            # right for the row it was made for, and a visitor's wrong
+            # invoice_id must not cost the real row its cache.
+            raise HTTPException(
+                status_code=409,
+                detail=(f"the row shows invoice {invoice_id} but the cached "
+                        f"explanation is for {cached.get('invoice_id')}"),
+            )
+        # The page agrees with the request, so the cached entry is the
+        # stale one: fall through and recompute over it.
 
     contexts_key = page_cache_key("matching_ctx", customer_id)
     contexts = cache.get(contexts_key)

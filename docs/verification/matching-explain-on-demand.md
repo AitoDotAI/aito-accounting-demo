@@ -76,7 +76,7 @@ row.
 | a payment the served page does not have, or one matched by reference -> 404, no recompute | yes (tests) |
 | a recorded substitute that Aito now ranks directly is refused, not explained | yes (test; the guard set to `False` now fails it, it did not before) |
 | ranking and explanation share `where` and limit | covered by tests; live body comparison not done |
-| app on the local Aito, CUST-0127 (8 pairs, 6 Aito-matched), **old design** | the list carried `explanation: []`; explain with the right invoice 200 (14 s cold, it rebuilt the contexts); another invoice 409; other tenant 404; no `invoice_id` 422. The reworked paths (served-page lookup, inline precompute) are **tested offline only** and not re-run on a local Aito |
+| **re-run live on a local Aito v2.12.0 with the reworked code** (slice, CUST-0127: 8 pairs, 6 Aito-matched; 2026-11-05) | live page: the list ships `explanation: []` on every row (4.7 s cold); right invoice 200 in 0.8-1.3 s (contexts present), cached 5 ms; a bogus invoice 409 in 6-25 ms with nothing recomputed; the reference-matched row and an unknown payment 404 in 20-35 ms. **Precompute page** (`precompute_matching` run against the local Aito and stored): all 6 Aito rows carry 8 factors inline, the page loads in 87 ms, an explain is answered from the page in 19 ms, a bogus invoice 409 in 14 ms, an unknown payment 404. Not re-run: a live page whose contexts were lost (restart), which is unchanged code |
 | other tenant's `transaction_id` -> 404, never another tenant's explanation | yes: contexts and explanations are keyed by customer |
 | `./do test` | pass |
 | browser: skeleton, retry link, drift message, tenant switch | **not done** |
@@ -87,12 +87,15 @@ row.
 - The explain **contexts** (`matching_ctx`): no, `local_only=True`.
 - The **explanation payloads** (`matching_why:...:<transaction_id>`):
   **yes.** `cache.set(explain_key, ...)` has no `local_only`, so each one is
-  written to the shared table, a few KiB each. An earlier version of this
-  report said nothing but `matching:v2:` keys reached the local Aito's table;
-  that listing (5 rows) was taken after an explain call and showed no
-  `matching_why` row, and the code says it should have. The code is
-  authoritative, and the listing's absence is unexplained (it may have raced
-  an asynchronous L2 write).
+  written to the shared table, a few KiB each. Re-run on a local v2.12.0:
+  `cache_entries` held `matching:v2:CUST-0127` and two `matching_why:...` rows.
+  **Why the earlier listing showed no `matching_why` row:** it was not a
+  failed write. In the earlier (old-design) run I asked for the right invoice
+  (200, written), then for a wrong one, which in that design evicted the row it
+  had just cached (`cache.delete`, L1 and L2), and listed afterwards. The
+  rework no longer evicts. L2 writes are still best-effort by design
+  (`cache.set` swallows `AitoError`/`TypeError`), so a write that fails
+  is silent; the local run shows the success path only.
 
 ## Findings fixed in this pass
 
