@@ -119,3 +119,15 @@ def test_visitors_waiting_on_an_unavailable_attempt_are_answered_at_once(monkeyp
 
     assert len(runs) == 1, f"{len(runs)} attempts for 4 visitors"
     assert [r["pairs"] for r in results] == [[]] * 4
+
+
+def test_a_down_aito_through_the_real_matcher_stores_nothing(monkeypatch, isolated):
+    # The tests above fake match_all; this one lets the real one meet a client
+    # whose every call fails, so it is the endpoint's own call that is checked.
+    monkeypatch.setattr(app_module, "v2_client", DownAito())
+
+    body = app_module.matching_pairs(customer_id=TENANT)
+
+    assert body["pairs"] == []
+    assert cache.get(page_cache_key("matching", TENANT)) is None
+    assert isolated.written_keys == []
