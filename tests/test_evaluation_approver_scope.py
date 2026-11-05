@@ -132,11 +132,15 @@ def test_the_linked_invoice_target_ranks_only_the_customers_own_invoices():
     assert client.where_for("invoice_id")["invoice_id.customer_id"] == TENANT
 
 
-def test_the_linked_article_target_ranks_only_the_customers_own_articles():
+def test_the_article_target_is_not_scoped_to_the_tenant_because_that_drops_global_articles():
+    # help_articles.customer_id is "*" for every app and legal article, so an
+    # exact `article_id.customer_id == tenant` puts the true answer of every
+    # global-article impression outside the candidates. The product's own
+    # set is {"$or": ["*", tenant]}, which `_evaluate` cannot take (literal
+    # where values only). Until it can, this target is left as it was.
     client = RecordingClient()
-    run_evaluation(client, TENANT, "help", "article_id",
-                   ["page"], limit=50)
-    assert client.where_for("article_id")["article_id.customer_id"] == TENANT
+    run_evaluation(client, TENANT, "help", "article_id", ["page"], limit=50)
+    assert "article_id.customer_id" not in client.where_for("article_id")
 
 
 def test_the_unlinked_targets_in_those_domains_keep_no_filter():
@@ -153,36 +157,17 @@ def test_the_unlinked_targets_in_those_domains_keep_no_filter():
 
 @pytest.mark.parametrize("domain,predict,inputs", [
     ("matching", "invoice_id", ["description", "amount"]),
-    ("help", "article_id", ["page"]),
 ])
-def test_a_linked_target_is_never_evaluated_without_a_customer(domain, predict, inputs):
+def test_a_scoped_linked_target_is_never_evaluated_without_a_customer(domain, predict, inputs):
     with pytest.raises(ValueError, match="needs a customer_id"):
         run_evaluation(RecordingClient(), "", domain, predict, inputs, limit=50)
 
 
-# OPEN QUESTION for the daytime verification slot, raised in the CPO
-# review of 2026-10-31 and not answerable locally.
-#
-# `bank_transactions.invoice_id` is nullable (src/data_loader.py:118) --
-# an unmatched payment has no invoice. The filter this module now adds,
-# `invoice_id.customer_id = <tenant>`, is a condition on the LINKED row,
-# so a transaction with no invoice_id has no linked row to satisfy it and
-# is presumably excluded from what Aito trains on. `testSource` is built
-# separately, from `{"customer_id": customer_id}` on the table itself,
-# and still includes those transactions.
-#
-# If that reading is right, the evaluation now tests cases it cannot get
-# right and the reported accuracy for `invoice_id` drops -- a worse
-# number for a more correct question, which is defensible, but it must be
-# a deliberate choice and not a surprise in a demo.
-#
-# Three things to settle with live Aito, and to write into
-# docs/verification/ for this branch:
-#   1. Does the linked-row filter actually exclude null-invoice_id rows
-#      from training? Compare trainSamples with and without the filter.
-#   2. Does reported accuracy change, and by how much?
-#   3. If it does, should testSource match -- i.e. gain
-#      `"invoice_id": {"$exists": True}` or the equivalent -- so the test
-#      set and the candidate domain agree?
-# The approver target does not have this problem: `approver` is
-# non-nullable (data_loader.py:88).
+# `bank_transactions.invoice_id` is nullable (src/data_loader.py:118), and
+# `testSource` still includes unmatched payments. Measured on a local
+# Aito 2.12.0 with a 15-tenant slice (docs/verification/evaluation-approver-
+# scope.md): `trainSamples` is the same with and without the filter, so the
+# filter does not remove those rows from training; accuracy is 0% both ways
+# (each invoice has one bank line, so a held-out line's invoice has no
+# training evidence) and `meanRank` is what moves (e.g. 7418 -> 33 for
+# CUST-0127). That is a shown number changing, which the report flags.

@@ -38,7 +38,7 @@ def test_a_limit_outside_the_range_the_page_offers_is_refused_without_calling_ai
 
 
 def test_the_largest_limit_the_page_offers_is_accepted():
-    refuse_unusable_request("invoices", "gl_code", MAX_LIMIT)
+    refuse_unusable_request("invoices", "gl_code", MAX_LIMIT, ["vendor"])
 
 
 @pytest.mark.parametrize("domain,predict", [
@@ -48,4 +48,32 @@ def test_the_largest_limit_the_page_offers_is_accepted():
 ])
 def test_an_unknown_domain_or_target_is_refused_before_the_cache_or_aito(domain, predict):
     with pytest.raises(ValueError, match="Unknown"):
-        refuse_unusable_request(domain, predict, 100)
+        refuse_unusable_request(domain, predict, 100, ["vendor"])
+
+
+# ── input_fields: only the domain's own features, never the target ──────
+#
+# `input_fields` came straight from the query string. A target listed as
+# its own input is a $get on the answer: predict=approver&input_fields=approver
+# scores ~100% by reading the label. An unknown name is sent to Aito and
+# comes back as a 200 carrying an error, and each spelling is a new cache key.
+
+@pytest.mark.parametrize("domain,predict,fields", [
+    ("invoices", "approver", ["approver"]),
+    ("invoices", "approver", ["vendor", "approver"]),
+    ("help", "article_id", ["page", "article_id"]),
+])
+def test_a_target_is_never_its_own_input(domain, predict, fields):
+    with pytest.raises(ValueError, match="own input"):
+        refuse_unusable_request(domain, predict, 100, fields)
+
+
+@pytest.mark.parametrize("fields", [["iban"], ["vendor", "approver.customer_id"], ["customer_id"]])
+def test_an_input_the_domain_does_not_offer_is_refused(fields):
+    with pytest.raises(ValueError, match="Unknown input"):
+        refuse_unusable_request("invoices", "gl_code", 100, fields)
+
+
+def test_the_inputs_the_page_offers_are_accepted():
+    refuse_unusable_request("invoices", "gl_code", 100, ["vendor", "amount", "category"])
+    refuse_unusable_request("help", "clicked", 100, ["page", "article_id"])

@@ -97,9 +97,19 @@ DOMAINS: dict[str, dict] = {
         "id_field": "impression_id",
         "predict_targets": [
             {"field": "clicked", "label": "Click prediction"},
-            # Links to help_articles.article_id, same reason as above.
-            {"field": "article_id", "label": "Article id",
-             "scope_candidates_by": "article_id.customer_id"},
+            # Links to help_articles.article_id, so the candidates span every
+            # tenant's internal articles. NOT scoped here, deliberately: the
+            # set the product ranks is {"$or": ["*", tenant]} (help_service),
+            # because app and legal articles carry customer_id "*", and
+            # `_evaluate` on a collection accepts only literal where values
+            # (measured on 2.11.2 and 2.12.0: "supports literal test/where
+            # values"). An exact match on the tenant is expressible but drops
+            # every global article, so the true answer of those impressions
+            # falls outside the candidates and the accuracy collapses
+            # (local slice, CUST-0001: 5% scoped to the tenant vs 10%).
+            # Open: another tenant's internal article id can still be printed
+            # in `cases[].predicted`.
+            {"field": "article_id", "label": "Article id"},
         ],
         "input_fields": [
             {"field": "page", "label": "Page", "default": True},
@@ -120,7 +130,9 @@ DOMAINS: dict[str, dict] = {
 MAX_LIMIT = 300
 
 
-def refuse_unusable_request(domain: str, predict: str, limit: int) -> None:
+def refuse_unusable_request(
+    domain: str, predict: str, limit: int, input_fields: list[str]
+) -> None:
     """Raise ValueError for a request that must never reach Aito."""
     if not 1 <= limit <= MAX_LIMIT:
         raise ValueError(f"limit must be between 1 and {MAX_LIMIT}, got {limit}")
@@ -128,6 +140,13 @@ def refuse_unusable_request(domain: str, predict: str, limit: int) -> None:
         raise ValueError(f"Unknown domain: {domain}")
     if not any(t["field"] == predict for t in DOMAINS[domain]["predict_targets"]):
         raise ValueError(f"Unknown predict target for {domain}: {predict}")
+    offered = {f["field"] for f in DOMAINS[domain]["input_fields"]}
+    unknown = sorted(set(input_fields) - offered)
+    if unknown:
+        raise ValueError(f"Unknown input field for {domain}: {', '.join(unknown)}")
+    if predict in input_fields:
+        # A $get on the answer scores ~100% by reading the label.
+        raise ValueError(f"{predict} cannot be its own input")
 
 
 def get_domains_catalog() -> dict:

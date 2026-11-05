@@ -117,7 +117,8 @@ export default function PredictionQualityPage() {
     if (!domain || !predict || inputs.size === 0) return;
     setLoading(true);
     setData(null);
-    const fieldList = Array.from(inputs).join(",");
+    // The target is not offered as an input; a stale selection must not be sent.
+    const fieldList = Array.from(inputs).filter((f) => f !== predict).join(",");
     apiFetch<EvalResponse>(
       `/api/quality/evaluate?customer_id=${encodeURIComponent(customerId)}&domain=${domainKey}&predict=${encodeURIComponent(predict)}&input_fields=${encodeURIComponent(fieldList)}&limit=${limit}`,
     )
