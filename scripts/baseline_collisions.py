@@ -36,7 +36,8 @@ from pathlib import Path
 # A support pair: 7383/16000. Denominators under ten are skipped -- small
 # counts coincide honestly, and dates (2024/09/01) are not measurements.
 SUPPORT = re.compile(r"(?<![\d.])(\d+)\s*/\s*(\d+)(?![\d.])")
-LIFT = re.compile(r"lift\s*=\s*(\d+(?:\.\d+)?)")
+# "lift=2.3" and "lift 5.0x" are the same measurement written two ways.
+LIFT = re.compile(r"lift\s*(?:=\s*|\s)(\d+(?:\.\d+)?)")
 MIN_DENOMINATOR = 10
 
 HEADING = re.compile(r"^#+\s+(.*\S)\s*$")

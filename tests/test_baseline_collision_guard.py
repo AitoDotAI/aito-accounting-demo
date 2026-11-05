@@ -132,3 +132,13 @@ def test_one_lift_written_two_ways_is_still_one_measurement():
     found = guard.collisions(baseline)
 
     assert [c.measurement for c in found] == ["lift=2.3"]
+
+
+def test_a_lift_written_as_a_multiple_is_a_measurement_too():
+    # test_mine_rules_for_customer prints "lift 5.0x", not "lift=5.0".
+    baseline = """
+  Bronex Software Oy      -> GL 4400   support 3256/3322 (98%)  lift 5.0x
+  Kardex Finland Oy       -> GL 4600   support 1807/1843 (98%)  lift 5.0x
+"""
+    assert [c for c in guard.collisions(baseline) if c.measurement == "lift=5"], (
+        "one lift shared by two vendors, written 'lift 5.0x', was accepted")

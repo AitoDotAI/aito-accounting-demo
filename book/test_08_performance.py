@@ -111,12 +111,17 @@ def test_predict_latency_cold_vs_warm(t: bt.TestCaseRun):
 
 
 @bt.snapshot_httpx()
-def test_relate_latency(t: bt.TestCaseRun):
-    """_relate latency for vendor → gl_code rule mining."""
+def test_relate_rules_for_category(t: bt.TestCaseRun):
+    """_relate returns gl_code rules for a category, per tenant tier.
+
+    This used to print the call's elapsed time. Replayed offline, that is
+    the replay's 0.2 ms, not Aito's, and a recorded 0.2 ms reads as a
+    latency measurement it is not. It checks what came back instead; the
+    latency tests above still time their calls, and only a live run makes
+    those numbers Aito's.
+    """
     c = get_client()
-    t.h1("_relate latency: vendor → gl_code")
-    t.tln("This is the slow operator -- it returns the discovered")
-    t.tln("association rules between fields.")
+    t.h1("_relate: category → gl_code rules")
     t.tln("")
 
     cases = [
@@ -138,11 +143,11 @@ def test_relate_latency(t: bt.TestCaseRun):
         # Discover what gl_code values relate to a fixed condition.
         # The dual call (relate vendor, condition by gl_code) would also
         # work; this shape mirrors what compute_rule_performance uses.
-        r = t.imsln(lambda c_id=cid, cat=category: c.relate(
+        r = c.relate(
             "invoices",
-            {"customer_id": c_id, "category": cat},
+            {"customer_id": cid, "category": category},
             "gl_code",
-        ))
+        )
         rules = r.get("hits", [])
         t.iln(f"  rules returned: {len(rules)}")
         if rules:

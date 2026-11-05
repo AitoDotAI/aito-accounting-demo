@@ -61,8 +61,9 @@ Rows that need them are left unticked.
 | `./do prove-assertions` | **All 24 assertions fail when broken** (22 on the author's branch) |
 | `book-accept` refuses two entities sharing one measurement | yes: identical support pairs (also written `7383 / 16000`) and identical lifts are refused |
 | a lift written 2.3 vs 2.30 | **was missed; fixed** in this pass (lifts compared as numbers) |
+| a lift written `lift 5.0x` (test_mine_rules) | **was missed; fixed** (CPO review) |
 | `--i-know` overrides and says so | read in `do`, not run |
-| bad `customer_id` is still 400 after `validate_customer()` was removed | yes: empty, `NOPE` on `/api/invoices/pending` and `/api/matching/pairs` |
+| bad `customer_id` is still 400 after `validate_customer()` was removed | yes: empty, `NOPE` on `/api/invoices/pending` and `/api/matching/pairs`; now also pinned by app-level tests (`tests/test_customer_validation_wiring.py`), which fail when the middleware check is switched off or `/api/health` is hard-coded 'ok' |
 | `./do test` | pass |
 | app on the local Aito, roster loaded | `/healthz` `{ok: true, roster_count: 255}`; `/api/health` status `ok`; `NOPE` -> 400 |
 
@@ -80,14 +81,26 @@ Rows that need them are left unticked.
    context, so an image built from a clean checkout has no roster and
    `except Exception: set()` turned validation off silently. Now reported:
    stderr "customer_id validation is OFF", `roster_count` on `/health`,
-   status `degraded` on `/api/health`. **No answer changes.** Failing closed
+   status `degraded` on `/api/health`; an empty `[]` roster is reported the
+   same way as a missing file. **No answer changes.** Failing closed
    would 400 every `/api` call on such an image; that needs a build-time
-   check that the image contains the roster, and is Antti's call.
+   check that the image contains the roster, and is Antti's call. Note:
+   `scripts/verify_demo.py` asserts the default customer is in
+   `/api/customers`, so it goes red on an image without a roster, which is
+   the right signal.
 
 ## For a human glance: re-captured baselines (author's commit 651c0dc)
 
 - `test_relate_category_to_gl`: telecom now "no data"; supplies/facilities/
   software/consulting supports and one GL (software 6100 -> 1600) changed.
+  **Software -> GL 1600 (305/536) is the data, not a bug** (CPO question).
+  `data/generate_fixtures.py` books software, cloud and IT equipment above the
+  large-amount band to 1600 "Capital Equipment" (the capitalisation rule, its
+  `CAPEX_GL`); 5345 of 13782 software invoices in the fixture are 1600. The
+  test prints the top *lift* for CUST-0000, and 1600 is the most concentrated
+  GL for software there. The old line, `software -> GL 6100  8214/13782`,
+  was the table-wide count: the customer clause had been dropped, which is
+  what the collision guard exists to catch.
 - `test_relate_vendor_to_gl`: the old baseline listed four vendors with the
   identical `7383/16000 lift=2.3` (a dropped condition); replaced by
   per-vendor numbers (e.g. Avarn 1300/1328 lift 10.3).
@@ -95,11 +108,21 @@ Rows that need them are left unticked.
   0.0000 -> 0.9744 for Avarn; one wrong vendor became the right one).
 - `test_mine_rules_for_customer`: 2 rules -> 8.
 - `test_predict_template_for_recurring_vendor`: GL label now Finnish
-  ("Aineet ja tarvikkeet").
+  ("Aineet ja tarvikkeet"). **Visitors already see Finnish: no language change
+  ships with this.** The label comes from `GL_LABELS` in
+  `src/invoice_service.py` (since #48, 2026-09-28; this branch does not touch
+  it), it is served as `gl_label` in the API and shown in the UI, and
+  `docs/demo-script.md` tells the presenter to point at "4400 Aineet ja
+  tarvikkeet". The old baseline said "Materials & Supplies", the fixture's
+  English label, which the app has not shown for weeks; the baseline caught up.
 - `test_help_evaluate_on_unseen_customer`: prints "cold start is allowed:
   ranking falls back to global" (global fallback is exactly what ADR 0030
   questions).
 - `test_relate_latency`: lifts 21.94 -> 4.97 / 3.30 and rule counts changed.
+  **Renamed `test_relate_rules_for_category` and stopped printing the time**
+  (CPO review): replayed offline it recorded 0.2 ms, the replay's, which reads
+  as a latency. The other latency tests still print their time; only a live
+  run makes those Aito's.
 
 ## Findings left open
 

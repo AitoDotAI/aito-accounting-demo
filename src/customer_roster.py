@@ -13,12 +13,15 @@ from pathlib import Path
 
 
 def load_roster(path: Path) -> set[str]:
-    """Customer ids in `path`; an empty set, with a stderr message, if unreadable."""
+    """Customer ids in `path`; an empty set, with a stderr message, if unusable."""
     try:
         with open(path) as f:
-            return {c["customer_id"] for c in json.load(f)}
+            roster = {c["customer_id"] for c in json.load(f)}
+        if not roster:
+            raise ValueError("it lists no customers")
+        return roster
     except (OSError, ValueError, KeyError, TypeError) as exc:
-        print(f"customer roster {path} unreadable ({type(exc).__name__}: {exc}): "
+        print(f"customer roster {path} unusable ({type(exc).__name__}: {exc}): "
               f"customer_id validation is OFF -- any id is accepted. "
               f"Generate it with ./do fixtures.", file=sys.stderr)
         return set()

@@ -43,3 +43,13 @@ def test_a_corrupt_roster_is_reported_with_its_cause(tmp_path, capsys):
 def test_an_empty_roster_reports_degraded_and_a_full_one_ok():
     assert roster_status(set()) == "degraded"
     assert roster_status({"CUST-0000"}) == "ok"
+
+
+def test_an_empty_roster_file_is_reported_not_silently_empty(tmp_path, capsys):
+    # `[]` parses fine, so nothing raises -- and an empty roster switches the
+    # unknown-customer check off exactly as a missing file does.
+    path = tmp_path / "customers.json"
+    path.write_text("[]")
+
+    assert load_roster(path) == set()
+    assert "customer_id validation is OFF" in capsys.readouterr().err
