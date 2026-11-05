@@ -136,3 +136,49 @@ def test_the_precompute_writers_own_empty_matching_payload_is_served(monkeypatch
     served(monkeypatch, writer.EMPTY_MATCHING)
     assert precomputed.load("CUST-0000", "matching_pairs") == writer.EMPTY_MATCHING, \
         "the guard refuses what the lite-threshold path writes"
+
+
+# ── Anomaly explanations that quote $p as a row count ───────────────
+
+CURRENT_ANOMALIES = {
+    "flags": [
+        {"invoice_id": "I-1", "vendor": "Kesko Oyj", "category": "gl_mismatch",
+         "title": "GL code mismatch — uses 5100, expected 4400",
+         "description": "9 of 12 of this customer's invoices from Kesko Oyj use "
+                        "GL 4400 (Aineet ja tarvikkeet). This invoice uses GL 5100 instead.",
+         "recommendation": "Send back to processor", "amount": 4220.0,
+         "anomaly_score": 0.73, "severity": "medium"},
+    ],
+    "metrics": {"total": 1, "high": 0, "medium": 1, "low": 0},
+}
+
+
+def test_a_current_anomaly_precompute_is_served(monkeypatch):
+    served(monkeypatch, CURRENT_ANOMALIES)
+    assert precomputed.load("CUST-0000", "anomalies_scan") == CURRENT_ANOMALIES
+
+
+def test_an_anomaly_payload_that_calls_a_probability_a_row_count_is_refused(monkeypatch):
+    stale = json.loads(json.dumps(CURRENT_ANOMALIES))
+    stale["flags"][0]["description"] = (
+        "For Kesko Oyj, 91 of 100 historical invoices use GL 4400 "
+        "(Aineet ja tarvikkeet). This invoice uses GL 5100 instead.")
+    served(monkeypatch, stale)
+    precomputed._warned.clear()
+    assert precomputed.load("CUST-0000", "anomalies_scan") is None, \
+        "91 is a $p, not a count, and the invoices are not this customer's"
+
+
+def test_a_real_captured_anomaly_payload_is_refused(monkeypatch):
+    """A flag as `./do precompute-v2` actually wrote it for CUST-0006,
+    captured into tests/fixtures/ rather than read from the generated
+    data/precomputed/ tree, which .gitignore excludes.
+
+    The commit that added this called those files "committed". They are
+    generated, and the test only passed where the generator had run.
+    """
+    path = REPO / "tests" / "fixtures" / "stale_anomalies_scan.json"
+    served(monkeypatch, json.loads(path.read_text()))
+    precomputed._warned.clear()
+    assert precomputed.load("CUST-0006", "anomalies_scan") is None, \
+        f"{path.name} states a probability as a count of the customer's invoices"

@@ -165,4 +165,6 @@ class TestBump:
     def test_bump_without_a_client_is_a_no_op(self, monkeypatch):
         monkeypatch.setattr(cache_versions, "_aito", None)
 
-        cache_versions.bump(["table:invoices"])  # does not raise
+        # No assert by design: a build script must not die because the
+        # versions table is unreachable. Mutation-checked 2026-10-31.
+        cache_versions.bump(["table:invoices"])
