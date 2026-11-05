@@ -112,9 +112,11 @@ def init(client: AitoClient) -> None:
     _aito = client
     try:
         client._request("PUT", f"/schema/{CACHE_TABLE}", json=CACHE_SCHEMA)
-    except AitoError:
-        # Table likely exists; ignore
-        pass
+    except AitoError as exc:
+        # A 4xx is how a second PUT of an existing table answers. Anything
+        # else (no connection, a 5xx) means L2 is down from the start.
+        if exc.status_code is None or not 400 <= exc.status_code < 500:
+            _l2_failed("writes", exc, f"/schema/{CACHE_TABLE}")
 
 
 def get(key: str) -> Any | None:
