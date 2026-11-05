@@ -102,11 +102,16 @@ def get(key: str) -> Any | None:
         return None
 
 
-def set(key: str, value: Any, ttl: int = DEFAULT_TTL) -> None:
+def set(key: str, value: Any, ttl: int = DEFAULT_TTL, local_only: bool = False) -> None:
+    """Cache `value`; `local_only` keeps it out of the shared L2 table.
+
+    For what is cheap to rebuild and large to keep: it is not worth
+    putting on the shared instance, and a miss only costs a recompute.
+    """
     # L1 always
     _l1[key] = (time.monotonic() + ttl, value)
     # L2 best-effort
-    if _aito is None:
+    if _aito is None or local_only:
         return
     try:
         # Delete existing entry for this key, then insert. The

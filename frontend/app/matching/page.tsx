@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Nav from "@/components/shell/Nav";
 import { useCustomer } from "@/lib/customer-context";
 import ErrorState from "@/components/shell/ErrorState";
@@ -8,7 +8,7 @@ import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
 import ConfidenceBar from "@/components/prediction/ConfidenceBar";
 import WhyCards from "@/components/prediction/WhyCards";
-import { apiFetch, fmtAmount } from "@/lib/api";
+import { ApiError, apiFetch, fmtAmount } from "@/lib/api";
 import type { AitoPanelConfig } from "@/lib/types";
 
 const PANEL: AitoPanelConfig = {
@@ -118,18 +118,69 @@ export default function MatchingPage() {
   const [live, setLive] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  // Explanations arrive per opened row, not with the list: the ranking
+  // would otherwise pay Aito for a $why on every candidate in the ledger
+  // to render one (td-20260909115133919692). A precomputed payload still
+  // carries them inline, and those are used as they are.
+  const [why, setWhy] = useState<Record<string, WhyFactor[]>>({});
+  const [whyFailed, setWhyFailed] = useState<Record<string, "error" | "mismatch">>({});
+  // Asked-for rows, so a double click does not ask twice. A ref, not state:
+  // the click handler needs today's value, not the one captured when it
+  // rendered. Only the expanded row ever asks -- a background pass over
+  // every row would pay Aito for explanations nobody opened.
+  const asked = React.useRef<Set<string>>(new Set());
+
+  const fetchWhy = useCallback((txnId: string, invoiceId: string): Promise<unknown> => {
+    if (asked.current.has(txnId)) return Promise.resolve();
+    asked.current.add(txnId);
+    return apiFetch<{ explanation: WhyFactor[]; invoice_id: string }>(
+      `/api/matching/explain?customer_id=${customerId}`
+        + `&transaction_id=${encodeURIComponent(txnId)}`
+        + `&invoice_id=${encodeURIComponent(invoiceId)}`,
+    )
+      .then((d) => {
+        // The server refuses a mismatch with a 409, so this is the second
+        // of two locks on the same door: an explanation must never be
+        // rendered under a row it is not about.
+        if (d.invoice_id !== invoiceId) {
+          setWhyFailed((prev) => ({ ...prev, [txnId]: "mismatch" }));
+          return;
+        }
+        setWhy((prev) => ({ ...prev, [txnId]: d.explanation }));
+      })
+      .catch((e: unknown) => {
+        // Let a later expand try again: the common causes -- a lapsed
+        // cache, a slow live rerun -- are transient. Without this the
+        // `asked` guard made the first failure permanent for the row.
+        asked.current.delete(txnId);
+        const mismatch = e instanceof ApiError && (e.status === 409 || e.status === 404);
+        setWhyFailed((prev) => ({
+          ...prev, [txnId]: mismatch ? "mismatch" : "error",
+        }));
+      });
+  }, [customerId]);
 
   useEffect(() => {
     setData(null); setLive(false); setError(null); setExpanded(null);
+    setWhy({}); setWhyFailed({}); asked.current = new Set();
     apiFetch<MatchResponse>(`/api/matching/pairs?customer_id=${customerId}`)
       .then((d) => {
         setData(d); setLive(true);
-        // Auto-expand the first matched row so users discover the "why" feature
-        const firstMatched = d.pairs.find((p) => p.status === "matched" && p.explanation && p.explanation.length > 0);
-        if (firstMatched) setExpanded(firstMatched.bank_txn_id);
+        // Auto-expand the first matched row so users discover the "why"
+        // feature. An Aito match qualifies whether or not the payload
+        // carries its explanation, since the row can fetch its own.
+        const firstMatched = d.pairs.find(
+          (p) => p.status === "matched"
+            && (p.matched_by === "aito" || (p.explanation?.length ?? 0) > 0),
+        );
+        if (firstMatched?.bank_txn_id) {
+          setExpanded(firstMatched.bank_txn_id);
+          // It is open, so it is the one row that asks without a click.
+          if (!(firstMatched.explanation?.length)) fetchWhy(firstMatched.bank_txn_id, firstMatched.invoice_id);
+        }
       })
       .catch((e) => setError(e));
-  }, [customerId]);
+  }, [customerId, fetchWhy]);
 
   const m = data?.metrics;
 
@@ -180,12 +231,21 @@ export default function MatchingPage() {
                   const rowClass = p.status === "matched" ? "matched" : p.status === "suggested" ? "suggested" : "";
                   const rowKey = p.bank_txn_id ?? p.invoice_id;
                   const isExpanded = expanded === rowKey;
-                  const hasExplanation = p.explanation && p.explanation.length > 0;
+                  const inlineWhy = (p.explanation?.length ?? 0) > 0 ? p.explanation : why[rowKey];
+                  // A match by reference made no prediction, so there is
+                  // nothing to explain and the row does not open.
+                  const canExplain = (p.explanation?.length ?? 0) > 0 || p.matched_by === "aito";
+                  const openRow = () => {
+                    if (!canExplain) return;
+                    if (isExpanded) { setExpanded(null); return; }
+                    setExpanded(rowKey);
+                    if (!inlineWhy && !whyFailed[rowKey] && p.bank_txn_id) fetchWhy(p.bank_txn_id, p.invoice_id);
+                  };
                   return (
                     <React.Fragment key={rowKey}>
                     <tr
-                      onClick={() => hasExplanation && setExpanded(isExpanded ? null : rowKey)}
-                      style={{ cursor: hasExplanation ? "pointer" : "default" }}
+                      onClick={openRow}
+                      style={{ cursor: canExplain ? "pointer" : "default" }}
                     >
                       {/* Payment on the left: it is the thing arriving, and
                           the thing being assigned. Reading order is the
@@ -219,18 +279,36 @@ export default function MatchingPage() {
                         )}
                       </td>
                     </tr>
-                    {isExpanded && p.explanation && p.explanation.length > 0 && (
+                    {isExpanded && canExplain && (
                       <tr>
                         <td colSpan={3} style={{ padding: "0 20px 12px", background: "var(--surface2)" }}>
                           <div style={{ fontSize: 12, fontWeight: 600, color: "var(--gold-dark)", marginBottom: 6, marginTop: 8 }}>
                             Why this match?
                           </div>
-                          <WhyCards
-                            why={p.explanation}
-                            confidence={shownMatchScore(p) ?? p.confidence}
-                            modelP={p.model_p}
-                            keepFields={["amount"]}
-                          />
+                          {inlineWhy ? (
+                            <WhyCards
+                              why={inlineWhy}
+                              confidence={shownMatchScore(p) ?? p.confidence}
+                              modelP={p.model_p}
+                              keepFields={["amount"]}
+                            />
+                          ) : whyFailed[rowKey] === "mismatch" ? (
+                            <div style={{ fontSize: 12, color: "var(--text3)", paddingBottom: 8 }}>
+                              This row cannot be explained: the ledger has changed since the
+                              list was built, so re-running the pairing no longer arrives at
+                              this match. Reload to see the current matches.
+                            </div>
+                          ) : whyFailed[rowKey] ? (
+                            <div style={{ fontSize: 12, color: "var(--text3)", paddingBottom: 8 }}>
+                              The explanation could not be fetched.{" "}
+                              <button
+                                onClick={() => { setWhyFailed((prev) => { const n = { ...prev }; delete n[rowKey]; return n; }); if (p.bank_txn_id) fetchWhy(p.bank_txn_id, p.invoice_id); }}
+                                style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", cursor: "pointer", font: "inherit", textDecoration: "underline" }}
+                              >Try again</button>
+                            </div>
+                          ) : (
+                            <div className="skeleton" style={{ height: 56, marginBottom: 8 }} />
+                          )}
                         </td>
                       </tr>
                     )}

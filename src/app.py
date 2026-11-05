@@ -23,7 +23,7 @@ from src.config import load_config
 from src.customer_roster import load_roster, roster_status
 from src.formfill_service import predict_fields
 from src.invoice_service import predict_batch, compute_metrics
-from src.matching_service import match_all
+from src.matching_service import explain_match, match_all
 from src.rulemining_service import mine_rules
 from src.rule_governance import routing_rules
 from src.anomaly_service import scan_all
@@ -217,7 +217,7 @@ def _warm_top_customers():
 
                 # Deep: matching + anomalies + rules (only for top customers)
                 if deep:
-                    cache.set(page_cache_key("matching", cid), match_all(v2_client, customer_id=cid))
+                    _match_and_cache(cid)
                     cache.set(page_cache_key("anomalies", cid), scan_all(v2_client, customer_id=cid))
                     cache.set(page_cache_key("rules", cid), mine_rules(v2_client, customer_id=cid))
                     print(f"  {cid}: cached (deep)")
@@ -647,19 +647,143 @@ def invoices_pending(customer_id: str = Query(...), page: int = 1, per_page: int
     }
 
 
+def _match_and_cache(customer_id: str, ttl: int = cache.DEFAULT_TTL) -> dict:
+    """Run the matcher, cache the pairs and, separately, how to explain them.
+
+    The explain contexts hold each payment's open ledger as it stood when
+    that payment was ranked. They never reach the client: the page does
+    not render them, and the point of ranking without `$why`
+    (td-20260909115133919692) is to stop shipping bytes nobody opens.
+
+    Both entries get the SAME ttl, or the page could outlive the only
+    record of how its matches were made. `ttl` defaults to the cache's
+    own default because the keep-warm pass wants the long one.
+    """
+    result = match_all(v2_client, customer_id=customer_id, include_explain_contexts=True)
+    cache.set(page_cache_key("matching_ctx", customer_id),
+              result.pop("explain_contexts", {}), ttl=ttl, local_only=True)
+    cache.set(page_cache_key("matching", customer_id), result, ttl=ttl)
+    return result
+
+
 @app.get("/api/matching/pairs")
 def matching_pairs(customer_id: str = Query(...)):
     """Match bank transactions to invoices for a customer."""
     pre = precomputed.load(customer_id, "matching_pairs")
     if pre is not None:
         return pre
-    cache_key = page_cache_key("matching", customer_id)
-    cached = cache.get(cache_key)
+    cached = cache.get(page_cache_key("matching", customer_id))
     if cached:
         return cached
-    result = match_all(v2_client, customer_id=customer_id)
-    cache.set(cache_key, result, ttl=_ttl(300))
-    return result
+    return _match_and_cache(customer_id, ttl=_ttl(300))
+
+
+@app.get("/api/matching/explain")
+def matching_explain(customer_id: str = Query(...), transaction_id: str = Query(...),
+                     invoice_id: str = Query(...)):
+    """Why this invoice? -- for the row the user expanded, and only that row.
+
+    `invoice_id` is the invoice the ROW is showing, and it is required.
+    A page served from a precompute carries its explanations inline and
+    is answered from the page. A live page ships none, and its contexts
+    are process-local; when they are gone the pairing is re-run, which can
+    choose a different invoice than the row if the ledger moved in
+    between. Answering anyway would decompose one invoice's $p under
+    another's heading, so a disagreement is a 409. A wrong invoice_id or an
+    unknown payment is answered from the served page and never recomputes.
+
+    The ranking asks which invoice settles the payment and nothing else.
+    An explanation costs Aito a decomposition for every candidate in the
+    ledger -- 30 of them, to render one -- which was 93% of the pairs
+    payload (74.6 KiB against 5.1 KiB, measured on CUST-0000).
+
+    This re-issues the SAME ranking with `$why` added and reads the chosen
+    invoice's explanation out of it. Not a question about the invoice on
+    its own: `$why` decomposes `$p` within a candidate domain, so a
+    narrower question would explain a number the page never showed.
+    """
+    explain_key = f"{page_cache_key('matching_why', customer_id)}:{transaction_id}"
+    cached = cache.get(explain_key)
+    if cached:
+        if cached.get("invoice_id") != invoice_id:
+            # Not evicted: the entry is right for the row it was made for,
+            # and a visitor's wrong invoice_id must not cost the real row
+            # its cache. A 409 is the whole answer.
+            raise HTTPException(
+                status_code=409,
+                detail=(f"the row shows invoice {invoice_id} but the cached "
+                        f"explanation is for {cached.get('invoice_id')}"),
+            )
+        return cached
+
+    # Settle what can be settled from the page the user is looking at,
+    # before any recompute. A wrong invoice_id or an unknown payment
+    # costs a lookup, not a pairing; a precomputed page already carries
+    # its explanations, so it answers here without touching Aito.
+    page = precomputed.load(customer_id, "matching_pairs") \
+        or cache.get(page_cache_key("matching", customer_id))
+    if page:
+        pair = next((p for p in page.get("pairs", [])
+                     if p.get("bank_txn_id") == transaction_id), None)
+        if pair is None or pair.get("matched_by") != "aito":
+            raise HTTPException(
+                status_code=404,
+                detail=f"no Aito match to explain for {transaction_id!r}",
+            )
+        if pair.get("invoice_id") != invoice_id:
+            raise HTTPException(
+                status_code=409,
+                detail=(f"the row shows invoice {invoice_id} but this payment's "
+                        f"match on the served page is {pair.get('invoice_id')}"),
+            )
+        if pair.get("explanation"):
+            return {"transaction_id": transaction_id, "invoice_id": invoice_id,
+                    "explanation": pair["explanation"]}
+
+    contexts_key = page_cache_key("matching_ctx", customer_id)
+    contexts = cache.get(contexts_key)
+    if contexts is None:
+        # The contexts are process-local, so they are missing after a
+        # restart, on another instance, or once the TTL lapsed under an
+        # open page. Rebuilding is correct, just slower -- and concurrent
+        # asks share one rebuild instead of each running the pairing.
+        with cache.compute_lock(contexts_key):
+            contexts = cache.get(contexts_key)
+            if contexts is None:
+                _match_and_cache(customer_id, ttl=_ttl(300))
+                contexts = cache.get(contexts_key) or {}
+
+    context = contexts.get(transaction_id)
+    if context is None:
+        # Either the payment was matched by its reference, which needs no
+        # prediction, or it is not in this customer's current pairing.
+        raise HTTPException(
+            status_code=404,
+            detail=f"no Aito match to explain for {transaction_id!r}",
+        )
+
+    try:
+        factors = explain_match(
+            v2_client,
+            context["txn"],
+            context["open_invoices"],
+            context["invoice_id"],
+            context.get("ranked_invoice_id"),
+            context.get("model_p", 0.0),
+            expected_invoice_id=invoice_id,
+        )
+    except ValueError as exc:
+        # The pairing and the ranking disagree -- the data moved under a
+        # cached match. Saying so beats explaining the wrong invoice.
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+
+    payload = {
+        "transaction_id": transaction_id,
+        "invoice_id": context["invoice_id"],
+        "explanation": factors,
+    }
+    cache.set(explain_key, payload, ttl=_ttl(300))
+    return payload
 
 
 # ── Rule governance (ADR 0025) ────────────────────────────────────

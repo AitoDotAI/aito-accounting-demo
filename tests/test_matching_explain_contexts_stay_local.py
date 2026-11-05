@@ -1,0 +1,105 @@
+"""The explain contexts are not shared state, and a cold rebuild runs once.
+
+An explain context is the whole open ledger as it stood when each payment
+was ranked. Measured offline on the real shape, that is 27-43 KiB per
+tenant against a 7 KiB pairs payload -- four to six times the page the
+branch exists to slim. Writing it to the shared L2 table on every
+cache.set would put those bytes on the shared instance for every tenant
+the keep-warm pass visits. A lost context costs one rebuild, so it lives
+in this process only.
+
+When it is lost (TTL, restart, another instance), concurrent explain
+requests would each rebuild the pairing; they share one rebuild instead.
+(Adversary pass, 2026-10-31.)
+"""
+
+import os
+import threading
+
+os.environ.setdefault("AITO_SKIP_STARTUP_WARMUP", "1")
+os.environ.setdefault("CACHE_WATCH_SECONDS", "0")
+
+import pytest                                              # noqa: E402
+
+from src import app as app_module                           # noqa: E402
+from src import cache                                       # noqa: E402
+
+TENANT = "CUST-0000"
+TXN = "CUST-0000-TXN-000001"
+
+
+class RecordingAito:
+    """Stands in for the shared instance; remembers what was written to it."""
+
+    def __init__(self):
+        self.written_keys = []
+
+    def _request(self, method, path, json=None):
+        if json and "key" in json:
+            self.written_keys.append(json["key"])
+        return {}
+
+    def search(self, *args, **kwargs):
+        return {"hits": []}
+
+
+@pytest.fixture(autouse=True)
+def _isolated_cache(monkeypatch):
+    monkeypatch.setattr(cache, "_aito", RecordingAito())
+    cache._l1.clear()
+    monkeypatch.setattr(app_module, "_V2", "v2:")
+    yield
+    cache._l1.clear()
+
+
+def _result():
+    return {"pairs": [], "metrics": {}, "explain_contexts": {TXN: {"txn": {}, "open_invoices": []}}}
+
+
+def test_local_only_set_never_reaches_the_shared_table():
+    cache.set("k", {"v": 1}, local_only=True)
+
+    assert cache.get("k") == {"v": 1}
+    assert cache._aito.written_keys == []
+
+
+def test_the_pairs_go_to_the_shared_table_but_their_contexts_do_not(monkeypatch):
+    monkeypatch.setattr(app_module, "match_all", lambda *a, **k: _result())
+
+    app_module._match_and_cache(TENANT)
+
+    assert cache._aito.written_keys == [f"matching:v2:{TENANT}"]
+    assert cache.get(f"matching_ctx:v2:{TENANT}") == {TXN: {"txn": {}, "open_invoices": []}}
+
+
+def test_concurrent_cold_explains_share_one_rebuild(monkeypatch):
+    rebuilds = []
+    release = threading.Event()
+
+    def slow_match_all(*args, **kwargs):
+        rebuilds.append(1)
+        release.wait(timeout=5)
+        return _result()
+
+    monkeypatch.setattr(app_module, "match_all", slow_match_all)
+    monkeypatch.setattr(app_module, "explain_match", lambda *a, **k: [])
+
+    errors = []
+
+    def ask():
+        try:
+            app_module.matching_explain(customer_id=TENANT, transaction_id=TXN,
+                                        invoice_id="INV-1")
+        except Exception as exc:                                   # noqa: BLE001
+            errors.append(exc)
+
+    threads = [threading.Thread(target=ask) for _ in range(4)]
+    for t in threads:
+        t.start()
+    # Let every thread reach the cold path before the rebuild finishes.
+    threading.Event().wait(0.3)
+    release.set()
+    for t in threads:
+        t.join(timeout=10)
+
+    assert len(rebuilds) == 1, f"{len(rebuilds)} rebuilds for 4 concurrent cold explains"
