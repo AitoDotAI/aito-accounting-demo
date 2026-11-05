@@ -326,7 +326,8 @@ def healthz():
     demos so nginx per-demo health proxies work uniformly) and /healthz
     (preserved for any existing pingers).
     """
-    return {"ok": True, "roster_count": len(_load_known_customers())}
+    return {"ok": True, "roster_count": len(_load_known_customers()),
+            "l2": cache.l2_health()}
 
 
 # ── Customer list ─────────────────────────────────────────────────
@@ -377,6 +378,7 @@ def cache_status(customer_id: str = Query(...)):
             precomputed.has(customer_id, "anomalies_scan")
             or cache.get(page_cache_key("anomalies", customer_id)) is not None
         ),
+        "l2": cache.l2_health(with_last_error=False),
     }
 
 

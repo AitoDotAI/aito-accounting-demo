@@ -62,4 +62,5 @@ def test_api_health_reports_whether_the_roster_is_there(roster, monkeypatch, ids
 def test_healthz_carries_the_roster_size(roster, ids):
     roster(ids)
 
-    assert client.get("/healthz").json() == {"ok": True, "roster_count": len(ids)}
+    body = client.get("/healthz").json()
+    assert body["ok"] is True and body["roster_count"] == len(ids)
