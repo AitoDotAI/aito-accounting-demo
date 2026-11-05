@@ -15,8 +15,32 @@ morning (429, inFlightWeight 30 of 32, then out of memory). The two
 `aito-check` checks that use `_evaluate` were therefore not run:
 `check_evaluate_baseline_is_scoped` and
 `check_evaluate_approver_candidates_are_the_customers_own`. 15 of 17 live
-checks passed; that is not the 16/16 the gate asks for, and it is
-recorded here rather than rounded up.
+checks passed on shared; the other two are in the local run below. That is
+not the single 17/17 the gate asks for, and it is recorded here rather
+than rounded up.
+
+**Local run, 2026-11-05 (Antti approved the container).** A throwaway Aito
+v2.11.2 container (`ghcr.io/aitohq/aito:v2.11.2-amd64`, free tier, 4 GB,
+127.0.0.1:19005), removed afterwards. **Run on local v2.11.2 with demo data,
+not shared master.** The free image caps a table at 10,000 rows, so the
+full 128,000-invoice dataset cannot load: it holds a *slice* of 15 tenants
+(CUST-0001, CUST-0100, CUST-0127..0139: 9,875 invoices, 6,176 bank lines,
+557 overrides; customers and corporate_entities whole), built with the
+repo's `data_loader_v2.build` into master. Numbers are therefore not
+comparable to shared's. CUST-0000, the tenant `aito-check` uses, has 16,000
+invoices and cannot load.
+
+- `check_evaluate_approver_candidates_are_the_customers_own`: **pass**
+  (30 cases, 1 ranked candidate, all CUST-0127's own staff; 8.7 s).
+- `check_evaluate_baseline_is_scoped`: **pass, run with `CUSTOMER=CUST-0001`**
+  (accuracy 0.90 vs baseline 0.37 on 30 rows; 17 s), a variant of the
+  check, not the check as written.
+- Negative control: with `scope_candidates_by` removed, the approver check
+  **fails**: "the ranking offers another tenant's staff to CUST-0127:
+  ['CUST-0001-EMP-0000', ...]". The check can see the leak.
+
+So all 17 checks have now passed somewhere: 15 on shared master, 2 on the
+local slice. That is not one 17/17 run against one target.
 
 **Not done:** browser/Playwright steps (screenshots, devtools network).
 Rows that need them are left unticked.
@@ -32,21 +56,41 @@ Rows that need them are left unticked.
 | `gl_code`, `vendor_name`, `clicked` send no such filter | yes |
 | empty `customer_id` | 400, no evaluate call |
 | `predict=iban`, `domain=nope`, `predict=approver.customer_id` | refused; no evaluate call |
-| `limit` 5000 / 0 / -1 | 400, no Aito call (added in this pass, e423f2b) |
+| `limit` 5000 / 0 / -1 | 400, no Aito call (added in this pass, e423f2b); also 400 through the running app on the local Aito |
 
 ## Live (read-only, shared v2 master)
 
 - [x] unknown customer `CUST-9999` is a 400 with the roster loaded, and no Aito call
 - [x] `aito-check`: 15 of 17 pass; the two `_evaluate` checks not run (see above)
-- [ ] `_evaluate` body per target for CUST-0127 / CUST-0100 (needs `_evaluate`)
-- [ ] every `cases[].predicted` belongs to the tenant, ~10 tenants (needs `_evaluate`)
-- [ ] **invoice_id training scope** (the plan's open question): `trainSamples`,
-      accuracy, `meanRank` with vs without the filter. **Not measured.** The
-      unscoped `_evaluate` at limit 200 saturated shared; the measurement
-      moves to a local Aito, pending Antti's yes. Until then the question
-      stays open: a payment with no invoice has no linked row to satisfy
-      `invoice_id.customer_id`, so it is presumably dropped from training
-      while `testSource` still includes it.
+- [x] `_evaluate` for approver, CUST-0127 and CUST-0100, limit 5 and 10, with
+      and without the filter (local v2.11.2 slice, not shared master):
+
+  | tenant | limit | filter | accuracy % | base % | meanRank | trainSamples | foreign top-1 | wall |
+  |---|---|---|---|---|---|---|---|---|
+  | 0127 | 5 | with | 100 | 100 | 0.0 | 9870 | 0 | 0.6 s |
+  | 0127 | 5 | without | 100 | 100 | 0.0 | 9870 | 0 | 0.6 s |
+  | 0127 | 10 | with | 100 | 100 | 0.0 | 9865 | 0 | 0.7 s |
+  | 0127 | 10 | without | 100 | 100 | 0.0 | 9865 | 0 | 0.9 s |
+  | 0100 | 5 | with | 100 | 100 | 0.0 | 9870 | 0 | 0.7 s |
+  | 0100 | 5 | without | 100 | 100 | 0.0 | 9870 | 0 | 0.8 s |
+  | 0100 | 10 | with | 80 | 80 | 0.2 | 9865 | 0 | 0.7 s |
+  | 0100 | 10 | without | 90 | 80 | 0.1 | 9865 | 0 | 0.8 s |
+
+  Nothing came near the 30 s stop. **The case list cannot tell the two apart**:
+  the tenant's own staff win every top-1 either way, and `trainSamples` is the
+  same with and without the filter (the filter shapes the candidate ranking,
+  not the training set). The leak shows only in the ranking behind the case,
+  which is what the aito-check asserts (see the negative control above).
+  CUST-0100 at limit 10 differs by one case (80% vs 90%), a one-case sample.
+- [ ] every `cases[].predicted` belongs to the tenant, ~10 tenants: **2 tenants
+      only** (0 foreign in 60 cases above).
+- [x] **invoice_id / article_id training scope: withdrawn, not measured.** Each
+      invoice has exactly one bank line, so a held-out line's invoice has no
+      training evidence and `meanRank` equals N whatever the filter does; the
+      number cannot pass or fail. It also costs 85-106 s even at limit 2-20
+      and scales with the candidate count (CPO/perf, td-20261031125252403569).
+      The filter's effect on training for linked targets stays unmeasured, and
+      this report makes no quality claim about it.
 - [ ] tenant switch leaves no stale foreign candidate (browser)
 
 ## Findings
