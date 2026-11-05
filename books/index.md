@@ -15,6 +15,8 @@
      * [test_04_match.py::test_predict_invoice_from_bank_txn](book/test_04_match.py::test_predict_invoice_from_bank_txn.md)
      * [test_04_match.py::test_predict_vendor_name](book/test_04_match.py::test_predict_vendor_name.md)
      * [test_05_evaluate.py::test_evaluate_approver](book/test_05_evaluate.py::test_evaluate_approver.md)
+     * [test_05_evaluate.py::test_evaluate_approver_candidates_are_the_tenants_own](book/test_05_evaluate.py::test_evaluate_approver_candidates_are_the_tenants_own.md)
+     * [test_05_evaluate.py::test_evaluate_approver_what_the_tenant_filter_costs](book/test_05_evaluate.py::test_evaluate_approver_what_the_tenant_filter_costs.md)
      * [test_05_evaluate.py::test_evaluate_gl_code](book/test_05_evaluate.py::test_evaluate_gl_code.md)
      * [test_06_template_and_log.py::test_mine_rules_for_customer](book/test_06_template_and_log.py::test_mine_rules_for_customer.md)
      * [test_06_template_and_log.py::test_predict_template_for_recurring_vendor](book/test_06_template_and_log.py::test_predict_template_for_recurring_vendor.md)

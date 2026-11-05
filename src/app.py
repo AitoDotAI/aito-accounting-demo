@@ -1031,7 +1031,10 @@ def quality_audit(customer_id: str = Query(...), limit: int = 25):
 @app.get("/api/quality/evaluations")
 def quality_evaluations(customer_id: str = Query(...)):
     """Run Aito _evaluate on every prediction task (parallel)."""
-    cache_key = f"evaluations:{_V2}{customer_id}"
+    if not customer_id:
+        raise HTTPException(status_code=400, detail="customer_id is required")
+    # `scoped`: see quality_evaluate -- pre-fix entries are never read.
+    cache_key = f"evaluations:scoped:{_V2}{customer_id}"
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -1068,8 +1071,21 @@ def quality_evaluate(
 
     Cached 10 min per (customer, domain, predict, inputs, limit).
     """
-    fields = sorted([f.strip() for f in input_fields.split(",") if f.strip()])
-    cache_key = f"eval:{_V2}{customer_id}:{domain}:{predict}:{','.join(fields)}:{limit}"
+    if not customer_id:
+        # Without a customer there is nothing to scope a linked target's
+        # candidates to -- for `approver`, every tenant's staff would
+        # compete (td-20261030202058894219, as in formfill/predict).
+        raise HTTPException(status_code=400, detail="customer_id is required")
+    from src.evaluation_service import refuse_unusable_request
+    fields = sorted({f.strip() for f in input_fields.split(",") if f.strip()})
+    try:
+        refuse_unusable_request(domain, predict, limit, fields)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    # `scoped` marks entries written after candidates were confined to the
+    # tenant; entries from before the fix sit under the old key and are
+    # never read, rather than lingering for their 10-minute TTL.
+    cache_key = f"eval:scoped:{_V2}{customer_id}:{domain}:{predict}:{','.join(fields)}:{limit}"
     cached = cache.get(cache_key)
     if cached:
         return cached

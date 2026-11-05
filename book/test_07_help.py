@@ -46,7 +46,7 @@ def test_help_schema_exists(t: bt.TestCaseRun):
     ]:
         if table not in schema:
             t.iln(f"  {table}: NOT CREATED — run ./do reset-data")
-            t.assertln(f"{table} exists", False)
+            t.assertln(False, f"{table} is missing - run ./do reset-data")
             continue
 
         cols = sorted(schema[table]["columns"].keys())
@@ -57,7 +57,7 @@ def test_help_schema_exists(t: bt.TestCaseRun):
         present = set(cols)
         missing = expected - present
         t.tln("")
-        t.assertln(f"{table} has all expected columns", not missing)
+        t.assertln(not missing, f"{table} is missing columns: {sorted(missing)}")
 
 
 @bt.snapshot_httpx()
@@ -83,10 +83,10 @@ def test_help_search_top_articles_for_invoices_page(t: bt.TestCaseRun):
         t.iln(f"  [{a['category']:8}] [{scope:14}] {a['title']}")
 
     t.tln("")
-    t.assertln("returns at least 1 article", len(articles) >= 1)
+    t.assertln(len(articles) >= 1, "returns at least 1 article")
     # No other-customer leakage
     other = [a for a in articles if a["customer_id"] not in ("*", "CUST-0000")]
-    t.assertln("no other-customer internal articles leak through", not other)
+    t.assertln(not other, "no other-customer internal articles leak through")
 
 
 @bt.snapshot_httpx()
@@ -143,10 +143,10 @@ def test_help_evaluate_click_prediction(t: bt.TestCaseRun):
 
     t.tln("")
     # Sanity bounds — values should be in valid ranges, not specific accuracies
-    t.assertln("accuracy ∈ [0, 1]", 0 <= accuracy <= 1)
-    t.assertln("baseAccuracy ∈ [0, 1]", 0 <= base <= 1)
-    t.assertln("test samples ≥ 50", samples >= 50)
-    t.assertln("geomMeanP > 0.3 (predictions aren't random)", geom_p > 0.3)
+    t.assertln(0 <= accuracy <= 1, "accuracy ∈ [0, 1]")
+    t.assertln(0 <= base <= 1, "baseAccuracy ∈ [0, 1]")
+    t.assertln(samples >= 50, "test samples ≥ 50")
+    t.assertln(geom_p > 0.3, "geomMeanP > 0.3 (predictions aren't random)")
 
 
 @bt.snapshot_httpx()
@@ -198,9 +198,9 @@ def test_help_related_articles_query(t: bt.TestCaseRun):
         t.iln(f"  p={a.get('$p', 0):.3f}  [{a.get('category','-'):8}] [{scope:14}] {a.get('title','')[:60]}")
 
     t.tln("")
-    t.assertln("returns at least 1 candidate", len(articles) >= 1)
+    t.assertln(len(articles) >= 1, "returns at least 1 candidate")
     other = [a for a in articles if a["customer_id"] not in ("*", "CUST-0000")]
-    t.assertln("eligibility filter holds: no other-customer leakage", not other)
+    t.assertln(not other, "eligibility filter holds: no other-customer leakage")
 
 
 @bt.snapshot_httpx()
@@ -230,7 +230,7 @@ def test_help_evaluate_on_unseen_customer(t: bt.TestCaseRun):
     if imp_count < 20:
         t.iln(f"  Only {imp_count} impressions — cold start by design.")
         t.iln(f"  Real production: this customer's CTR ranking falls back to global.")
-        t.assertln("documented cold-start behavior", True)
+        t.assertln(True, "documented cold-start behavior")
         return
 
     result = c.evaluate({

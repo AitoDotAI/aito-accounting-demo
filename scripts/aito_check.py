@@ -513,6 +513,55 @@ def check_formfill_approver_is_the_customers_own(client) -> str:
     return f"{len(approver['alternatives'])} approver alternative(s), all {tenant}'s own staff, filter not in the explanation"
 
 
+def check_evaluate_approver_candidates_are_the_customers_own(client) -> str:
+    """The evaluations pages rank only the customer's own staff as approver.
+
+    The remainder of td-20260901082623647538, carried by
+    td-20261030202058894219: Form Fill was filtered, the two evaluation
+    surfaces were not. `_evaluate` shows one candidate per case (the top
+    one), and the tenant's own employee won every rank 1 that was probed,
+    so this asserts on the ranking behind the case as well as on the case
+    — the leak was one rank away from the screen, not on it.
+    """
+    from src.evaluation_service import run_evaluation
+
+    tenant = "CUST-0127"   # the worst case: a single approver, 125 invoices
+    roster = {e["employee_id"] for e in
+              client.search("employees", {"customer_id": tenant}, limit=200)["hits"]}
+    require(roster, f"no employees for {tenant}")
+
+    result = run_evaluation(client, tenant, "invoices", "approver",
+                            ["vendor", "amount", "category"], limit=30)
+    require("error" not in result, f"evaluation failed: {result.get('error')}")
+    where = result["meta"]["query"]["evaluate"]["where"]
+
+    # The page prints the top candidate only, so assert on the ranking it
+    # came out of first -- that is where the leak was. Resolve the $get
+    # bindings against one real invoice and send the page's own `where`.
+    invoices = client.search("invoices", {"customer_id": tenant}, limit=1)["hits"]
+    require(invoices, f"no invoices for {tenant}")
+    probe = {k: (invoices[0].get(k) if isinstance(v, dict) and "$get" in v else v)
+             for k, v in where.items()}
+    ranked = [h["feature"] for h in client.predict("invoices", probe, "approver", limit=50)["hits"]]
+    require(ranked, "the approver predict ranked nothing")
+    foreign = [v for v in ranked if v not in roster]
+    require(not foreign,
+            f"the ranking offers another tenant's staff to {tenant}: {foreign[:3]}")
+
+    shown = [c["predicted"] for c in result["cases"]]
+    require(shown, "the evaluation returned no cases")
+    foreign_shown = [v for v in shown if v not in roster]
+    require(not foreign_shown,
+            f"a case shows another tenant's staff for {tenant}: {foreign_shown[:3]}")
+
+    # And the filter is in the query, so a future refactor that keeps the
+    # ranking clean only by luck still fails here.
+    require(where.get("approver.customer_id") == tenant,
+            f"the evaluate where does not filter the linked row: {sorted(where)}")
+    return (f"{len(shown)} case(s) and {len(ranked)} ranked candidate(s), "
+            f"all {tenant}'s own staff")
+
+
 CHECKS: list[Callable[[object], str]] = [
     check_schema_has_demo_tables,
     check_search_returns_rows,
@@ -529,6 +578,7 @@ CHECKS: list[Callable[[object], str]] = [
     check_override_patterns_are_per_pattern,
     check_help_is_tenant_scoped,
     check_formfill_approver_is_the_customers_own,
+    check_evaluate_approver_candidates_are_the_customers_own,
     check_help_related_carry_click_evidence,
 ]
 

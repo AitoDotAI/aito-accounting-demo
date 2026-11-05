@@ -24,7 +24,14 @@ DOMAINS: dict[str, dict] = {
         "id_field": "invoice_id",
         "predict_targets": [
             {"field": "gl_code", "label": "GL code"},
-            {"field": "approver", "label": "Approver"},
+            # `approver` holds an employee_id and links to `employees`, so
+            # `customer_id` in the where is evidence about the invoice, not a
+            # bound on which employees Aito may rank. Only a filter on the
+            # linked row is one. Form Fill learned this in PR #58
+            # (td-20260901082623647538); this surface is
+            # td-20261030202058894219.
+            {"field": "approver", "label": "Approver",
+             "scope_candidates_by": "approver.customer_id"},
             {"field": "cost_centre", "label": "Cost centre"},
             {"field": "category", "label": "Category"},
             {"field": "vat_pct", "label": "VAT rate"},
@@ -86,6 +93,18 @@ DOMAINS: dict[str, dict] = {
         "id_field": "impression_id",
         "predict_targets": [
             {"field": "clicked", "label": "Click prediction"},
+            # Links to help_articles.article_id, so the candidates span every
+            # tenant's internal articles. NOT scoped here, deliberately: the
+            # set the product ranks is {"$or": ["*", tenant]} (help_service),
+            # because app and legal articles carry customer_id "*", and
+            # `_evaluate` on a collection accepts only literal where values
+            # (measured on 2.11.2 and 2.12.0: "supports literal test/where
+            # values"). An exact match on the tenant is expressible but drops
+            # every global article, so the true answer of those impressions
+            # falls outside the candidates and the accuracy collapses
+            # (local slice, CUST-0001: 5% scoped to the tenant vs 10%).
+            # Open: another tenant's internal article id can still be printed
+            # in `cases[].predicted`.
             {"field": "article_id", "label": "Article id"},
         ],
         "input_fields": [
@@ -100,6 +119,30 @@ DOMAINS: dict[str, dict] = {
         ],
     },
 }
+
+
+# The Quality page's slider stops here ("Capped at 300 to keep latency
+# bounded"); the server enforces it too, because the URL does not.
+MAX_LIMIT = 300
+
+
+def refuse_unusable_request(
+    domain: str, predict: str, limit: int, input_fields: list[str]
+) -> None:
+    """Raise ValueError for a request that must never reach Aito."""
+    if not 1 <= limit <= MAX_LIMIT:
+        raise ValueError(f"limit must be between 1 and {MAX_LIMIT}, got {limit}")
+    if domain not in DOMAINS:
+        raise ValueError(f"Unknown domain: {domain}")
+    if not any(t["field"] == predict for t in DOMAINS[domain]["predict_targets"]):
+        raise ValueError(f"Unknown predict target for {domain}: {predict}")
+    offered = {f["field"] for f in DOMAINS[domain]["input_fields"]}
+    unknown = sorted(set(input_fields) - offered)
+    if unknown:
+        raise ValueError(f"Unknown input field for {domain}: {', '.join(unknown)}")
+    if predict in input_fields:
+        # A $get on the answer scores ~100% by reading the label.
+        raise ValueError(f"{predict} cannot be its own input")
 
 
 def get_domains_catalog() -> dict:
@@ -139,15 +182,36 @@ def run_evaluation(
               predicted, $p, correct}
         meta:  {operator, query} so the frontend can display it
     """
+    if not 1 <= limit <= MAX_LIMIT:
+        raise ValueError(f"limit must be between 1 and {MAX_LIMIT}, got {limit}")
     if domain not in DOMAINS:
         return {"error": f"Unknown domain: {domain}"}
     cfg = DOMAINS[domain]
     table = cfg["table"]
 
+    # `predict` arrives as a query parameter (src/app.py). Candidate
+    # scoping is declared per target below, so a target nobody declared
+    # cannot be scoped -- it must not reach Aito unscoped either.
+    target = next((t for t in cfg["predict_targets"] if t["field"] == predict), None)
+    if target is None:
+        return {"error": f"Unknown predict target for {domain}: {predict}"}
+
     # Build the where clause: customer_id + each $get-bound input field
     where: dict = {"customer_id": customer_id}
     for f in input_fields:
         where[f] = {"$get": f}
+
+    # A target whose values live in a linked, tenant-scoped table needs the
+    # filter on that table: see `scope_candidates_by` above.
+    scope_candidates_by = target.get("scope_candidates_by")
+    if scope_candidates_by:
+        if not customer_id:
+            raise ValueError(
+                f"Evaluating {predict} needs a customer_id: without one there is "
+                "nothing to limit the candidates to, and every tenant's rows "
+                "would compete."
+            )
+        where[scope_candidates_by] = customer_id
 
     query = {
         "testSource": {

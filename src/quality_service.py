@@ -543,7 +543,12 @@ def compute_evaluations_matrix(client: AitoClient, customer_id: str) -> dict:
             "task": "Approver",
             "from_table": "invoices",
             "predict": "approver",
-            "where_eval": {**cid, "vendor": {"$get": "vendor"},
+            # `approver` links to `employees`, so `customer_id` alone leaves
+            # every tenant's staff in the ranking. The accuracy this page
+            # publishes has to be measured on the candidate set the product
+            # actually uses (td-20261030202058894219).
+            "where_eval": {**cid, "approver.customer_id": customer_id,
+                           "vendor": {"$get": "vendor"},
                            "amount": {"$get": "amount"},
                            "category": {"$get": "category"}},
             "test_source": {"from": "invoices", "where": cid, "limit": 50},

@@ -23,8 +23,8 @@ def test_table_counts(t: bt.TestCaseRun):
         t.iln(f"  {table:25} {r['total']:>8,} records")
 
     t.tln("")
-    t.assertln("invoices table has records", c.search("invoices", {}, limit=0)["total"] > 0)
-    t.assertln("customers table has records", c.search("customers", {}, limit=0)["total"] > 0)
+    t.assertln(c.search("invoices", {}, limit=0)["total"] > 0, "invoices table has records")
+    t.assertln(c.search("customers", {}, limit=0)["total"] > 0, "customers table has records")
 
 
 @bt.snapshot_httpx()
@@ -86,5 +86,4 @@ def test_schema_links(t: bt.TestCaseRun):
                 t.iln(f"    {link}")
 
     t.tln("")
-    t.assertln("invoices.customer_id links to customers",
-               "link" in schema["invoices"]["columns"]["customer_id"])
+    t.assertln("link" in schema["invoices"]["columns"]["customer_id"], "invoices.customer_id links to customers")
