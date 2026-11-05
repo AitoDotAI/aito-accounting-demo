@@ -11,6 +11,7 @@ that serves predictions also persists the prediction cache.
 """
 
 import json
+import sys
 import threading
 import time
 from typing import Any
@@ -19,6 +20,34 @@ from src.aito_client import AitoClient, AitoError
 
 _l1: dict[str, tuple[float, Any]] = {}
 _aito: AitoClient | None = None
+
+# L2 is best-effort: a failure falls back to L1 and the caller never knows.
+# So that an operator can tell a broken shared table from a working one, the
+# failures are counted and /healthz and /api/cache/status report them.
+_l2_failures = {"writes": 0, "deletes": 0, "reads": 0}
+_l2_last_error: str | None = None
+
+
+def _l2_failed(kind: str, exc: Exception) -> None:
+    global _l2_last_error
+    _l2_failures[kind] += 1
+    _l2_last_error = f"{kind[:-1]} failed: {exc}"
+    if _l2_failures[kind] == 1:
+        # Once per kind: a table that rejects everything would otherwise bury
+        # the log, and the counters carry the rest.
+        print(f"cache: first failed L2 {kind[:-1]} ({exc}); further failures are "
+              f"counted in /healthz", file=sys.stderr)
+
+
+def l2_health() -> dict:
+    """What the shared L2 table has been doing, for /healthz."""
+    return {
+        "configured": _aito is not None,
+        "failed_writes": _l2_failures["writes"],
+        "failed_deletes": _l2_failures["deletes"],
+        "failed_reads": _l2_failures["reads"],
+        "last_error": _l2_last_error,
+    }
 
 # Per-key compute locks: when one request misses both L1 and L2 and
 # starts computing, concurrent requests for the same key block on the
@@ -98,7 +127,8 @@ def get(key: str) -> Any | None:
         remaining = max(1, row["ttl"] - age)
         _l1[key] = (time.monotonic() + remaining, value)
         return value
-    except (AitoError, KeyError, json.JSONDecodeError):
+    except (AitoError, KeyError, json.JSONDecodeError) as exc:
+        _l2_failed("reads", exc)
         return None
 
 
@@ -122,16 +152,16 @@ def set(key: str, value: Any, ttl: int = DEFAULT_TTL, local_only: bool = False) 
         # to main and it ships in the next Aito deploy.
         try:
             _aito._request("POST", "/data/_delete", json={"from": CACHE_TABLE, "where": {"key": key}})
-        except AitoError:
-            pass
+        except AitoError as exc:
+            _l2_failed("deletes", exc)
         _aito._request("POST", f"/data/{CACHE_TABLE}", json={
             "key": key,
             "value": json.dumps(value, ensure_ascii=False),
             "created_at": int(time.time()),
             "ttl": ttl,
         })
-    except (AitoError, TypeError):
-        pass
+    except (AitoError, TypeError) as exc:
+        _l2_failed("writes", exc)
 
 
 def delete(key: str) -> None:
@@ -142,10 +172,10 @@ def delete(key: str) -> None:
     try:
         _aito._request("POST", "/data/_delete",
                        json={"from": CACHE_TABLE, "where": {"key": key}})
-    except AitoError:
+    except AitoError as exc:
         # Best-effort like set(): an entry that survives in L2 still
-        # expires on its TTL.
-        pass
+        # expires on its TTL. Counted, so a broken L2 is visible.
+        _l2_failed("deletes", exc)
 
 
 def drop_local() -> int:
