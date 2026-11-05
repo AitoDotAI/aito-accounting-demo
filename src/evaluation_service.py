@@ -73,11 +73,7 @@ DOMAINS: dict[str, dict] = {
         "id_field": "transaction_id",
         "predict_targets": [
             {"field": "vendor_name", "label": "Vendor name"},
-            # Links to invoices.invoice_id, which carries customer_id:
-            # without the filter the candidates are every tenant's
-            # invoices, and `cases[].predicted` prints the id it picked.
-            {"field": "invoice_id", "label": "Linked invoice",
-             "scope_candidates_by": "invoice_id.customer_id"},
+            {"field": "invoice_id", "label": "Linked invoice"},
         ],
         "input_fields": [
             {"field": "description", "label": "Bank description", "default": True},

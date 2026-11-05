@@ -107,29 +107,12 @@ def test_an_unknown_predict_target_is_refused_rather_than_sent_to_aito():
     assert client.bodies == []
 
 
-# ── The other two linked targets ────────────────────────────────────
+# ── Linked targets in the other domains ─────────────────────────────
 #
-# `approver` was the one the P1 named, so it was the one that got the
-# filter. It is not the only target whose values live in a linked,
-# tenant-scoped table: the matching domain predicts `invoice_id`
-# (bank_transactions.invoice_id -> invoices.invoice_id) and the help
-# domain predicts `article_id` (help_impressions.article_id ->
-# help_articles.article_id). Both linked tables carry customer_id, so
-# both candidate sets span all 255 tenants without a filter.
-#
-# This is worse than the approver case on one axis and better on
-# another. Worse: `cases[].predicted` prints the predicted id verbatim,
-# and an invoice_id or article_id belonging to another tenant is a
-# recognisable foreign identifier, not a name that happens to lose.
-# Better: the quality matrix predicts `vendor_name` and `clicked` for
-# these domains, not the ids, so only the evaluation surface is exposed.
-
-
-def test_the_linked_invoice_target_ranks_only_the_customers_own_invoices():
-    client = RecordingClient()
-    run_evaluation(client, TENANT, "matching", "invoice_id",
-                   ["description", "amount"], limit=50)
-    assert client.where_for("invoice_id")["invoice_id.customer_id"] == TENANT
+# `approver` was the one the P1 named. The help domain's `article_id` and
+# the matching domain's `invoice_id` also link to tenant-scoped tables.
+# `invoice_id` is scoped in its own change (it moves a shown number); the
+# article target cannot be scoped correctly yet, as the next test says.
 
 
 def test_the_article_target_is_not_scoped_to_the_tenant_because_that_drops_global_articles():
@@ -153,21 +136,3 @@ def test_the_unlinked_targets_in_those_domains_keep_no_filter():
     run_evaluation(client, TENANT, "help", "clicked", ["page"], limit=50)
     assert "invoice_id.customer_id" not in client.where_for("vendor_name")
     assert "article_id.customer_id" not in client.where_for("clicked")
-
-
-@pytest.mark.parametrize("domain,predict,inputs", [
-    ("matching", "invoice_id", ["description", "amount"]),
-])
-def test_a_scoped_linked_target_is_never_evaluated_without_a_customer(domain, predict, inputs):
-    with pytest.raises(ValueError, match="needs a customer_id"):
-        run_evaluation(RecordingClient(), "", domain, predict, inputs, limit=50)
-
-
-# `bank_transactions.invoice_id` is nullable (src/data_loader.py:118), and
-# `testSource` still includes unmatched payments. Measured on a local
-# Aito 2.12.0 with a 15-tenant slice (docs/verification/evaluation-approver-
-# scope.md): `trainSamples` is the same with and without the filter, so the
-# filter does not remove those rows from training; accuracy is 0% both ways
-# (each invoice has one bank line, so a held-out line's invoice has no
-# training evidence) and `meanRank` is what moves (e.g. 7418 -> 33 for
-# CUST-0127). That is a shown number changing, which the report flags.
