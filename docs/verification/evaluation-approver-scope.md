@@ -59,8 +59,8 @@ Rows that need them are left unticked.
 |---|---|
 | `./do test` | pass |
 | `approver` sends `approver.customer_id` in the evaluate `where` | yes |
-| matching `invoice_id` sends `invoice_id.customer_id` | yes |
-| help `article_id` sends `article_id.customer_id` | yes |
+| matching `invoice_id` | **split out** to `fix/evaluation-invoice-id-scope` (its `meanRank` changes) |
+| help `article_id` sends no `article_id.customer_id` | yes, on purpose (see below) |
 | `gl_code`, `vendor_name`, `clicked` send no such filter | yes |
 | empty `customer_id` | 400, no evaluate call |
 | `predict=iban`, `domain=nope`, `predict=approver.customer_id` | refused; no evaluate call |
@@ -92,25 +92,10 @@ Rows that need them are left unticked.
   CUST-0100 at limit 10 differs by one case (80% vs 90%), a one-case sample.
 - [ ] every `cases[].predicted` belongs to the tenant, ~10 tenants: **2 tenants
       only** (0 foreign in 60 cases above).
-- [x] **invoice_id: measured before and after** (matching, `description,amount`,
-      limit 10, local Aito 2.12.0 slice, not shared master):
-
-  | tenant | candidates | accuracy % | meanRank | trainSamples | wall |
-  |---|---|---|---|---|---|
-  | 0127 | tenant's invoices | 0.0 | 33.3 | 6166 | 2.5 s |
-  | 0127 | all tenants (old) | 0.0 | 7418.4 | 6166 | 4.8 s |
-  | 0001 | tenant's invoices | 0.0 | 4063.5 | 6166 | 4.4 s |
-  | 0001 | all tenants (old) | 0.0 | 4978.0 | 6166 | 3.9 s |
-
-  Settles the plan's question: `trainSamples` is identical, so the linked-row
-  filter does **not** drop null-`invoice_id` payments from training. Accuracy is
-  0% both ways, because each invoice has one bank line and a held-out line's
-  invoice has no training evidence (as perf measured, td-20261031125252403569;
-  an unscoped run here took seconds, but on the full dataset it is minutes).
-  **`meanRank` is what changes, and it is a number the Quality page shows:**
-  that is a published-number change, Antti's to accept. It is the more honest
-  number (a rank among the tenant's invoices, not among 128,000), but the
-  metric itself cannot pass or fail, so no quality claim rests on it.
+- [x] **invoice_id: split out of this change** (CPO review of #62). Its scope moves
+      a shown number (`meanRank`, CUST-0127 7418 -> 33; accuracy 0% either way;
+      `trainSamples` unchanged), so it is in `fix/evaluation-invoice-id-scope`
+      with its own report and the before/after table, for Antti.
 - [x] **article_id: scoping withdrawn from this PR (CPO review of #62).** The
       first version scoped it to the tenant exactly, which drops the 20 global
       (`customer_id = "*"`) articles from the candidates. Measured on the slice,
