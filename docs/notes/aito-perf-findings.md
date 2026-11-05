@@ -262,7 +262,7 @@ Nothing — strict typing is the right call. Just noting it.
 
 ---
 
-## 4. `httpx.request(...)` per call repeats TLS handshake every request
+## 5. `httpx.request(...)` per call repeats TLS handshake every request
 
 ### Symptom
 
@@ -378,6 +378,11 @@ cold-load cost. Anything served from `data/precomputed/` is sub-30 ms.
 ---
 
 ## 8. Aito's own response time is the variance, and it is wide (Oct 2026)
+
+> **Provenance.** The numbers in this section come from probe runs whose
+> scripts and raw logs were not committed. Read them as **unlogged**
+> observations: the shape (wide variance, no app-side 3x) is the finding, the
+> individual medians are not reproducible from the repo.
 
 ### The claim under test
 
@@ -538,11 +543,11 @@ All six pairs where limit 2 ran first came out positive and all six
 where limit 4 ran first came out negative: the *second* arm was faster
 every time, by 100–235 ms, whichever limit it was. That order effect is
 bigger than the effect under test, so an unalternated run of this
-comparison would "prove" whichever limit you scheduled second. (Note it
-contradicts the repeat-gap result for `$why` ranking queries, which
-found no second-ask advantage at all. Warm-repeat behaviour is not
-uniform across query classes; do not carry one class's result to
-another.)
+comparison would "prove" whichever limit you scheduled second. (Note the repeat-gap table above shows a lower median
+second ask for `$why` ranking queries, 749 against 1001 ms, but inside a
+spread of 444-3514 ms, so it is not a demonstrable advantage there, while
+here the second arm won every time. Warm-repeat behaviour is not uniform
+across query classes; do not carry one class's result to another.)
 
 A control worth keeping, because without it the null above is
 unreadable: the probe patches the module-global semaphore, so it must be

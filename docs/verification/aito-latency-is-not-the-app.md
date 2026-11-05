@@ -1,7 +1,7 @@
 # Verification — Aito latency is not the app
 
-Branch `docs/aito-latency-is-not-the-app`. As a merge unit it carries
-branches 1-4; its own commits are three documents.
+Branch `docs/aito-latency-is-not-the-app`. Its own commits are three
+documents; the code it once travelled with (stacks 1-4) was merged separately.
 
 **Verified by:** a session that did not write the branch (the repo rule
 asks for an independent adversary). Plan followed as a floor:
@@ -59,7 +59,7 @@ Rows that need them are left unticked.
 | Criterion | Result |
 |---|---|
 | its own commits change only docs | yes |
-| the claims in the findings document are reproducible | **could not check**: the plan's quiet-hours medians do not reproduce in daylight, by design, and `_evaluate` is off limits on shared |
+| the claims in the findings document are reproducible | **could not check**, and §8's numbers are labelled "unlogged" in the document (no probe script or raw log was committed): the plan's quiet-hours medians do not reproduce in daylight, by design, and `_evaluate` is off limits on shared |
 
 ## Findings
 
