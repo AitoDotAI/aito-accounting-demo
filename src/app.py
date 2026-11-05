@@ -378,7 +378,7 @@ def cache_status(customer_id: str = Query(...)):
             precomputed.has(customer_id, "anomalies_scan")
             or cache.get(page_cache_key("anomalies", customer_id)) is not None
         ),
-        "l2": cache.l2_health(),
+        "l2": cache.l2_health(with_last_error=False),
     }
 
 
