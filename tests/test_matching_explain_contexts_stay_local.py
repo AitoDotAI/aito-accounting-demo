@@ -206,3 +206,27 @@ def test_the_lock_is_per_tenant_not_global(monkeypatch):
         t.join(timeout=10)
 
     assert [kind for kind, _ in outcomes] == ["ok", "ok"], outcomes
+
+
+def test_an_arrival_after_a_failure_computes_afresh_and_can_succeed(monkeypatch):
+    # A transient failure must not turn into a 503 window for everyone who
+    # arrives later: only the requests that were WAITING on the failed attempt
+    # share its error. On main a visitor 5 s after the failure computes and
+    # may succeed, and still must.
+    attempts = []
+
+    def flaky(*args, **kwargs):
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise RuntimeError("Aito unreachable")
+        return _result()
+
+    monkeypatch.setattr(app_module.precomputed, "load", lambda cid, name: None)
+    monkeypatch.setattr(app_module, "match_all", flaky)
+
+    with pytest.raises(RuntimeError):
+        app_module.matching_pairs(customer_id=TENANT)
+    second = app_module.matching_pairs(customer_id=TENANT)
+
+    assert len(attempts) == 2, "the later arrival did not compute"
+    assert second["pairs"] == []   # the success payload, not a remembered error

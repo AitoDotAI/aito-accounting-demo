@@ -10,6 +10,7 @@ Form Fill calls Aito live. Other views can use pre-computed data
 
 import json
 import os
+import threading
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request
@@ -670,9 +671,12 @@ def matching_pairs(customer_id: str = Query(...)):
 # instance; without a bound the queue would hold a threadpool worker per
 # waiter and starve every other tenant.
 PAIRING_WAIT_SECONDS = 10.0
-# How long a failed pairing is remembered, so waiters get its error at once
-# instead of each re-running it in turn.
-PAIRING_FAILURE_SECONDS = 30
+
+# Per tenant: which attempt is running and how the last one failed. A failure
+# is shared only with the requests that were WAITING on that attempt; anyone
+# arriving after it finished computes afresh, as they would without the lock.
+_pairing_attempts: dict[str, dict] = {}
+_pairing_mutex = threading.Lock()
 
 
 def _pair_once(customer_id: str, cache_key: str) -> dict:
@@ -682,27 +686,38 @@ def _pair_once(customer_id: str, cache_key: str) -> dict:
     /api/matching/explain's rebuild or the keep-warm pass from running
     match_all alongside, which take their own locks.
     """
-    failed_key = page_cache_key("matching_failed", customer_id)
+    with _pairing_mutex:
+        attempt = _pairing_attempts.setdefault(
+            cache_key, {"number": 0, "running": False, "failure": None})
+        waiting_on = attempt["number"] if attempt["running"] else None
     lock = cache.compute_lock(cache_key)
     held = lock.acquire(timeout=PAIRING_WAIT_SECONDS)
+    my_number = None
     try:
         if held:
             cached = cache.get(cache_key)
             if cached:
                 return cached
-            failure = cache.get(failed_key)
-            if failure:
-                raise HTTPException(
-                    status_code=503,
-                    detail=f"payment matching failed moments ago: {failure}")
+            with _pairing_mutex:
+                failure = attempt["failure"]
+                if waiting_on is not None and failure and failure[0] == waiting_on:
+                    raise HTTPException(
+                        status_code=503,
+                        detail=f"payment matching failed moments ago: {failure[1]}")
+                attempt["number"] += 1
+                attempt["running"] = True
+                my_number = attempt["number"]
         try:
             return _match_and_cache(customer_id, ttl=_ttl(300))
         except Exception as exc:
-            if held:
-                cache.set(failed_key, f"{type(exc).__name__}: {exc}",
-                          ttl=PAIRING_FAILURE_SECONDS, local_only=True)
+            if my_number is not None:
+                with _pairing_mutex:
+                    attempt["failure"] = (my_number, f"{type(exc).__name__}: {exc}")
             raise
     finally:
+        if my_number is not None:
+            with _pairing_mutex:
+                attempt["running"] = False
         if held:
             lock.release()
 
