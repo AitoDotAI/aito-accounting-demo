@@ -10,6 +10,7 @@ Form Fill calls Aito live. Other views can use pre-computed data
 
 import json
 import os
+import threading
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request
@@ -658,10 +659,67 @@ def matching_pairs(customer_id: str = Query(...)):
     pre = precomputed.load(customer_id, "matching_pairs")
     if pre is not None:
         return pre
-    cached = cache.get(page_cache_key("matching", customer_id))
+    cache_key = page_cache_key("matching", customer_id)
+    cached = cache.get(cache_key)
     if cached:
         return cached
-    return _match_and_cache(customer_id, ttl=_ttl(300))
+    return _pair_once(customer_id, cache_key)
+
+
+# How long a visitor queues behind another visitor's pairing of the same
+# tenant before computing for itself. A pairing can take minutes on the shared
+# instance; without a bound the queue would hold a threadpool worker per
+# waiter and starve every other tenant.
+PAIRING_WAIT_SECONDS = 10.0
+
+# Per tenant: which attempt is running and how the last one failed. A failure
+# is shared only with the requests that were WAITING on that attempt; anyone
+# arriving after it finished computes afresh, as they would without the lock.
+_pairing_attempts: dict[str, dict] = {}
+_pairing_mutex = threading.Lock()
+
+
+def _pair_once(customer_id: str, cache_key: str) -> dict:
+    """Pair a tenant's payments, sharing one run between concurrent visitors.
+
+    Per tenant: another tenant's visitors never queue here. This does not stop
+    /api/matching/explain's rebuild or the keep-warm pass from running
+    match_all alongside, which take their own locks.
+    """
+    with _pairing_mutex:
+        attempt = _pairing_attempts.setdefault(
+            cache_key, {"number": 0, "running": False, "failure": None})
+        waiting_on = attempt["number"] if attempt["running"] else None
+    lock = cache.compute_lock(cache_key)
+    held = lock.acquire(timeout=PAIRING_WAIT_SECONDS)
+    my_number = None
+    try:
+        if held:
+            cached = cache.get(cache_key)
+            if cached:
+                return cached
+            with _pairing_mutex:
+                failure = attempt["failure"]
+                if waiting_on is not None and failure and failure[0] == waiting_on:
+                    raise HTTPException(
+                        status_code=503,
+                        detail=f"payment matching failed moments ago: {failure[1]}")
+                attempt["number"] += 1
+                attempt["running"] = True
+                my_number = attempt["number"]
+        try:
+            return _match_and_cache(customer_id, ttl=_ttl(300))
+        except Exception as exc:
+            if my_number is not None:
+                with _pairing_mutex:
+                    attempt["failure"] = (my_number, f"{type(exc).__name__}: {exc}")
+            raise
+    finally:
+        if my_number is not None:
+            with _pairing_mutex:
+                attempt["running"] = False
+        if held:
+            lock.release()
 
 
 def _precomputed_matching(customer_id: str) -> dict | None:

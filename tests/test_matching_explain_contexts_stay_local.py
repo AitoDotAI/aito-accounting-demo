@@ -104,3 +104,129 @@ def test_concurrent_cold_explains_share_one_rebuild(monkeypatch):
         t.join(timeout=10)
 
     assert len(rebuilds) == 1, f"{len(rebuilds)} rebuilds for 4 concurrent cold explains"
+
+
+def test_concurrent_cold_page_loads_share_one_pairing(monkeypatch):
+    # /api/matching/pairs on a tenant with no precompute (a refused one, or a
+    # lite tenant) cold-starts match_all per visitor. On the shared instance
+    # that is N pairings of the same ledger at once.
+    monkeypatch.setattr(app_module.precomputed, "load", lambda cid, name: None)
+    runs = []
+    release = threading.Event()
+
+    def slow_match_all(*args, **kwargs):
+        runs.append(1)
+        release.wait(timeout=5)
+        return _result()
+
+    monkeypatch.setattr(app_module, "match_all", slow_match_all)
+    results = []
+    threads = [threading.Thread(
+        target=lambda: results.append(app_module.matching_pairs(customer_id=TENANT)))
+        for _ in range(4)]
+    for t in threads:
+        t.start()
+    threading.Event().wait(0.3)
+    release.set()
+    for t in threads:
+        t.join(timeout=10)
+
+    assert len(runs) == 1, f"{len(runs)} pairings for 4 concurrent cold page loads"
+    assert len(results) == 4
+
+
+# ── The lock's failure and scope behaviour (CPO review of #72) ──────────
+
+def _load_concurrently(tenants, match_all_impl, monkeypatch):
+    monkeypatch.setattr(app_module.precomputed, "load", lambda cid, name: None)
+    monkeypatch.setattr(app_module, "match_all", match_all_impl)
+    outcomes = []
+
+    def ask(tenant):
+        try:
+            outcomes.append(("ok", app_module.matching_pairs(customer_id=tenant)))
+        except Exception as exc:                                   # noqa: BLE001
+            outcomes.append(("error", exc))
+
+    threads = [threading.Thread(target=ask, args=(t,)) for t in tenants]
+    for t in threads:
+        t.start()
+    return threads, outcomes
+
+
+def test_waiters_get_a_failed_pairing_at_once_instead_of_each_rerunning_it(monkeypatch):
+    # When the pairing fails nothing is cached, so waiters used to re-run it one
+    # after another: the k-th visitor waited k times for the same error.
+    runs = []
+
+    def failing(*args, **kwargs):
+        runs.append(1)
+        threading.Event().wait(0.3)
+        raise RuntimeError("Aito unreachable")
+
+    threads, outcomes = _load_concurrently([TENANT] * 4, failing, monkeypatch)
+    for t in threads:
+        t.join(timeout=10)
+
+    assert len(runs) == 1, f"{len(runs)} failing pairings for 4 visitors"
+    assert [kind for kind, _ in outcomes] == ["error"] * 4
+
+
+def test_a_waiter_that_waited_too_long_computes_for_itself(monkeypatch):
+    # No lock timeout would let waiters pile up behind a pairing that takes
+    # minutes and exhaust the threadpool for every other tenant.
+    monkeypatch.setattr(app_module, "PAIRING_WAIT_SECONDS", 0.2)
+    runs = []
+    release = threading.Event()
+
+    def slow(*args, **kwargs):
+        runs.append(1)
+        release.wait(timeout=5)
+        return _result()
+
+    threads, outcomes = _load_concurrently([TENANT] * 2, slow, monkeypatch)
+    threading.Event().wait(0.8)
+    assert len(runs) == 2, "the second visitor is still queued behind the lock"
+    release.set()
+    for t in threads:
+        t.join(timeout=10)
+
+
+def test_the_lock_is_per_tenant_not_global(monkeypatch):
+    # Both pairings must be inside match_all at the same moment; a global lock
+    # would never let the second one start and the barrier would time out.
+    barrier = threading.Barrier(2, timeout=3)
+
+    def both_at_once(*args, **kwargs):
+        barrier.wait()
+        return _result()
+
+    threads, outcomes = _load_concurrently(["CUST-0000", "CUST-0001"], both_at_once, monkeypatch)
+    for t in threads:
+        t.join(timeout=10)
+
+    assert [kind for kind, _ in outcomes] == ["ok", "ok"], outcomes
+
+
+def test_an_arrival_after_a_failure_computes_afresh_and_can_succeed(monkeypatch):
+    # A transient failure must not turn into a 503 window for everyone who
+    # arrives later: only the requests that were WAITING on the failed attempt
+    # share its error. On main a visitor 5 s after the failure computes and
+    # may succeed, and still must.
+    attempts = []
+
+    def flaky(*args, **kwargs):
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise RuntimeError("Aito unreachable")
+        return _result()
+
+    monkeypatch.setattr(app_module.precomputed, "load", lambda cid, name: None)
+    monkeypatch.setattr(app_module, "match_all", flaky)
+
+    with pytest.raises(RuntimeError):
+        app_module.matching_pairs(customer_id=TENANT)
+    second = app_module.matching_pairs(customer_id=TENANT)
+
+    assert len(attempts) == 2, "the later arrival did not compute"
+    assert second["pairs"] == []   # the success payload, not a remembered error
