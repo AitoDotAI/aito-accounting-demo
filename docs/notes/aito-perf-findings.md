@@ -17,11 +17,11 @@ around the workarounds.
 | 5 | `_search` `limit:0` count is ~1 s on cold table | `/api/help/stats` 2.1 s cold, 14 ms warm | included in startup warmup |
 | 6 | Cache `set` has no upsert primitive | 2× round-trip per write (delete + insert) | combine with #3 — delete is 404 anyway, so we're effectively just inserting |
 | 7 | `httpx.request(...)` per call repeats TLS handshake every request | ~110 ms steady-state vs ~280 ms per call (~3× faster after fix) | Pooled `httpx.Client` held on `AitoClient` instance |
-| 8 | `_predict` with `$why` varies 0.44 s – 6.6 s **for the same query**, server-side — daytime only, and not caused by our own concurrency | the first click on a matching row felt broken at ~4 s | prefetch after render; compare settings with `X-Aito-Ms`, but record wall time too — above 2 calls in flight the header under-reports the wait |
+| 8 | `_predict` with `$why` varies 0.44 s – 6.6 s **for the same query**, server-side — daytime only, and not caused by our own concurrency | the first click on a matching row felt broken at ~4 s | ask only for the expanded row (no background prefetch: it pays Aito for explanations nobody opened); compare settings with `X-Aito-Ms`, but record wall time too — above 2 calls in flight the header under-reports the wait |
 
 Items 1, 2, 4 are documented in detail in the original sections.
 Items 3, 5, 6 are new flags from the May 2 deploy iteration —
-captured below in §3. Item 7 (May 2026) is documented in §4.
+captured below in §3. Item 7 (May 2026) is documented in §5 (it shared the number 4 with the boolean-columns finding).
 Item 8 (October 2026) is documented in §8, together with the claim it
 disproves.
 
