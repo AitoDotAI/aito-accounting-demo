@@ -16,6 +16,7 @@ from typing import Any
 import httpx
 
 from src.config import Config
+from src.schema_write_guard import refuse_prod_schema_write
 
 
 # Cap concurrent in-flight Aito calls process-wide. Aito has 8
@@ -163,6 +164,8 @@ class AitoClient:
         when the circuit breaker is open.
         """
         import time as _time
+
+        refuse_prod_schema_write(self._base_url, method, path)
 
         # Circuit breaker check
         if self._breaker_open_until > _time.monotonic():
