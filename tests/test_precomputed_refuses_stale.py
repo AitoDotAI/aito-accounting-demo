@@ -113,3 +113,26 @@ def test_a_real_captured_payload_is_refused(monkeypatch):
     precomputed._warned.clear()
     assert precomputed.load("CUST-0000", "matching_pairs") is None, \
         f"{path.name} predates matched_by and would show 0 matched by Aito"
+
+
+# ── The writer's own payloads must be served ────────────────────────────
+#
+# CPO review of #66: EMPTY_MATCHING, which `--lite-threshold` writes for
+# every small tenant, had no `matched_by_aito`, so the guard refused the
+# precompute's own output on every request, permanently.
+
+def test_a_genuinely_empty_ledger_with_the_current_metrics_is_served(monkeypatch):
+    empty = {"pairs": [], "metrics": {"matched": 0, "suggested": 0, "unmatched": 0,
+                                      "matched_by_reference": 0, "matched_by_aito": 0,
+                                      "total": 0, "avg_confidence": 0, "match_rate": 0}}
+    served(monkeypatch, empty)
+    assert precomputed.load("CUST-0000", "matching_pairs") == empty
+
+
+def test_the_precompute_writers_own_empty_matching_payload_is_served(monkeypatch):
+    import importlib
+
+    writer = importlib.import_module("data.precompute_predictions")
+    served(monkeypatch, writer.EMPTY_MATCHING)
+    assert precomputed.load("CUST-0000", "matching_pairs") == writer.EMPTY_MATCHING, \
+        "the guard refuses what the lite-threshold path writes"

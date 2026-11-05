@@ -61,10 +61,18 @@ Rows that need them are left unticked.
 | pairs with none carrying `matched_by` refused | yes (tests) |
 | refusal prints once per (customer, payload) | yes (tests) |
 | names `./do precompute-v2` | yes |
-| `pairs: []` with correct metrics is served | yes (tests) |
+| `pairs: []` with correct metrics is served | yes: `test_a_genuinely_empty_ledger_with_the_current_metrics_is_served` (added in the CPO review; refusing every empty ledger now fails it. The report said "tests" before that test existed) |
+| the writer's own empty payload (`EMPTY_MATCHING`, written by `--lite-threshold`) is served | **was refused; fixed** (CPO review): it lacked `matched_by_aito`/`matched_by_reference`, so every lite tenant was refused on every request; test added |
 | a name with no check (`invoices_pending`) passes untouched | yes (tests) |
 | nav badge is `null` when its payload is refused/absent, never 0 | yes (tests) |
 | browser: page and badge agree before/after editing a precompute | **not done** |
+
+## Not in this PR
+
+The plan's `anomalies_scan` criterion (a payload whose flag text states a
+probability as a row count is refused) is **carried by stack 6**
+(`fix/anomaly-explanation-counts`, #68), whose report records the staleness
+check for that wording. It is not tested here.
 
 ## Findings
 
@@ -72,12 +80,23 @@ Rows that need them are left unticked.
    `f"{cache_prefix}:{v2_prefix}{customer_id}"` itself, outside the
    guard #59 added (which reads only `src/app.py`). Each is correct alone;
    together a change to the prefix convention would drift the badge path
-   silently, which is the bug #59 fixed. **Left for a follow-up PR** (it
-   needs the builder moved out of `app.py` so `badges.py` can import it
-   without importing the app): red first by planting a hand-spelled key in
-   a second file, then have the guard scan all of `src/`.
+   silently, which is the bug #59 fixed. **Left for a follow-up PR**: red first by planting a hand-spelled key in
+   a second file, then have the guard scan all of `src/`. Done in #69, which
+   also tests the badges under `v2:`.
 2. A matching payload where only *some* pairs carry `matched_by` is served
    (the check is `any`). Mixed payloads are not a known production shape.
 3. `badge_metrics` returns `{}` (not `None`) for a payload that has no
    `metrics` key, so such a cached payload yields badge 0 beside a page
    that may show data. Not reachable from the shapes the app writes today.
+
+## Follow-ups from the CPO review (not blocking)
+
+- The v2 key prefix was untested (tests run with `_V2 = ""`); #69 tests the
+  badges under `v2:`.
+- `/api/matching/pairs` has no compute lock on the live path: a refused tenant
+  cold-starts `match_all` concurrently per visitor on shared. Not done.
+- `/api/matching/explain` checks the cached explanation before the served page,
+  so a stale L2 explanation can 409 for up to an hour after a rebuild. Not done.
+- Deploying this stack needs `./do precompute-v2` paired with it (Antti's):
+  until the committed precomputes are rebuilt every tenant falls through to the
+  live path.
