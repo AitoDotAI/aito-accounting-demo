@@ -67,10 +67,16 @@ Rows that need them are left unticked.
 
 ## Findings
 
-1. **8 of 20 locally precomputed `anomalies_scan.json` files still carry the
-   old "N of N historical invoices" wording.** The staleness guard in this
-   branch is what keeps them from being served; they need `./do precompute-v2`
-   (Antti's) to be rebuilt.
+1. **3 of the 255 committed `data/precomputed/*/anomalies_scan.json` files carry
+   the old wording, and the guard refuses exactly those 3** (CUST-0009,
+   CUST-0011, CUST-0016; a text search for "historical invoices" finds the same
+   three, so they are true positives and there are no false ones). An earlier
+   version of this report said "8 of 20"; that came from a sample of 20 files
+   counted a different way, cannot be reproduced, and is withdrawn. These are
+   the files on disk. **What Aito's `precompute_entries` table holds is a
+   separate question** that only the deploy-time `./do precompute-v2` (Antti's)
+   answers; until then the live demo's count of stale anomaly payloads is
+   unknown.
 2. Whether any (customer, vendor) pair exceeds 1000 invoices, i.e. whether
    the truncation guard is reachable in this dataset, was **not checked**;
    until it is, only the unit test covers it.
