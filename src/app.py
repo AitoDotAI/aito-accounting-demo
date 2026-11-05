@@ -678,6 +678,22 @@ def matching_pairs(customer_id: str = Query(...)):
     return _match_and_cache(customer_id, ttl=_ttl(300))
 
 
+def _precomputed_matching(customer_id: str) -> dict | None:
+    """The precomputed matching page, remembering for a minute that there is none.
+
+    `precompute_store.get` does not cache a miss, so a tenant without a
+    precompute would pay an Aito _search on every explain click just to learn
+    that again.
+    """
+    miss_key = page_cache_key("matching_nopre", customer_id)
+    if cache.get(miss_key):
+        return None
+    page = precomputed.load(customer_id, "matching_pairs")
+    if page is None:
+        cache.set(miss_key, True, ttl=60, local_only=True)
+    return page
+
+
 @app.get("/api/matching/explain")
 def matching_explain(customer_id: str = Query(...), transaction_id: str = Query(...),
                      invoice_id: str = Query(...)):
@@ -710,7 +726,7 @@ def matching_explain(customer_id: str = Query(...), transaction_id: str = Query(
     # its explanations, so it answers here without touching Aito. The page
     # is checked before the cached explanation: after a rebuild the cache
     # can hold an explanation for the previous pairing for up to an hour.
-    page = precomputed.load(customer_id, "matching_pairs") \
+    page = _precomputed_matching(customer_id) \
         or cache.get(page_cache_key("matching", customer_id))
     if page:
         pair = next((p for p in page.get("pairs", [])
