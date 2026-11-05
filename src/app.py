@@ -662,13 +662,49 @@ def matching_pairs(customer_id: str = Query(...)):
     cached = cache.get(cache_key)
     if cached:
         return cached
-    # One pairing per tenant at a time: a tenant with no usable precompute
-    # would otherwise run match_all once per concurrent visitor.
-    with cache.compute_lock(cache_key):
-        cached = cache.get(cache_key)
-        if cached:
-            return cached
-        return _match_and_cache(customer_id, ttl=_ttl(300))
+    return _pair_once(customer_id, cache_key)
+
+
+# How long a visitor queues behind another visitor's pairing of the same
+# tenant before computing for itself. A pairing can take minutes on the shared
+# instance; without a bound the queue would hold a threadpool worker per
+# waiter and starve every other tenant.
+PAIRING_WAIT_SECONDS = 10.0
+# How long a failed pairing is remembered, so waiters get its error at once
+# instead of each re-running it in turn.
+PAIRING_FAILURE_SECONDS = 30
+
+
+def _pair_once(customer_id: str, cache_key: str) -> dict:
+    """Pair a tenant's payments, sharing one run between concurrent visitors.
+
+    Per tenant: another tenant's visitors never queue here. This does not stop
+    /api/matching/explain's rebuild or the keep-warm pass from running
+    match_all alongside, which take their own locks.
+    """
+    failed_key = page_cache_key("matching_failed", customer_id)
+    lock = cache.compute_lock(cache_key)
+    held = lock.acquire(timeout=PAIRING_WAIT_SECONDS)
+    try:
+        if held:
+            cached = cache.get(cache_key)
+            if cached:
+                return cached
+            failure = cache.get(failed_key)
+            if failure:
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"payment matching failed moments ago: {failure}")
+        try:
+            return _match_and_cache(customer_id, ttl=_ttl(300))
+        except Exception as exc:
+            if held:
+                cache.set(failed_key, f"{type(exc).__name__}: {exc}",
+                          ttl=PAIRING_FAILURE_SECONDS, local_only=True)
+            raise
+    finally:
+        if held:
+            lock.release()
 
 
 def _precomputed_matching(customer_id: str) -> dict | None:
