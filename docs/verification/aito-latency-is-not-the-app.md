@@ -43,6 +43,11 @@ invoices and cannot load.
   **fails**: "the ranking offers another tenant's staff to CUST-0127:
   ['CUST-0001-EMP-0000', ...]". The check can see the leak.
 
+The approver check, its negative control and the approver table in branch 1's
+report were repeated on a second container, **v2.12.0** (shared's version since
+2026-11-05 08:11), with the same slice: same results. Anything that differs
+between 2.11.2 and 2.12.0 is said where it appears.
+
 So all 17 checks have now passed somewhere: 15 on shared master, 2 on the
 local slice. That is not one 17/17 run against one target.
 
