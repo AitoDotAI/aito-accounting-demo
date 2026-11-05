@@ -29,6 +29,6 @@
      * [test_08_performance.py::test_evaluate_latency](book/test_08_performance.py::test_evaluate_latency.md)
      * [test_08_performance.py::test_predict_latency](book/test_08_performance.py::test_predict_latency.md)
      * [test_08_performance.py::test_predict_latency_cold_vs_warm](book/test_08_performance.py::test_predict_latency_cold_vs_warm.md)
-     * [test_08_performance.py::test_relate_latency](book/test_08_performance.py::test_relate_latency.md)
+     * [test_08_performance.py::test_relate_rules_for_category](book/test_08_performance.py::test_relate_rules_for_category.md)
      * [test_08_performance.py::test_search_latency_by_tier](book/test_08_performance.py::test_search_latency_by_tier.md)
 

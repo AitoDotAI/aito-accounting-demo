@@ -17,9 +17,11 @@ def test_relate_vendor_to_gl(t: bt.TestCaseRun):
     t.h1("Rule mining: vendor -> GL code (CUST-0000)")
     t.tln("")
 
-    # Get some vendors for this customer
+    # Get some vendors for this customer. Sorted, not set order: a book
+    # replays recorded HTTP by request, so a set's per-process iteration
+    # order would ask for vendors no capture ever recorded.
     r = c.search("invoices", {"customer_id": "CUST-0000"}, limit=20)
-    vendors = list({inv["vendor"] for inv in r["hits"]})[:5]
+    vendors = sorted({inv["vendor"] for inv in r["hits"]})[:5]
 
     for vendor in vendors:
         result = c.relate("invoices", {"customer_id": "CUST-0000", "vendor": vendor}, "gl_code")
@@ -71,35 +73,22 @@ def test_relate_patterns_conjunctions(t: bt.TestCaseRun):
         for hit in result["hits"]:
             # Customer scoping via nested `from` means the condition is
             # reliably the target field — the fs roles depend on it.
-            assert field in hit["condition"], hit["condition"]
-            # v1 returns `fs` here; v2's $patterns does not, and silently
-            # ignores it if selected. The counts are discovery-time
-            # estimates the service never uses, so their absence is not a
-            # failure -- but do not invent a substitute from v2's
-            # top-level `f`/`n`, whose roles are not the same.
-            fs = hit.get("fs")
-            f_on = f = None
-            if fs:
-                f_on, f = int(fs["fOnCondition"]), int(fs["f"])
-                assert f_on <= f, fs  # LHS AND target <= LHS
-                if f_on < 3:
-                    continue  # too rare, or an anti-correlated candidate
+            t.assertln(field in hit["condition"], f"condition does not name the target: {hit['condition']}")
+            # v2's $patterns returns no per-condition counts (v1 returned
+            # `fs`). They were discovery-time estimates the service never
+            # uses, so their absence is not a failure -- but do not invent a
+            # substitute from v2's top-level `f`/`n`, whose roles differ.
             related = hit["related"]
             terms = related["$and"] if "$and" in related else [related]
             parts = []
             for term in terms:
                 for fld, pred in term.items():
                     # Inputs only — assert no output leaked into a clause.
-                    assert fld in inputs, f"non-input clause field: {fld}"
+                    t.assertln(fld in inputs, f"non-input clause field: {fld}")
                     # v1 wraps the value as {"$has": v}; v2 returns it bare.
                     value = pred["$has"] if isinstance(pred, dict) else pred
                     parts.append(f'{fld}="{value}"')
-            if fs:
-                precision = f_on / f if f else 0.0
-                support = f"  (~{f_on}/{f} est, {precision:.0%})"
-            else:
-                support = ""
-            t.iln(f"    {' AND '.join(parts)}{support}  lift={hit['lift']:.1f}")
+            t.iln(f"    {' AND '.join(parts)}  lift={hit['lift']:.1f}")
         t.tln("")
     t.tln("Counts above are $patterns' smoothed estimates; the service uses")
     t.tln("exact _search counts for the displayed support.")

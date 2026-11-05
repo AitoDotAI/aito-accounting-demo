@@ -13,6 +13,8 @@ Run with:
                                  # interactive review with latencies
 """
 
+from collections import Counter
+
 import booktest as bt
 
 from book.aito_env import get_client
@@ -109,12 +111,17 @@ def test_predict_latency_cold_vs_warm(t: bt.TestCaseRun):
 
 
 @bt.snapshot_httpx()
-def test_relate_latency(t: bt.TestCaseRun):
-    """_relate latency for vendor → gl_code rule mining."""
+def test_relate_rules_for_category(t: bt.TestCaseRun):
+    """_relate returns gl_code rules for a category, per tenant tier.
+
+    This used to print the call's elapsed time. Replayed offline, that is
+    the replay's 0.2 ms, not Aito's, and a recorded 0.2 ms reads as a
+    latency measurement it is not. It checks what came back instead; the
+    latency tests above still time their calls, and only a live run makes
+    those numbers Aito's.
+    """
     c = get_client()
-    t.h1("_relate latency: vendor → gl_code")
-    t.tln("This is the slow operator -- it returns the discovered")
-    t.tln("association rules between fields.")
+    t.h1("_relate: category → gl_code rules")
     t.tln("")
 
     cases = [
@@ -124,14 +131,23 @@ def test_relate_latency(t: bt.TestCaseRun):
 
     for cid, label in cases:
         t.h2(f"{cid} — {label}")
+        # Condition on a category this tenant actually has. The corpus has
+        # moved under this book before: it asked both tenants about
+        # "telecom", which CUST-0000 no longer has a single row of, so the
+        # measurement documented an empty result.
+        sample = c.search("invoices", {"customer_id": cid}, limit=200)
+        counts = Counter(h["category"] for h in sample["hits"] if h.get("category"))
+        category = min(counts, key=lambda name: (-counts[name], name))
+        t.tln(f"  condition: category = {category}")
+
         # Discover what gl_code values relate to a fixed condition.
         # The dual call (relate vendor, condition by gl_code) would also
         # work; this shape mirrors what compute_rule_performance uses.
-        r = t.imsln(lambda c_id=cid: c.relate(
+        r = c.relate(
             "invoices",
-            {"customer_id": c_id, "category": "telecom"},
+            {"customer_id": cid, "category": category},
             "gl_code",
-        ))
+        )
         rules = r.get("hits", [])
         t.iln(f"  rules returned: {len(rules)}")
         if rules:

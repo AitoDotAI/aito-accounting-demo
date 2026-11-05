@@ -230,7 +230,9 @@ def test_help_evaluate_on_unseen_customer(t: bt.TestCaseRun):
     if imp_count < 20:
         t.iln(f"  Only {imp_count} impressions — cold start by design.")
         t.iln(f"  Real production: this customer's CTR ranking falls back to global.")
-        t.assertln(True, "documented cold-start behavior")
+        # Not an assertion: a cold start is the documented outcome, and
+        # `assertln(True, ...)` would only look like a check.
+        t.tln("  cold start is allowed: ranking falls back to global")
         return
 
     result = c.evaluate({
