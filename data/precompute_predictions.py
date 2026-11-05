@@ -176,7 +176,10 @@ EMPTY_PREDICTION_ACCURACY = {
 }
 EMPTY_MATCHING = {
     "pairs": [],
-    "metrics": {"matched": 0, "suggested": 0, "unmatched": 0, "total": 0,
+    # Every key match_all writes, or the staleness guard in src/precomputed.py
+    # refuses this payload as predating ADR 0026.
+    "metrics": {"matched": 0, "suggested": 0, "unmatched": 0,
+                "matched_by_reference": 0, "matched_by_aito": 0, "total": 0,
                 "avg_confidence": 0, "match_rate": 0},
 }
 EMPTY_ANOMALIES = {

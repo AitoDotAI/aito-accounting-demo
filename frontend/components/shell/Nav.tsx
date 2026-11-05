@@ -15,9 +15,11 @@ interface NavItem {
 }
 
 interface Badges {
-  invoices: number;
-  matching: number;
-  anomalies: number;
+  // null = the backend has no count to give: no precompute (or one
+  // refused as stale) and nothing cached yet. Distinct from 0.
+  invoices: number | null;
+  matching: number | null;
+  anomalies: number | null;
 }
 
 // `developerOnly` sections are the engineering evidence (evaluations,
@@ -106,7 +108,11 @@ export default function Nav() {
             <div className="nav-section">{section.section}</div>
             {section.items.map((item) => {
               const count = item.badgeKey && badges ? badges[item.badgeKey] : undefined;
-              const showBadge = count !== undefined && count > 0;
+              // null means the backend does not know: the precompute was
+              // absent or refused and nothing has computed a replacement.
+              // The page will show real numbers, so print nothing rather
+              // than a count that contradicts it.
+              const showBadge = typeof count === "number" && count > 0;
               return (
                 <Link
                   key={item.href}

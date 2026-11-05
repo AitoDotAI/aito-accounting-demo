@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from src.aito_client import AitoClient, AitoError
 from src import admin_ops, cache, precomputed
+from src.badges import badge_metrics
 from src.config import load_config
 from src.customer_roster import load_roster, roster_status
 from src.formfill_service import predict_fields
@@ -478,21 +479,20 @@ def demo_today_endpoint():
 def nav_badges(customer_id: str = Query(...)):
     """Counts shown on left-nav items.
 
-    Reads from the same precomputed JSON the views use, so the badges
-    always agree with the page they link to.
+    Follows each page down the same path the page takes -- precomputed
+    payload, then the cache its live compute writes -- so the badge and
+    the page cannot disagree. `null` where neither exists: the page will
+    compute real numbers, and a badge of 0 beside them reads as "nothing
+    to do here", the one wrong answer that looks deliberate.
     """
-    inv = precomputed.load(customer_id, "invoices_pending") or {}
-    match = precomputed.load(customer_id, "matching_pairs") or {}
-    anom = precomputed.load(customer_id, "anomalies_scan") or {}
-
-    inv_metrics = inv.get("metrics", {})
-    match_metrics = match.get("metrics", {})
-    anom_metrics = anom.get("metrics", {})
+    inv = badge_metrics(customer_id, "invoices_pending", "invoices", _V2)
+    match = badge_metrics(customer_id, "matching_pairs", "matching", _V2)
+    anom = badge_metrics(customer_id, "anomalies_scan", "anomalies", _V2)
 
     return {
-        "invoices": inv_metrics.get("review_count", 0),
-        "matching": match_metrics.get("unmatched", 0),
-        "anomalies": anom_metrics.get("high", 0),
+        "invoices": inv.get("review_count", 0) if inv is not None else None,
+        "matching": match.get("unmatched", 0) if match is not None else None,
+        "anomalies": anom.get("high", 0) if anom is not None else None,
     }
 
 
