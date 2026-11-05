@@ -25,11 +25,12 @@ import pytest                                              # noqa: E402
 from fastapi import HTTPException                           # noqa: E402
 
 from src import app as app_module                           # noqa: E402
+from src import cache_keys                                # noqa: E402
 from src import cache                                       # noqa: E402
 
 TENANT = "CUST-0000"
 TXN = "CUST-0000-TXN-000001"
-V2 = app_module._V2
+V2 = cache_keys.V2_PREFIX
 
 
 @pytest.fixture(autouse=True)

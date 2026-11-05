@@ -16,6 +16,7 @@ os.environ.setdefault("CACHE_WATCH_SECONDS", "0")
 import pytest                                              # noqa: E402
 
 from src import app as app_module                           # noqa: E402
+from src import cache_keys                                # noqa: E402
 
 TENANT = "CUST-0000"
 
@@ -72,7 +73,7 @@ def test_a_refused_payload_gives_null_rather_than_zero(monkeypatch):
 def test_the_badges_read_the_same_keys_the_pages_write(monkeypatch):
     """In v2 mode the page keys carry `v2:`; the badges must ask for those."""
     monkeypatch.setattr("src.precompute_store.get", lambda key: None)
-    monkeypatch.setattr(app_module, "_V2", "v2:")
+    monkeypatch.setattr(cache_keys, "V2_PREFIX", "v2:")
     asked = []
     monkeypatch.setattr(app_module.cache, "get", lambda key: asked.append(key))
 

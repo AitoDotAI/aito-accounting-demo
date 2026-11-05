@@ -19,6 +19,7 @@ os.environ.setdefault("CACHE_WATCH_SECONDS", "0")
 import pytest                                              # noqa: E402
 
 from src import app as app_module                           # noqa: E402
+from src import cache_keys                                # noqa: E402
 
 TENANT = "CUST-0000"
 SURFACES = [
@@ -38,7 +39,7 @@ def _nothing_precomputed(monkeypatch):
     # key built without the prefix is indistinguishable from one built
     # with it. The bug only exists in v2 mode, so the tests have to be in
     # v2 mode. The builder reads the module global at call time.
-    monkeypatch.setattr(app_module, "_V2", "v2:")
+    monkeypatch.setattr(cache_keys, "V2_PREFIX", "v2:")
 
 
 @pytest.mark.parametrize("flag,prefix", SURFACES)

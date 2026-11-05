@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from src.aito_client import AitoClient, AitoError
 from src import admin_ops, cache, precomputed
 from src.badges import badge_metrics
+from src.cache_keys import derived_key, page_cache_key, scoped_key
 from src.config import load_config
 from src.customer_roster import load_roster, roster_status
 from src.formfill_service import predict_fields
@@ -63,23 +64,6 @@ if _use_v2:
     v2_client = AitoV2Client(config.aito_api_url, config.aito_api_key, env=_v2_target)
 else:
     v2_client = aito
-
-# Cache-key prefix that keeps v1 and v2 results in separate slots, so
-# flipping AITO_V2_ENV can never serve a v1 answer for a v2 query (or
-# the reverse) out of a warm cache.
-_V2 = "v2:" if _use_v2 else ""
-
-
-def page_cache_key(name: str, customer_id: str) -> str:
-    """The L1/L2 cache key for one page's payload for one tenant.
-
-    One builder because the prefix is the whole problem: `_V2` is "v2:"
-    whenever the demo runs against a v2 environment, and /api/cache/status
-    used to spell these keys by hand without it, so a fully warm cache
-    reported cold on all five surfaces.
-    """
-    return f"{name}:{_V2}{customer_id}"  # the one spelling of a page cache key
-
 
 def _ttl(seconds: int) -> int:
     """Cache TTL, stretched on v2.
@@ -203,7 +187,7 @@ def _warm_top_customers():
             try:
                 # Mine per-customer rules once and cache for downstream use
                 mined = routing_rules(v2_client, cid)  # promoted rules route (ADR 0025)
-                cache.set(f"mined_rules:{_V2}{cid}", mined, ttl=_ttl(1800))
+                cache.set(page_cache_key("mined_rules", cid), mined, ttl=_ttl(1800))
 
                 # Fast: invoices + quality (always)
                 result = v2_client.search("invoices", {"customer_id": cid}, limit=20)
@@ -615,7 +599,7 @@ def invoices_pending(customer_id: str = Query(...), page: int = 1, per_page: int
                     except AitoError:
                         return {"invoices": [], "metrics": {}, "error": "Could not fetch invoices"}
 
-                    rules_key = f"mined_rules:{_V2}{customer_id}"
+                    rules_key = page_cache_key("mined_rules", customer_id)
                     rules = cache.get(rules_key)
                     if rules is None:
                         with cache.compute_lock(rules_key):
@@ -1055,7 +1039,7 @@ def quality_audit(customer_id: str = Query(...), limit: int = 25):
     "accepted" row. A real production deployment would populate
     prediction_log on every formfill/submit.
     """
-    cache_key = f"audit:{_V2}{customer_id}:{limit}"
+    cache_key = derived_key("audit", customer_id, limit)
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -1161,7 +1145,7 @@ def quality_evaluations(customer_id: str = Query(...)):
     if not customer_id:
         raise HTTPException(status_code=400, detail="customer_id is required")
     # `scoped`: see quality_evaluate -- pre-fix entries are never read.
-    cache_key = f"evaluations:scoped:{_V2}{customer_id}"
+    cache_key = page_cache_key("evaluations:scoped", customer_id)
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -1212,7 +1196,7 @@ def quality_evaluate(
     # `scoped` marks entries written after candidates were confined to the
     # tenant; entries from before the fix sit under the old key and are
     # never read, rather than lingering for their 10-minute TTL.
-    cache_key = f"eval:scoped:{_V2}{customer_id}:{domain}:{predict}:{','.join(fields)}:{limit}"
+    cache_key = derived_key("eval:scoped", customer_id, domain, predict, ",".join(fields), limit)
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -1238,7 +1222,7 @@ def quality_predictions(customer_id: str = Query(...)):
     pre = precomputed.load(customer_id, "prediction_accuracy")
     if pre is not None:
         return pre
-    cache_key = f"predictions:{_V2}{customer_id}"
+    cache_key = page_cache_key("predictions", customer_id)
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -1292,7 +1276,7 @@ def quality_rules_drift(customer_id: str = Query(...)):
     Drives the Quality > Rules drift sparklines and the override-trend
     chart that answers "what does this look like at 90 days?"
     """
-    cache_key = f"drift:{_V2}{customer_id}"
+    cache_key = page_cache_key("drift", customer_id)
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -1311,7 +1295,7 @@ def quality_rules(customer_id: str = Query(...)):
     pre = precomputed.load(customer_id, "rule_performance")
     if pre is not None:
         return pre
-    cache_key = f"rules_perf:{_V2}{customer_id}"
+    cache_key = page_cache_key("rules_perf", customer_id)
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -1359,7 +1343,7 @@ def formfill_templates(customer_id: str = Query(...), limit: int = 6):
     """
     from src.formfill_service import predict_template
     from collections import Counter
-    cache_key = f"formfill_templates:{_V2}{customer_id}:{limit}"
+    cache_key = derived_key("formfill_templates", customer_id, limit)
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -1399,7 +1383,7 @@ def formfill_predict(body: dict):
         return {"error": "at least one field is required"}
     where["customer_id"] = customer_id
 
-    cache_key = f"formfill:{_V2}" + json.dumps(where, sort_keys=True)
+    cache_key = scoped_key("formfill", json.dumps(where, sort_keys=True))
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -1474,7 +1458,7 @@ def help_search(
     experience is dominated by repeat queries during a session, so
     server-side caching is what makes the drawer responsive.
     """
-    cache_key = f"help_search:{_V2}{customer_id}:{page}:{q}:{limit}"
+    cache_key = derived_key("help_search", customer_id, page, q, limit)
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
@@ -1543,7 +1527,7 @@ def help_related(
     if article_id in cust_pre:
         return {"articles": cust_pre[article_id][:limit]}
 
-    cache_key = f"help_related:{_V2}{customer_id}:{article_id}:{limit}"
+    cache_key = derived_key("help_related", customer_id, article_id, limit)
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
@@ -1659,7 +1643,7 @@ def help_stats(customer_id: str = Query(...)):
     also ranks help articles, and the CTR number is the deflection
     proxy a CPO actually tracks.
     """
-    cache_key = f"help_stats:{customer_id}"
+    cache_key = page_cache_key("help_stats", customer_id)
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
