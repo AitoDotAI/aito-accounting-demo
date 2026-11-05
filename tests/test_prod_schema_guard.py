@@ -101,3 +101,60 @@ def test_flag_plus_named_confirmation_lets_the_write_through(httpx_mock, monkeyp
     monkeypatch.setenv("AITO_PROD_SCHEMA_CONFIRM", "aito-accounting-demo")
     v1(PROD_URL)._request("PUT", "/schema/invoices", json=SCHEMA)
     assert len(httpx_mock.get_requests()) == 1
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "https://shared.aito.ai:443/db/aito-accounting-demo",
+        "HTTPS://Shared.Aito.AI/DB/Aito-Accounting-Demo/",
+        "https://shared.aito.ai//db//aito-accounting-demo",
+        "https://shared.aito.ai/db/aito-accounting-demo/api/v1",
+        "https://shared.aito.ai/db/aito-accounting-demo/api/v2/",
+        "http://shared.aito.ai/db/aito-accounting-demo",
+    ],
+)
+def test_every_spelling_of_the_prod_base_url_is_guarded(httpx_mock, base_url):
+    with pytest.raises(ProdSchemaWriteRefused):
+        v1(base_url)._request("PUT", "/schema/invoices", json=SCHEMA)
+    with pytest.raises(ProdSchemaWriteRefused):
+        AitoV2Client(base_url, "k").delete_collection("invoices")
+    assert httpx_mock.get_requests() == []
+
+
+def test_a_look_alike_database_on_the_same_host_is_not_prod(httpx_mock):
+    httpx_mock.add_response(json={})
+    v1("https://shared.aito.ai/db/aito-accounting-demo-copy")._request(
+        "PUT", "/schema/invoices", json=SCHEMA
+    )
+    assert len(httpx_mock.get_requests()) == 1
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/v1/schema/invoices",
+        "/api/v2/schema/invoices",
+        "//schema/invoices",
+        "/schema//invoices",
+        "/schema/cache_entries/../invoices",
+        "/schema/cache_entries/extra",
+        "/schema/cache_entries%2F..%2Finvoices",
+    ],
+)
+def test_a_schema_path_in_any_spelling_is_guarded(httpx_mock, path):
+    with pytest.raises(ProdSchemaWriteRefused):
+        v1(PROD_URL)._request("DELETE", path)
+    assert httpx_mock.get_requests() == []
+
+
+def test_the_clients_pass_relative_paths_only():
+    """The guard sees what `_request` is given; callers must not pass full URLs."""
+    import pathlib
+    import re
+
+    calls = []
+    for source in pathlib.Path("src").glob("*.py"):
+        calls += re.findall(r'_request\(\s*"[A-Z]+",\s*f?"([^"]*)"', source.read_text())
+    assert calls
+    assert all(path.startswith("/") and "/api/" not in path for path in calls), calls

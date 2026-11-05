@@ -10,9 +10,13 @@ Override, for the rare deliberate change: set BOTH
 """
 
 import os
+import posixpath
+import re
+from urllib.parse import unquote, urlsplit
 
-PROD_DEMO_DB = "shared.aito.ai/db/aito-accounting-demo"
+PROD_HOST = "shared.aito.ai"
 PROD_DB_NAME = "aito-accounting-demo"
+PROD_DEMO_DB = f"{PROD_HOST}/db/{PROD_DB_NAME}"
 
 # The app creates these on every startup and `cache.clear()` recreates one.
 # They hold cache and precompute rows, not demo data.
@@ -26,15 +30,32 @@ class ProdSchemaWriteRefused(RuntimeError):
     """A schema PUT/DELETE aimed at the production demo database."""
 
 
+def _clean_path(path: str) -> str:
+    """Collapse `//`, `..` and percent-escapes so one table has one spelling."""
+    return posixpath.normpath("/" + unquote(path).lstrip("/"))
+
+
 def _is_prod(base_url: str, env: str | None) -> bool:
-    url = base_url.lower().split("://")[-1].rstrip("/")
-    return url == PROD_DEMO_DB and env in _MASTER_ENVS
+    """Compare host and database path, whatever way the base URL is spelled.
+
+    Port, scheme, case, repeated slashes and a trailing `/api/v1|v2` all
+    still name prod. `/env/<name>` in the URL is a branch, not prod.
+    """
+    parts = urlsplit(base_url if "//" in base_url else f"//{base_url}")
+    path = _clean_path(parts.path.lower())
+    path = re.sub(r"/api/v[12]$", "", path)
+    return (
+        (parts.hostname or "").lower() == PROD_HOST
+        and path == f"/db/{PROD_DB_NAME}"
+        and env in _MASTER_ENVS
+    )
 
 
 def refuse_prod_schema_write(
     base_url: str, method: str, path: str, env: str | None = None
 ) -> None:
     """Raise ProdSchemaWriteRefused for a schema PUT/DELETE on prod."""
+    path = re.sub(r"^/api/v[12](?=/)", "", _clean_path(path))
     if method.upper() not in ("PUT", "DELETE") or not path.startswith("/schema"):
         return
     if not _is_prod(base_url, env):

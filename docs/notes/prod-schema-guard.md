@@ -10,5 +10,5 @@ loader run aimed at localhost wrote a v1 schema to prod.
   `precompute_entries`, which it creates at every startup.
 - Deliberate override: `AITO_ALLOW_PROD_SCHEMA_WRITE=1` **and**
   `AITO_PROD_SCHEMA_CONFIRM=aito-accounting-demo`.
-- Limit: it matches the URL. A prod database reached through another hostname
+- Limit: it matches host + database path (port, case, `//`, trailing `/api/v1|v2` all match). A prod database reached through another hostname
   or proxy is not recognised.
