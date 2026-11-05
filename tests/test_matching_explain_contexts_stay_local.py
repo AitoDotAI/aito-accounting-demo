@@ -104,3 +104,32 @@ def test_concurrent_cold_explains_share_one_rebuild(monkeypatch):
         t.join(timeout=10)
 
     assert len(rebuilds) == 1, f"{len(rebuilds)} rebuilds for 4 concurrent cold explains"
+
+
+def test_concurrent_cold_page_loads_share_one_pairing(monkeypatch):
+    # /api/matching/pairs on a tenant with no precompute (a refused one, or a
+    # lite tenant) cold-starts match_all per visitor. On the shared instance
+    # that is N pairings of the same ledger at once.
+    monkeypatch.setattr(app_module.precomputed, "load", lambda cid, name: None)
+    runs = []
+    release = threading.Event()
+
+    def slow_match_all(*args, **kwargs):
+        runs.append(1)
+        release.wait(timeout=5)
+        return _result()
+
+    monkeypatch.setattr(app_module, "match_all", slow_match_all)
+    results = []
+    threads = [threading.Thread(
+        target=lambda: results.append(app_module.matching_pairs(customer_id=TENANT)))
+        for _ in range(4)]
+    for t in threads:
+        t.start()
+    threading.Event().wait(0.3)
+    release.set()
+    for t in threads:
+        t.join(timeout=10)
+
+    assert len(runs) == 1, f"{len(runs)} pairings for 4 concurrent cold page loads"
+    assert len(results) == 4

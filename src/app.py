@@ -658,10 +658,17 @@ def matching_pairs(customer_id: str = Query(...)):
     pre = precomputed.load(customer_id, "matching_pairs")
     if pre is not None:
         return pre
-    cached = cache.get(page_cache_key("matching", customer_id))
+    cache_key = page_cache_key("matching", customer_id)
+    cached = cache.get(cache_key)
     if cached:
         return cached
-    return _match_and_cache(customer_id, ttl=_ttl(300))
+    # One pairing per tenant at a time: a tenant with no usable precompute
+    # would otherwise run match_all once per concurrent visitor.
+    with cache.compute_lock(cache_key):
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
+        return _match_and_cache(customer_id, ttl=_ttl(300))
 
 
 def _precomputed_matching(customer_id: str) -> dict | None:
