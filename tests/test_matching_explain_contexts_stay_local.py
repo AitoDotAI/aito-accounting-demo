@@ -22,6 +22,7 @@ os.environ.setdefault("CACHE_WATCH_SECONDS", "0")
 import pytest                                              # noqa: E402
 
 from src import app as app_module                           # noqa: E402
+from src import cache_keys                                # noqa: E402
 from src import cache                                       # noqa: E402
 
 TENANT = "CUST-0000"
@@ -47,7 +48,7 @@ class RecordingAito:
 def _isolated_cache(monkeypatch):
     monkeypatch.setattr(cache, "_aito", RecordingAito())
     cache._l1.clear()
-    monkeypatch.setattr(app_module, "_V2", "v2:")
+    monkeypatch.setattr(cache_keys, "V2_PREFIX", "v2:")
     yield
     cache._l1.clear()
 

@@ -21,6 +21,7 @@ import time
 import uuid
 
 from src import cache, cache_versions, precompute_store
+from src.cache_keys import page_cache_key
 
 REVISIONS_TABLE = "rule_revisions"
 
@@ -262,5 +263,5 @@ def refresh_governed_views(customer_id: str) -> None:
     # for both API generations, since either may have served this tenant.
     for prefix in ("", "v2:"):
         for kind in ("invoices", "mined_rules", "rules_perf"):
-            cache.delete(f"{kind}:{prefix}{customer_id}")
+            cache.delete(page_cache_key(kind, customer_id, prefix))
     cache_versions.bump([f"{cache_versions.PRECOMPUTE_PREFIX}{v}" for v in GOVERNED_VIEWS])

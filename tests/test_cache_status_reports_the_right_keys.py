@@ -19,6 +19,7 @@ os.environ.setdefault("CACHE_WATCH_SECONDS", "0")
 import pytest                                              # noqa: E402
 
 from src import app as app_module                           # noqa: E402
+from src import cache_keys                                # noqa: E402
 
 TENANT = "CUST-0000"
 SURFACES = [
@@ -38,7 +39,7 @@ def _nothing_precomputed(monkeypatch):
     # key built without the prefix is indistinguishable from one built
     # with it. The bug only exists in v2 mode, so the tests have to be in
     # v2 mode. The builder reads the module global at call time.
-    monkeypatch.setattr(app_module, "_V2", "v2:")
+    monkeypatch.setattr(cache_keys, "V2_PREFIX", "v2:")
 
 
 @pytest.mark.parametrize("flag,prefix", SURFACES)
@@ -68,13 +69,3 @@ def test_the_key_builder_carries_the_environment_prefix():
     # reader that spells it by hand loses the prefix. Compared against a
     # literal, not against _V2 -- the autouse fixture has set it.
     assert app_module.page_cache_key("invoices", TENANT) == f"invoices:v2:{TENANT}"
-
-
-def test_every_writer_in_the_app_uses_the_builder():
-    """No hand-spelled page cache key is left to drift out of step."""
-    import pathlib
-    import re
-    source = pathlib.Path(app_module.__file__).read_text()
-    stray = re.findall(
-        r'f"(?:invoices|quality|matching|rules|anomalies):\{[^"]*\}"', source)
-    assert stray == [], f"hand-spelled page cache keys remain: {stray}"

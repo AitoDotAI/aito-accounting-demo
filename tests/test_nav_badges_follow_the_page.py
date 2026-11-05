@@ -15,7 +15,7 @@ PAYLOAD = {"metrics": {"review_count": 9, "unmatched": 3, "high": 2}}
 
 def test_a_precomputed_payload_is_used(monkeypatch):
     monkeypatch.setattr("src.precompute_store.get", lambda key: PAYLOAD)
-    assert badges.badge_metrics(TENANT, "invoices_pending", "invoices") \
+    assert badges.badge_metrics(TENANT, "invoices_pending", f"invoices:{TENANT}") \
         == PAYLOAD["metrics"]
 
 
@@ -24,7 +24,7 @@ def test_a_refused_payload_falls_through_to_the_pages_own_cache(monkeypatch):
     monkeypatch.setattr("src.precompute_store.get", lambda key: None)
     cache.set(f"invoices:{TENANT}", PAYLOAD)
     try:
-        assert badges.badge_metrics(TENANT, "invoices_pending", "invoices") \
+        assert badges.badge_metrics(TENANT, "invoices_pending", f"invoices:{TENANT}") \
             == PAYLOAD["metrics"]
     finally:
         cache.delete(f"invoices:{TENANT}")
@@ -32,5 +32,17 @@ def test_a_refused_payload_falls_through_to_the_pages_own_cache(monkeypatch):
 
 def test_nothing_anywhere_is_unknown_and_not_zero(monkeypatch):
     monkeypatch.setattr("src.precompute_store.get", lambda key: None)
-    assert badges.badge_metrics(TENANT, "invoices_pending", "invoices") is None, \
+    assert badges.badge_metrics(TENANT, "invoices_pending", f"invoices:{TENANT}") is None, \
         "0 would read as 'nothing to review' beside a page showing nine"
+
+
+def test_the_badge_reads_the_key_it_is_given_and_spells_none_of_its_own(monkeypatch):
+    # The app hands in page_cache_key(...); a badge that built its own key
+    # would drift from it the day the prefix convention changes.
+    monkeypatch.setattr("src.precompute_store.get", lambda key: None)
+    cache.set("whatever:the-app-decided", PAYLOAD)
+    try:
+        assert badges.badge_metrics(TENANT, "invoices_pending", "whatever:the-app-decided") \
+            == PAYLOAD["metrics"]
+    finally:
+        cache.delete("whatever:the-app-decided")
