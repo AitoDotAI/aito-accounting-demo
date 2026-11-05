@@ -430,6 +430,17 @@ def choose_payments_to_show(
     return without[:unreferenced] + with_reference[:referenced]
 
 
+class MatchingUnavailable(Exception):
+    """Aito could not answer, so there is no pairing to report (not an empty one)."""
+
+
+def empty_matching() -> dict:
+    """The page with nothing on it, which is what an unanswered pairing renders as."""
+    return {"pairs": [], "metrics": {"matched": 0, "suggested": 0, "unmatched": 0,
+                                     "matched_by_reference": 0, "matched_by_aito": 0,
+                                     "total": 0, "avg_confidence": 0, "match_rate": 0}}
+
+
 def match_all(
     client: AitoClient,
     customer_id: str | None = None,
@@ -439,6 +450,7 @@ def match_all(
     ledger_decoys: int = 30,
     include_explain_contexts: bool = False,
     inline_explanations: bool = False,
+    raise_on_unavailable: bool = False,
 ) -> dict:
     """Assign each incoming payment to an invoice in the open ledger.
 
@@ -502,10 +514,13 @@ def match_all(
 
         # Decoys, so choosing the right invoice is a real discrimination.
         decoy_rows = client.search("invoices", where, limit=ledger_decoys).get("hits", [])
-    except AitoError:
-        return {"pairs": [], "metrics": {"matched": 0, "suggested": 0, "unmatched": 0,
-                                         "matched_by_reference": 0, "matched_by_aito": 0,
-                                         "total": 0, "avg_confidence": 0, "match_rate": 0}}
+    except AitoError as exc:
+        # Aito could not answer, which is not the same as "no payments". A
+        # caller that stores the result must be able to tell, or one blip is
+        # cached as an empty page (td-20261105161953190031).
+        if raise_on_unavailable:
+            raise MatchingUnavailable(str(exc)) from exc
+        return empty_matching()
 
     ledger: dict[str, dict] = {}
     for row in target_rows + decoy_rows:
