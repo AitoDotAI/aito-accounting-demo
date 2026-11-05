@@ -166,3 +166,23 @@ def test_cache_status_does_not_serve_the_process_wide_last_error(monkeypatch):
 
     assert status["l2"]["failed_writes"] == 1
     assert "last_error" not in status["l2"], "a per-customer endpoint shows a global value"
+
+
+class ExistingTableAito(WorkingAito):
+    """A second PUT of the same table is a 4xx, which is how init() finds it exists."""
+
+    def _request(self, method, path, json=None, **kwargs):
+        if method == "PUT":
+            raise AitoError("table exists", status_code=400)
+        return super()._request(method, path, json=json, **kwargs)
+
+
+def test_an_unreachable_l2_at_startup_is_counted_but_an_existing_table_is_not(monkeypatch):
+    # init() swallowed every AitoError as "table likely exists", so an L2 that
+    # was down from the first moment looked healthy until traffic arrived.
+    cache.init(BrokenAito())
+    assert cache.l2_health()["failed_writes"] == 1
+
+    monkeypatch.setattr(cache, "_l2_failures", {"writes": 0, "deletes": 0, "reads": 0})
+    cache.init(ExistingTableAito())
+    assert cache.l2_health()["failed_writes"] == 0, "an existing table is not a failure"

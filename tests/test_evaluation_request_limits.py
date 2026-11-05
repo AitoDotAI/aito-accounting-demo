@@ -38,7 +38,8 @@ def test_a_limit_outside_the_range_the_page_offers_is_refused_without_calling_ai
 
 
 def test_the_largest_limit_the_page_offers_is_accepted():
-    refuse_unusable_request("invoices", "gl_code", MAX_LIMIT, ["vendor"])
+    # Accepting is returning without raising; None is what "not refused" looks like.
+    assert refuse_unusable_request("invoices", "gl_code", MAX_LIMIT, ["vendor"]) is None
 
 
 @pytest.mark.parametrize("domain,predict", [
@@ -75,5 +76,5 @@ def test_an_input_the_domain_does_not_offer_is_refused(fields):
 
 
 def test_the_inputs_the_page_offers_are_accepted():
-    refuse_unusable_request("invoices", "gl_code", 100, ["vendor", "amount", "category"])
-    refuse_unusable_request("help", "clicked", 100, ["page", "article_id"])
+    assert refuse_unusable_request("invoices", "gl_code", 100, ["vendor", "amount", "category"]) is None
+    assert refuse_unusable_request("help", "clicked", 100, ["page", "article_id"]) is None
