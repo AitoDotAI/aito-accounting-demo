@@ -78,7 +78,7 @@ def page_cache_key(name: str, customer_id: str) -> str:
     used to spell these keys by hand without it, so a fully warm cache
     reported cold on all five surfaces.
     """
-    return f"{name}:{_V2}{customer_id}"
+    return f"{name}:{_V2}{customer_id}"  # the one spelling of a page cache key
 
 
 def _ttl(seconds: int) -> int:
@@ -485,9 +485,9 @@ def nav_badges(customer_id: str = Query(...)):
     compute real numbers, and a badge of 0 beside them reads as "nothing
     to do here", the one wrong answer that looks deliberate.
     """
-    inv = badge_metrics(customer_id, "invoices_pending", "invoices", _V2)
-    match = badge_metrics(customer_id, "matching_pairs", "matching", _V2)
-    anom = badge_metrics(customer_id, "anomalies_scan", "anomalies", _V2)
+    inv = badge_metrics(customer_id, "invoices_pending", page_cache_key("invoices", customer_id))
+    match = badge_metrics(customer_id, "matching_pairs", page_cache_key("matching", customer_id))
+    anom = badge_metrics(customer_id, "anomalies_scan", page_cache_key("anomalies", customer_id))
 
     return {
         "invoices": inv.get("review_count", 0) if inv is not None else None,

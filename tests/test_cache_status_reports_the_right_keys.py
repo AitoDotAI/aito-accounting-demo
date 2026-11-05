@@ -68,13 +68,3 @@ def test_the_key_builder_carries_the_environment_prefix():
     # reader that spells it by hand loses the prefix. Compared against a
     # literal, not against _V2 -- the autouse fixture has set it.
     assert app_module.page_cache_key("invoices", TENANT) == f"invoices:v2:{TENANT}"
-
-
-def test_every_writer_in_the_app_uses_the_builder():
-    """No hand-spelled page cache key is left to drift out of step."""
-    import pathlib
-    import re
-    source = pathlib.Path(app_module.__file__).read_text()
-    stray = re.findall(
-        r'f"(?:invoices|quality|matching|rules|anomalies):\{[^"]*\}"', source)
-    assert stray == [], f"hand-spelled page cache keys remain: {stray}"

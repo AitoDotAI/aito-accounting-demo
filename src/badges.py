@@ -7,8 +7,7 @@ which builds clients and starts the cache watcher on import.
 from src import cache, precomputed
 
 
-def badge_metrics(customer_id: str, name: str, cache_prefix: str,
-                  v2_prefix: str = "") -> dict | None:
+def badge_metrics(customer_id: str, name: str, cache_key: str) -> dict | None:
     """The metrics block the page for `name` would itself show.
 
     Same order the page endpoints use: the precomputed payload, then the
@@ -20,10 +19,13 @@ def badge_metrics(customer_id: str, name: str, cache_prefix: str,
     refused precompute makes the page fall through to a live compute and
     show real numbers, so a nav badge reading 0 next to a page reading 9
     is a worse answer than no badge at all.
+
+    `cache_key` is the page's own key, built by the app's `page_cache_key`.
+    The badge spells no key of its own, so it cannot drift from the page's.
     """
     payload = precomputed.load(customer_id, name)
     if payload is None:
-        payload = cache.get(f"{cache_prefix}:{v2_prefix}{customer_id}")
+        payload = cache.get(cache_key)
     if payload is None:
         return None
     return payload.get("metrics") or {}
