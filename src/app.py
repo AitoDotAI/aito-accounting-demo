@@ -26,7 +26,7 @@ from src.config import load_config
 from src.customer_roster import load_roster, roster_status
 from src.formfill_service import predict_fields
 from src.invoice_service import predict_batch, compute_metrics
-from src.matching_service import explain_match, match_all
+from src.matching_service import MatchingUnavailable, empty_matching, explain_match, match_all
 from src.rulemining_service import mine_rules
 from src.rule_governance import routing_rules
 from src.anomaly_service import scan_all
@@ -646,7 +646,8 @@ def _match_and_cache(customer_id: str, ttl: int = cache.DEFAULT_TTL) -> dict:
     record of how its matches were made. `ttl` defaults to the cache's
     own default because the keep-warm pass wants the long one.
     """
-    result = match_all(v2_client, customer_id=customer_id, include_explain_contexts=True)
+    result = match_all(v2_client, customer_id=customer_id, include_explain_contexts=True,
+                       raise_on_unavailable=True)
     cache.set(page_cache_key("matching_ctx", customer_id),
               result.pop("explain_contexts", {}), ttl=ttl, local_only=True)
     cache.set(page_cache_key("matching", customer_id), result, ttl=ttl)
@@ -701,6 +702,8 @@ def _pair_once(customer_id: str, cache_key: str) -> dict:
             with _pairing_mutex:
                 failure = attempt["failure"]
                 if waiting_on is not None and failure and failure[0] == waiting_on:
+                    if failure[2]:
+                        return empty_matching()   # Aito was down: same page, no new attempt
                     raise HTTPException(
                         status_code=503,
                         detail=f"payment matching failed moments ago: {failure[1]}")
@@ -710,9 +713,15 @@ def _pair_once(customer_id: str, cache_key: str) -> dict:
         try:
             return _match_and_cache(customer_id, ttl=_ttl(300))
         except Exception as exc:
+            unavailable = isinstance(exc, MatchingUnavailable)
             if my_number is not None:
                 with _pairing_mutex:
-                    attempt["failure"] = (my_number, f"{type(exc).__name__}: {exc}")
+                    attempt["failure"] = (my_number, f"{type(exc).__name__}: {exc}", unavailable)
+            if unavailable:
+                # Today's page for a pairing Aito could not answer, rendered at
+                # the edge and stored nowhere. Whether it should be an error
+                # instead is Antti's call.
+                return empty_matching()
             raise
     finally:
         if my_number is not None:
@@ -816,7 +825,10 @@ def matching_explain(customer_id: str = Query(...), transaction_id: str = Query(
         with cache.compute_lock(contexts_key):
             contexts = cache.get(contexts_key)
             if contexts is None:
-                _match_and_cache(customer_id, ttl=_ttl(300))
+                try:
+                    _match_and_cache(customer_id, ttl=_ttl(300))
+                except MatchingUnavailable:
+                    pass   # nothing to explain from: the lookup below says 404
                 contexts = cache.get(contexts_key) or {}
 
     context = contexts.get(transaction_id)
