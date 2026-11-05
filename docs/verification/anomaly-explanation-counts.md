@@ -34,7 +34,10 @@ invoices and cannot load.
   (30 cases, 1 ranked candidate, all CUST-0127's own staff; 8.7 s).
 - `check_evaluate_baseline_is_scoped`: **pass, run with `CUSTOMER=CUST-0001`**
   (accuracy 0.90 vs baseline 0.37 on 30 rows; 17 s), a variant of the
-  check, not the check as written.
+  check, not the check as written. The check as written needs a database
+  above the free image's 10,000-row-per-table cap (CUST-0000 has 16,000
+  invoices), so it can only run as written against shared or a licensed
+  engine.
 - Negative control: with `scope_candidates_by` removed, the approver check
   **fails**: "the ranking offers another tenant's staff to CUST-0127:
   ['CUST-0001-EMP-0000', ...]". The check can see the leak.
