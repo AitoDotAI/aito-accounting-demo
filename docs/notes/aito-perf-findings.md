@@ -17,10 +17,13 @@ around the workarounds.
 | 5 | `_search` `limit:0` count is ~1 s on cold table | `/api/help/stats` 2.1 s cold, 14 ms warm | included in startup warmup |
 | 6 | Cache `set` has no upsert primitive | 2× round-trip per write (delete + insert) | combine with #3 — delete is 404 anyway, so we're effectively just inserting |
 | 7 | `httpx.request(...)` per call repeats TLS handshake every request | ~110 ms steady-state vs ~280 ms per call (~3× faster after fix) | Pooled `httpx.Client` held on `AitoClient` instance |
+| 8 | `_predict` with `$why` varies 0.44 s – 6.6 s **for the same query**, server-side — daytime only, and not caused by our own concurrency | the first click on a matching row felt broken at ~4 s | ask only for the expanded row (no background prefetch: it pays Aito for explanations nobody opened); compare settings with `X-Aito-Ms`, but record wall time too — above 2 calls in flight the header under-reports the wait |
 
 Items 1, 2, 4 are documented in detail in the original sections.
 Items 3, 5, 6 are new flags from the May 2 deploy iteration —
-captured below in §3. Item 7 (May 2026) is documented in §4.
+captured below in §3. Item 7 (May 2026) is documented in §5 (it shared the number 4 with the boolean-columns finding).
+Item 8 (October 2026) is documented in §8, together with the claim it
+disproves.
 
 ---
 
@@ -259,7 +262,7 @@ Nothing — strict typing is the right call. Just noting it.
 
 ---
 
-## 4. `httpx.request(...)` per call repeats TLS handshake every request
+## 5. `httpx.request(...)` per call repeats TLS handshake every request
 
 ### Symptom
 
@@ -371,3 +374,190 @@ call.
 
 The pattern: anything that touches Aito live the *first time* eats the
 cold-load cost. Anything served from `data/precomputed/` is sub-30 ms.
+
+---
+
+## 8. Aito's own response time is the variance, and it is wide (Oct 2026)
+
+> **Provenance.** The numbers in this section come from probe runs whose
+> scripts and raw logs were not committed. Read them as **unlogged**
+> observations: the shape (wide variance, no app-side 3x) is the finding, the
+> individual medians are not reproducible from the repo.
+
+### The claim under test
+
+While making payment matching explain only the expanded row
+(td-20260909115133919692), the same `_predict` with `$why` looked about
+three times slower inside the running app (~3.3 s) than from a script
+(~1.2 s) on the same tenant. A 3× on every live call would matter more
+than any single view, so it was raised as td-20261030214404054563.
+
+**It does not reproduce. The app is not the variable.**
+
+### What made the first measurements misleading
+
+They were taken minutes apart, one setting at a time, against a shared
+instance. On this query that is not good enough: Aito's own server time
+for the *same body* swings between 0.44 s and 6.6 s.
+
+Nine distinct explain bodies, each asked twice back to back from one
+script (`x-aitoai-response-time`, so no client overhead is included):
+
+| ask | median | range |
+|---|---|---|
+| first  | 1001 ms | 444 – 3514 ms |
+| second |  749 ms | 555 – 3280 ms |
+
+The slowest single measurement in the set is a *second* ask of a body
+whose first ask took 1620 ms. So "new query" does not explain it either.
+
+### The paired test
+
+Same explain, through the app and from a script, interleaved, alternating
+which goes first, a fresh tenant per pair so no cache serves a repeat.
+Comparing Aito's server time on both sides (`X-Aito-Ms` from the app,
+`x-aitoai-response-time` from the script):
+
+| | median | values |
+|---|---|---|
+| script | 3621 ms | 4399, 6585, 893, 4316, 1172, 4369, 1190, 3621, 832 |
+| app    | 1036 ms | 823, 1175, 673, 1164, 1236, 791, 1036, 1254, 544 |
+
+n = 9 pairs. App minus script: median **−2367 ms**; the app was slower in
+**1 of 9**. If anything the script side drew the outliers — every pair
+where the app went first left the script's identical call measuring
+3.6 s or worse, which is worth its own look.
+
+### What the app does cost
+
+Small and stable. Each `/api/matching/explain` is `_search` 13–66 ms (the
+cache read) plus one `_predict`, and end to end the app adds roughly
+100–350 ms around Aito's time: two cache round trips (`get` ~61 ms, `set`
+~107 ms, measured against the L2 table), FastAPI, and serialisation. Of a
+3.65 s first open, instrumented: 3.43 s the `_predict`, 0.07 s cache
+reads, 0.15 s the cache write, 4 ms everything else.
+
+### How to measure this here, so the next person does not redo it
+
+- `AitoV2Client._request` already reads `x-aitoai-response-time`, and
+  `src/app.py` exposes the per-request sum as `X-Aito-Ms`, the count as
+  `X-Aito-Calls` and the breakdown as `X-Aito-Ops`
+  (`_search:16.7,_predict:1139.7`). Use those. Wall clock on a shared
+  instance cannot tell a slow client from a busy server.
+- Compare settings **paired and interleaved**, alternating order, not one
+  batch after the other. Unpaired samples minutes apart are how a 3×
+  that is not there gets reported — by me, in this case.
+- Nine pairs was enough to invert the sign of the result. Fewer would not
+  have been: at n=5 the same test read −35 ms with the app slower in 2.
+
+### What to do about the real finding
+
+The demo-visible consequence is that a cold explanation can take four
+seconds. That is handled where the user meets it: the matching page
+prefetches each row's explanation once the list has rendered, so nobody
+waits on the first call, and our cache makes a reopen 3 ms.
+
+The width itself — 0.44 s to 6.6 s for one query class on a warm table —
+is an Aito-side question, not an app one, and belongs with the core team
+alongside flag 2 (cold load).
+
+### The width is not our own concurrency, and it is not there at night
+
+Measured 2026-10-30, 23:00–23:08, same query class
+(`matching_service.ranking_query(..., explain=True)`), to answer the
+obvious suspicion: that we cause the tail ourselves by asking several
+things at once. We do not.
+
+Quiet hours, one query in flight, ≤1 qps, five fresh tenants, 30 bodies
+each asked twice:
+
+| n | median | p90 | max | over 2 s |
+|---|---|---|---|---|
+| 60 | 603 ms | 1077 ms | 1247 ms | 0 |
+
+Against the daytime table above (first-ask median 1001 ms, 444–3514 ms),
+the median is ~40% faster at night and the multi-second tail is gone
+entirely. Then the same bodies driven at 1, 2 and 4 of our own queries in
+flight, 45–120 s per step:
+
+| in flight | aito p50 | p90 | max | wall p50 | wall max |
+|---|---|---|---|---|---|
+| 1 | 612 ms | 1086 ms | 1259 ms | 749 ms | 1429 ms |
+| 2 | 1174 ms | 1632 ms | 1917 ms | 1356 ms | 2202 ms |
+| 4 | 1225 ms | 1702 ms | 1948 ms | 2487 ms | 5115 ms |
+
+Across 401 queries that night the worst single server-side time was
+**1948 ms**. Our own concurrency cannot produce the 3.5–6.6 s times, so
+the width tracks time of day — load from elsewhere on the shared
+instance. Written down beforehand, the prediction was that 4 in flight
+would reproduce the tail; it did not.
+
+Two things the concurrency numbers do say:
+
+- The cost of asking at all is paid once, between 1 and 2 in flight
+  (612 → 1174 ms). Going on to 4 adds 51 ms to the engine's own time.
+- Past 2 in flight the engine's reported time stops growing and the
+  waiting moves into wall time: wall minus `x-aitoai-response-time` is
+  134 ms at 1 in flight, 178 ms at 2, and 1157 ms at 4 (max 3805 ms).
+  So roughly two effective slots for this query class, with the queue
+  ahead of them not counted in the header. Caveat: the probe is a
+  4-thread Python client parsing ~75 KiB responses, so GIL contention
+  may own part of that gap — read 1157 ms as an upper bound on the
+  server's share, not a measurement of it.
+
+Which sharpens the measurement advice above: `X-Aito-Ms` is the right
+number for comparing two settings, and the wrong number for asking what
+a page costs a user. Above two concurrent calls it under-reports the
+wait by about a second. Record both.
+
+Where this leaves the app: payment matching is sequential and has to be
+— each payment removes its invoice from the candidate set the next one
+is ranked against — so it never has more than one call in flight, and
+the row prefetch is a serial chain after render. The fan-out in this
+repo is smart form fill (up to 7 fields at once, `formfill_service.py`)
+and the startup warmup (`app.py`), both held to `AITO_INFLIGHT_LIMIT`
+(default 4) by the process-wide semaphore in `src/aito_client.py`. That
+default is the only lever these numbers argue about.
+
+### Holding the fan-out to 2 does not help (so the default stays 4)
+
+The obvious follow-up from the table above: if the engine gives us about
+two slots, cap our own fan-out at two and stop paying for queue depth.
+Measured on smart form fill, the one user-facing fan-out in the repo —
+with (customer, vendor, description, amount) given it predicts 6 fields
+as 6 concurrent `_predict`s. Same context under both limits,
+interleaved, alternating which limit went first:
+
+| limit | median | range |
+|---|---|---|
+| 2 | 947 ms | 514 – 2056 ms |
+| 4 | 897 ms | 501 – 1698 ms |
+
+n = 12 pairs. Limit 2 minus limit 4: median **+29 ms**, limit 2 slower
+in 6 of 12 — no effect. The mechanism is visible in the earlier table:
+6 fields at limit 2 is three rounds instead of two, and the per-query
+time is lower at 2 in flight by about as much as the extra round costs.
+
+**Read the per-pair deltas before trusting any version of this test.**
+All six pairs where limit 2 ran first came out positive and all six
+where limit 4 ran first came out negative: the *second* arm was faster
+every time, by 100–235 ms, whichever limit it was. That order effect is
+bigger than the effect under test, so an unalternated run of this
+comparison would "prove" whichever limit you scheduled second. (Note the repeat-gap table above shows a lower median
+second ask for `$why` ranking queries, 749 against 1001 ms, but inside a
+spread of 444-3514 ms, so it is not a demonstrable advantage there, while
+here the second arm won every time. Warm-repeat behaviour is not uniform
+across query classes; do not carry one class's result to another.)
+
+A control worth keeping, because without it the null above is
+unreadable: the probe patches the module-global semaphore, so it must be
+shown to bind. Instrumenting the high-water mark of holders gives peak 1
+at limit 1 and peak 4 at limit 4, with medians 1432 ms and 1038 ms over
+4 contexts. Which also says 4× the concurrency buys about 1.4×, not 4× —
+`formfill_service.predict_fields`'s comment estimating "roughly 1s"
+saved is optimistic at tonight's numbers, though 4 samples is too thin
+to rewrite it on.
+
+Not measured: whether a cap helps during the daytime tail. If that tail
+is other tenants' load, our own limit cannot touch it; that is the
+assumption, not a result.
