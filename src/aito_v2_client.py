@@ -31,6 +31,7 @@ from src.aito_client import (
     _semaphore_for,
     aito_call_log,
 )
+from src.schema_write_guard import refuse_prod_schema_write
 
 
 class AitoV2Error(AitoError):
@@ -134,6 +135,8 @@ class AitoV2Client:
         memory-heavy path.
         """
         import time as _time
+
+        refuse_prod_schema_write(self._base_url, method, path, self._env)
 
         last_exc: AitoV2Error | None = None
         for attempt in range(2):  # original + 1 retry
