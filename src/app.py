@@ -684,11 +684,13 @@ def matching_explain(customer_id: str = Query(...), transaction_id: str = Query(
     """Why this invoice? -- for the row the user expanded, and only that row.
 
     `invoice_id` is the invoice the ROW is showing, and it is required.
-    /api/matching/pairs serves the precompute when there is one and the
-    precompute carries no explain contexts, so this re-runs the pairing
-    live -- which can choose a different invoice than the row if the
-    ledger moved in between. Answering anyway would decompose one
-    invoice's $p under another's heading, so a disagreement is a 409.
+    A page served from a precompute carries its explanations inline and
+    is answered from the page. A live page ships none, and its contexts
+    are process-local; when they are gone the pairing is re-run, which can
+    choose a different invoice than the row if the ledger moved in
+    between. Answering anyway would decompose one invoice's $p under
+    another's heading, so a disagreement is a 409. A wrong invoice_id or an
+    unknown payment is answered from the served page and never recomputes.
 
     The ranking asks which invoice settles the payment and nothing else.
     An explanation costs Aito a decomposition for every candidate in the
@@ -704,17 +706,39 @@ def matching_explain(customer_id: str = Query(...), transaction_id: str = Query(
     cached = cache.get(explain_key)
     if cached:
         if cached.get("invoice_id") != invoice_id:
-            # Cached from an earlier pairing that chose differently. Drop
-            # it: keeping it would answer 409 for the rest of the TTL even
-            # after a reload has brought page and ledger back into
-            # agreement, and recomputing is what resolves the drift.
-            cache.delete(explain_key)
+            # Not evicted: the entry is right for the row it was made for,
+            # and a visitor's wrong invoice_id must not cost the real row
+            # its cache. A 409 is the whole answer.
             raise HTTPException(
                 status_code=409,
                 detail=(f"the row shows invoice {invoice_id} but the cached "
                         f"explanation is for {cached.get('invoice_id')}"),
             )
         return cached
+
+    # Settle what can be settled from the page the user is looking at,
+    # before any recompute. A wrong invoice_id or an unknown payment
+    # costs a lookup, not a pairing; a precomputed page already carries
+    # its explanations, so it answers here without touching Aito.
+    page = precomputed.load(customer_id, "matching_pairs") \
+        or cache.get(page_cache_key("matching", customer_id))
+    if page:
+        pair = next((p for p in page.get("pairs", [])
+                     if p.get("bank_txn_id") == transaction_id), None)
+        if pair is None or pair.get("matched_by") != "aito":
+            raise HTTPException(
+                status_code=404,
+                detail=f"no Aito match to explain for {transaction_id!r}",
+            )
+        if pair.get("invoice_id") != invoice_id:
+            raise HTTPException(
+                status_code=409,
+                detail=(f"the row shows invoice {invoice_id} but this payment's "
+                        f"match on the served page is {pair.get('invoice_id')}"),
+            )
+        if pair.get("explanation"):
+            return {"transaction_id": transaction_id, "invoice_id": invoice_id,
+                    "explanation": pair["explanation"]}
 
     contexts_key = page_cache_key("matching_ctx", customer_id)
     contexts = cache.get(contexts_key)

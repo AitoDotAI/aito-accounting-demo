@@ -150,6 +150,7 @@ def match_bank_txn_to_invoice(
     client: AitoClient,
     txn: dict,
     open_invoices: list[dict],
+    explain: bool = False,
 ) -> MatchPair | None:
     """Use Aito _predict invoice_id to match bank transaction to invoice.
 
@@ -168,7 +169,7 @@ def match_bank_txn_to_invoice(
 
     try:
         result = client._request(
-            "POST", "/_predict", json=ranking_query(txn, open_ids))
+            "POST", "/_predict", json=ranking_query(txn, open_ids, explain=explain))
     except AitoError:
         return None
 
@@ -187,7 +188,7 @@ def match_bank_txn_to_invoice(
     # Aito was right and the arithmetic threw it away. A substitute is a
     # fallback for when Aito ranked nothing we hold, never an improvement
     # on something it did.
-    best_direct: tuple[float, dict, float] | None = None
+    best_direct: tuple[float, dict, float, dict | None] | None = None
     best_sub: tuple[float, dict, float, str] | None = None
 
     for hit in result.get("hits", []):
@@ -200,7 +201,7 @@ def match_bank_txn_to_invoice(
             amt_score = _amount_match_score(open_by_id[inv_id]["amount"], txn["amount"])
             combined = aito_p * 0.5 + amt_score * 0.5
             if best_direct is None or combined > best_direct[0]:
-                best_direct = (combined, open_by_id[inv_id], aito_p)
+                best_direct = (combined, open_by_id[inv_id], aito_p, hit.get("$why"))
             continue
 
         # Indirect: Aito ranked a different invoice from the same vendor, so
@@ -221,11 +222,12 @@ def match_bank_txn_to_invoice(
 
     best_ranked_id: str | None = None
     if best_direct is not None:
-        best_score, best_invoice, best_p = best_direct
+        best_score, best_invoice, best_p, best_why = best_direct
     elif best_sub is not None:
         best_score, best_invoice, best_p, best_ranked_id = best_sub
+        best_why = None
     else:
-        best_score, best_invoice, best_p = 0.0, None, 0.0
+        best_score, best_invoice, best_p, best_why = 0.0, None, 0.0, None
 
     if best_invoice is None:
         return None
@@ -240,9 +242,13 @@ def match_bank_txn_to_invoice(
     else:
         return None
 
-    # No explanation here: this is the list, and an explanation costs a
-    # $why for every candidate to render one row. `explain_match` fetches
-    # it for the row the user expands (td-20260909115133919692).
+    # The live list ships no explanation: it costs a $why for every
+    # candidate to render one row, and `explain_match` fetches it for the
+    # row the user expands (td-20260909115133919692). A precompute is built
+    # once and served for days, so it takes the cost up front (`explain`)
+    # and its rows never have to ask.
+    explanation = (_build_explanation(txn, best_invoice, best_p, best_why, best_ranked_id)
+                   if explain else [])
     return MatchPair(
         invoice_id=best_invoice["invoice_id"],
         invoice_vendor=best_invoice["vendor"],
@@ -255,6 +261,7 @@ def match_bank_txn_to_invoice(
         model_p=best_p,
         status=status,
         matched_by="aito",
+        explanation=explanation,
         ranked_invoice_id=best_ranked_id,
     )
 
@@ -375,7 +382,9 @@ def _build_explanation(
     return factors
 
 
-def match_reference_first(client: AitoClient, txn: dict, open_invoices: list[dict]) -> MatchPair | None:
+def match_reference_first(
+    client: AitoClient, txn: dict, open_invoices: list[dict], explain: bool = False
+) -> MatchPair | None:
     """Match a payment by its quoted reference, or ask Aito if it quotes none.
 
     A reference on the bank line names the invoice outright, so reading
@@ -385,7 +394,7 @@ def match_reference_first(client: AitoClient, txn: dict, open_invoices: list[dic
     """
     invoice = find_invoice_by_reference(txn["description"], open_invoices)
     if invoice is None:
-        return match_bank_txn_to_invoice(client, txn, open_invoices)
+        return match_bank_txn_to_invoice(client, txn, open_invoices, explain=explain)
     return MatchPair(
         invoice_id=invoice["invoice_id"],
         invoice_vendor=invoice["vendor"],
@@ -429,6 +438,7 @@ def match_all(
     payment_window: int = 40,
     ledger_decoys: int = 30,
     include_explain_contexts: bool = False,
+    inline_explanations: bool = False,
 ) -> dict:
     """Assign each incoming payment to an invoice in the open ledger.
 
@@ -462,6 +472,10 @@ def match_all(
     without the same ledger the explanation would decompose a different
     probability. It is off by default because it belongs to the request
     that served the page, not in a precompute file or an audit report.
+
+    `inline_explanations` is the precompute's way: every Aito-matched pair
+    carries its own explanation, so a page served from the file never has
+    to rebuild the pairing live to answer "why?".
     """
     try:
         where = {"customer_id": customer_id} if customer_id else {}
@@ -524,7 +538,7 @@ def match_all(
         # The ledger as this payment saw it, before its invoice is taken
         # out of circulation: the candidate domain its $p was computed in.
         ledger_at_ranking = list(remaining)
-        pair = match_reference_first(client, txn, remaining)
+        pair = match_reference_first(client, txn, remaining, explain=inline_explanations)
         if pair is not None:
             pairs.append(pair)
             if pair.matched_by == "aito":

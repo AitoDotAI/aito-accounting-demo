@@ -124,9 +124,10 @@ export default function MatchingPage() {
   // carries them inline, and those are used as they are.
   const [why, setWhy] = useState<Record<string, WhyFactor[]>>({});
   const [whyFailed, setWhyFailed] = useState<Record<string, "error" | "mismatch">>({});
-  // Asked-for rows, so a click during the background pass does not ask
-  // twice. A ref, not state: the click handler needs today's value, not
-  // the one captured when it rendered.
+  // Asked-for rows, so a double click does not ask twice. A ref, not state:
+  // the click handler needs today's value, not the one captured when it
+  // rendered. Only the expanded row ever asks -- a background pass over
+  // every row would pay Aito for explanations nobody opened.
   const asked = React.useRef<Set<string>>(new Set());
 
   const fetchWhy = useCallback((txnId: string, invoiceId: string): Promise<unknown> => {
@@ -172,22 +173,11 @@ export default function MatchingPage() {
           (p) => p.status === "matched"
             && (p.matched_by === "aito" || (p.explanation?.length ?? 0) > 0),
         );
-        if (firstMatched?.bank_txn_id) setExpanded(firstMatched.bank_txn_id);
-
-        // Then warm the rest in the background. A first open costs a live
-        // Aito query -- measured at 3.5 s median per row against
-        // env.master -- which is a broken-feeling click even though the
-        // list itself is now fast. Serially and in row order: the user is
-        // looking at the top row, six at once would queue inside Aito
-        // anyway, and this way the list is never blocked on any of them.
-        const needWhy = d.pairs.filter(
-          (p) => p.matched_by === "aito" && !(p.explanation?.length)
-            && p.bank_txn_id && p.invoice_id,
-        );
-        void needWhy.reduce<Promise<unknown>>(
-          (chain, p) => chain.then(() => fetchWhy(p.bank_txn_id as string, p.invoice_id)),
-          Promise.resolve(),
-        );
+        if (firstMatched?.bank_txn_id) {
+          setExpanded(firstMatched.bank_txn_id);
+          // It is open, so it is the one row that asks without a click.
+          if (!(firstMatched.explanation?.length)) fetchWhy(firstMatched.bank_txn_id, firstMatched.invoice_id);
+        }
       })
       .catch((e) => setError(e));
   }, [customerId, fetchWhy]);

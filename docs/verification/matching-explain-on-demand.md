@@ -53,20 +53,46 @@ local slice. That is not one 17/17 run against one target.
 **Not done:** browser/Playwright steps (screenshots, devtools network).
 Rows that need them are left unticked.
 
+## Design after the CPO review of #65 (2026-11-05)
+
+On demand is for the **live** page only. A precompute is built once and served
+for days, so it keeps its explanations: `precompute_matching` passes
+`inline_explanations=True`, the ranking asks `$why` for those pairs, and every
+Aito-matched row carries its own explanation. Before this rework, regenerating
+the precompute would have dropped them, and every page load would then have
+rebuilt contexts (14 s cold) and fetched `$why` for every row. The background
+prefetch is gone: only the expanded row asks, including the auto-opened first
+row.
+
 ## Results
 
 | Criterion | Result |
 |---|---|
-| ranking `_predict` selects no `$why` | **yes, live**: `check_payment_matching_ranks` "6 factors fetched for one row, none in the list" |
+| ranking `_predict` selects no `$why` (live page) | **yes, live**: `check_payment_matching_ranks` "6 factors fetched for one row, none in the list" |
+| the precompute path asks `$why` and ships each Aito-matched pair's explanation | yes (tests; the script passes `inline_explanations=True`; mutating it off fails) |
 | `/api/matching/explain` requires `invoice_id` | yes (FastAPI `Query(...)`) |
-| explain for a cached other invoice -> 409, entry evicted | yes (tests) |
+| a page that already carries the explanation is answered from the page, no Aito | yes (tests) |
+| an `invoice_id` the served page does not show -> **409, no recompute, no eviction** | yes (tests; evicting or recomputing again fails them) |
+| a payment the served page does not have, or one matched by reference -> 404, no recompute | yes (tests) |
+| a recorded substitute that Aito now ranks directly is refused, not explained | yes (test; the guard set to `False` now fails it, it did not before) |
 | ranking and explanation share `where` and limit | covered by tests; live body comparison not done |
-| app on the local Aito, CUST-0127 (8 pairs, 6 Aito-matched) | the list carries `explanation: []` on every row; `GET /api/matching/explain` with the right invoice -> 200 (14 s cold: it rebuilds the contexts); with another invoice -> **409**, and the next correct call rebuilds -> 200 (1.2 s); other tenant's `customer_id` with this `transaction_id` -> 404; no `invoice_id` -> 422 |
-| `cache_entries` on the local Aito after those calls | only `matching:v2:<tenant>` keys; no `matching_ctx` or `matching_why` row (contexts stayed local) |
-| a reference-matched row has no context -> 404 | yes (tests) |
+| app on the local Aito, CUST-0127 (8 pairs, 6 Aito-matched), **old design** | the list carried `explanation: []`; explain with the right invoice 200 (14 s cold, it rebuilt the contexts); another invoice 409; other tenant 404; no `invoice_id` 422. The reworked paths (served-page lookup, inline precompute) are **tested offline only** and not re-run on a local Aito |
 | other tenant's `transaction_id` -> 404, never another tenant's explanation | yes: contexts and explanations are keyed by customer |
 | `./do test` | pass |
-| browser: skeleton, retry link, drift message, prefetch order, tenant switch | **not done** |
+| browser: skeleton, retry link, drift message, tenant switch | **not done** |
+
+## What reaches the shared L2 table
+
+- The pairs page (`matching:v2:<tenant>`): yes, as before.
+- The explain **contexts** (`matching_ctx`): no, `local_only=True`.
+- The **explanation payloads** (`matching_why:...:<transaction_id>`):
+  **yes.** `cache.set(explain_key, ...)` has no `local_only`, so each one is
+  written to the shared table, a few KiB each. An earlier version of this
+  report said nothing but `matching:v2:` keys reached the local Aito's table;
+  that listing (5 rows) was taken after an explain call and showed no
+  `matching_why` row, and the code says it should have. The code is
+  authoritative, and the listing's absence is unexplained (it may have raced
+  an asynchronous L2 write).
 
 ## Findings fixed in this pass
 
@@ -81,9 +107,16 @@ Rows that need them are left unticked.
 3. The matching keys now go through `page_cache_key` (#59's guard failed on
    this branch's hand-spelled `matching:` keys after rebase, which is the
    guard working).
+4. **(CPO review) A regenerated precompute dropped the inline explanations**
+   and the background prefetch fetched `$why` for every row. Fixed as above.
+5. **(CPO review) A bogus `invoice_id` evicted the real row's cached
+   explanation and could force a 14 s recompute.** Now answered 409 from the
+   served page, with nothing evicted or recomputed.
+6. **(CPO review) The substitute-now-ranked guard had no test.**
 
 ## Not covered
 
-The drift case (`matching_pairs.json` edited so a row names another
-invoice) was not forced in a browser; the endpoint's 409 path is covered by
-unit tests only.
+A drifted ledger on a **live** page whose contexts were lost (restart, another
+instance) still ends in a 409 for that row until the page is reloaded; the page
+says so, and it no longer touches precomputed pages. The drift case was not
+forced in a browser.

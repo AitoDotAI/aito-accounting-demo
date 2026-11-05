@@ -33,6 +33,13 @@ V2 = app_module._V2
 
 
 @pytest.fixture(autouse=True)
+def _no_precompute_file(monkeypatch):
+    # data/precomputed/ may hold this tenant's real page; these tests are
+    # about the cache and the contexts, so no page is served unless a test says.
+    monkeypatch.setattr(app_module.precomputed, "load", lambda cid, name: None)
+
+
+@pytest.fixture(autouse=True)
 def _clean_cache():
     for key in (f"matching_why:{V2}{TENANT}:{TXN}",
                 f"matching_ctx:{V2}{TENANT}"):
@@ -66,14 +73,57 @@ def test_a_cached_explanation_for_another_invoice_is_refused():
     assert "INV-2" in str(caught.value.detail)
 
 
-def test_a_refused_cache_entry_is_evicted_so_the_next_ask_recomputes():
-    # Otherwise the 409 is sticky for the whole 300 s TTL even once the
-    # page has been reloaded and agrees with the ledger again.
+def test_a_refused_ask_does_not_evict_the_cached_explanation():
+    # A visitor's bogus invoice_id must not cost the real row its cache
+    # entry, or one URL could keep every explanation cold.
     _cache_an_explanation("INV-1")
     with pytest.raises(HTTPException):
         app_module.matching_explain(
             customer_id=TENANT, transaction_id=TXN, invoice_id="INV-2")
-    assert cache.get(f"matching_why:{V2}{TENANT}:{TXN}") is None
+    assert cache.get(f"matching_why:{V2}{TENANT}:{TXN}") is not None
+
+
+def _serve_page(monkeypatch, pairs):
+    """Put a page in front of the endpoint, as /api/matching/pairs would have."""
+    monkeypatch.setattr(app_module.precomputed, "load", lambda cid, name: None)
+    cache.set(f"matching:{V2}{TENANT}", {"pairs": pairs, "metrics": {}}, ttl=300)
+
+
+@pytest.fixture
+def no_recompute(monkeypatch):
+    def refuse(*a, **k):
+        raise AssertionError("a bogus ask recomputed the pairing")
+    monkeypatch.setattr(app_module, "_match_and_cache", refuse)
+    monkeypatch.setattr(app_module, "explain_match", refuse)
+    yield
+    cache.delete(f"matching:{V2}{TENANT}")
+
+
+def test_an_invoice_the_served_page_does_not_show_is_a_409_without_recomputing(monkeypatch, no_recompute):
+    _serve_page(monkeypatch, [{"bank_txn_id": TXN, "invoice_id": "INV-1",
+                               "matched_by": "aito", "explanation": []}])
+    with pytest.raises(HTTPException) as caught:
+        app_module.matching_explain(
+            customer_id=TENANT, transaction_id=TXN, invoice_id="INV-BOGUS")
+    assert caught.value.status_code == 409
+
+
+def test_a_transaction_the_served_page_does_not_have_is_a_404_without_recomputing(monkeypatch, no_recompute):
+    _serve_page(monkeypatch, [{"bank_txn_id": "OTHER", "invoice_id": "INV-1",
+                               "matched_by": "aito", "explanation": []}])
+    with pytest.raises(HTTPException) as caught:
+        app_module.matching_explain(
+            customer_id=TENANT, transaction_id=TXN, invoice_id="INV-1")
+    assert caught.value.status_code == 404
+
+
+def test_an_explanation_the_page_already_carries_is_served_without_aito(monkeypatch, no_recompute):
+    inline = [{"type": "base", "target_value": "INV-1"}]
+    _serve_page(monkeypatch, [{"bank_txn_id": TXN, "invoice_id": "INV-1",
+                               "matched_by": "aito", "explanation": inline}])
+    payload = app_module.matching_explain(
+        customer_id=TENANT, transaction_id=TXN, invoice_id="INV-1")
+    assert payload["explanation"] == inline
 
 
 def test_the_rows_invoice_reaches_explain_match(monkeypatch):

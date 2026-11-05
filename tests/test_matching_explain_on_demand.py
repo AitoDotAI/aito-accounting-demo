@@ -205,3 +205,90 @@ def test_a_row_that_states_no_invoice_is_still_explained():
          "$p": 0.9, "$why": why_for("INV-1")},
     ])
     assert explain_match(client, TXN, LEDGER, "INV-1", None, 0.9)
+
+
+# ── The precompute path keeps its explanations ─────────────────────────
+#
+# On demand is for the LIVE page. A precompute is built once, offline, and
+# served for days; if it carried no explanations every expanded row would
+# rebuild the pairing live (14 s cold) and could disagree with the file.
+# CPO review of #65, 2026-11-05.
+
+def test_the_precompute_path_ships_the_explanation_inline():
+    client = RecordingClient([
+        {"invoice_id": "INV-1", "vendor": "ACME Oy", "amount": 1000.0,
+         "$p": 0.9, "$why": why_for("INV-1")},
+    ])
+    pair = match_bank_txn_to_invoice(client, TXN, LEDGER, explain=True)
+
+    assert has_why(client.selects[0]), "the precompute ranking did not ask for $why"
+    base = next(f for f in pair.explanation if f["type"] == "base")
+    assert base["target_value"] == "INV-1"
+
+
+def test_an_inline_substitute_states_the_substitution_not_the_ranked_invoices_why():
+    client = RecordingClient([
+        {"invoice_id": "INV-9", "vendor": "ACME Oy", "amount": 250.0,
+         "$p": 0.4, "$why": why_for("INV-9")},
+    ])
+    pair = match_bank_txn_to_invoice(client, TXN, LEDGER, explain=True)
+
+    assert pair.invoice_id == "INV-1"
+    assert "INV-9" not in [f.get("target_value") for f in pair.explanation if f["type"] == "base"]
+    rendered = " ".join(p["value"] for f in pair.explanation for p in f.get("propositions", []))
+    assert "same vendor" in rendered
+
+
+def test_the_precompute_script_asks_for_inline_explanations(monkeypatch):
+    import importlib
+
+    module = importlib.import_module("data.precompute_predictions")
+    seen = {}
+    monkeypatch.setattr(module, "match_all",
+                        lambda client, **kwargs: seen.update(kwargs) or {})
+    module.precompute_matching(object(), "CUST-0000")
+
+    assert seen.get("inline_explanations") is True
+
+
+class LedgerClient(RecordingClient):
+    """One payment for INV-1 against a two-invoice ledger, as match_all reads it."""
+
+    def search(self, table, where, limit=10):
+        if table == "bank_transactions":
+            return {"hits": [{"transaction_id": "T-1", "invoice_id": "INV-1",
+                              "description": TXN["description"], "amount": 1000.0,
+                              "bank": "Nordea", "vendor_name": "ACME Oy"}]}
+        return {"hits": [{**inv, "reference": "REF-" + inv["invoice_id"]} for inv in LEDGER]}
+
+
+def test_match_all_inlines_explanations_only_when_asked():
+    from src.matching_service import match_all
+
+    hits = [{"invoice_id": "INV-1", "vendor": "ACME Oy", "amount": 1000.0,
+             "$p": 0.9, "$why": why_for("INV-1")}]
+
+    live = LedgerClient(hits)
+    live_result = match_all(live, customer_id="CUST-0000")
+    inline = LedgerClient(hits)
+    inline_result = match_all(inline, customer_id="CUST-0000", inline_explanations=True)
+
+    assert not has_why(live.selects[0]) and live_result["pairs"][0]["explanation"] == []
+    assert has_why(inline.selects[0]) and inline_result["pairs"][0]["explanation"]
+
+
+# ── A substitute that Aito now ranks directly ───────────────────────────
+
+def test_a_recorded_substitute_that_aito_now_ranks_is_refused_not_explained():
+    # The pairing recorded INV-1 as a substitute for INV-9. If Aito now ranks
+    # INV-1 itself, the data moved: explaining it with its own $why would
+    # contradict the "substitute" the row was labelled with. Mutating the
+    # guard to False must break this test.
+    import pytest
+
+    client = RecordingClient([
+        {"invoice_id": "INV-1", "vendor": "ACME Oy", "amount": 1000.0,
+         "$p": 0.9, "$why": why_for("INV-1")},
+    ])
+    with pytest.raises(ValueError, match="ranking changed"):
+        explain_match(client, TXN, LEDGER, "INV-1", ranked_invoice_id="INV-9", model_p=0.4)

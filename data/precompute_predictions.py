@@ -130,7 +130,9 @@ def precompute_invoices_pending(
 
 
 def precompute_matching(client: AitoClient, customer_id: str) -> dict:
-    return match_all(client, customer_id=customer_id)
+    # Served for days, so it carries its explanations: a page from this file
+    # never has to rebuild the pairing live to answer "why?".
+    return match_all(client, customer_id=customer_id, inline_explanations=True)
 
 
 def precompute_rules(client: AitoClient, customer_id: str) -> dict:
