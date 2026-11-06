@@ -95,16 +95,42 @@ export default function FormFillPage() {
   // True while the form holds only the example this page opened with.
   const [preloaded, setPreloaded] = useState(false);
   const preloadedFor = useRef<string | null>(null);
+  // Which customer `topTemplates` was fetched for. A render right after a
+  // switch still holds the previous tenant's list; this says so.
+  const templatesFor = useRef<string | null>(null);
+  // The customer as of the latest render, for answers that arrive after a switch.
+  const customerRef = useRef(customerId);
+  customerRef.current = customerId;
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!customerResolved) return;
+    // Everything on this page belongs to one tenant: the form, its predictions,
+    // the vendor list and the example templates. Switching customer in place
+    // used to leave the previous tenant's vendor in the form (and, with the
+    // form emptied, preload its example template for the new tenant), so all of
+    // it is dropped here and anything still in flight for the old customer is
+    // ignored.
+    let current = true;
+    abortRef.current?.abort();
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setUserValues({});
+    setPredictions([]);
+    setLastQuery(null);
+    setTemplate(null);
+    setTopTemplates([]);
+    setVendors([]);
+    setPreloaded(false);
+    setSubmitMsg(null);
+    preloadedFor.current = null;
+    templatesFor.current = null;
     apiFetch<{ vendors: string[] }>(`/api/formfill/vendors?customer_id=${customerId}`)
-      .then((d) => setVendors(d.vendors))
-      .catch(() => setVendors(["Kesko Oyj", "Telia Finland", "Fazer Bakeries", "SOK Corporation"]));
+      .then((d) => { if (current) setVendors(d.vendors); })
+      .catch(() => { if (current) setVendors(["Kesko Oyj", "Telia Finland", "Fazer Bakeries", "SOK Corporation"]); });
     apiFetch<{ templates: TemplateResponse[] }>(`/api/formfill/templates?customer_id=${customerId}`)
-      .then((d) => setTopTemplates(d.templates ?? []))
-      .catch(() => setTopTemplates([]));
+      .then((d) => { if (current) { templatesFor.current = customerId; setTopTemplates(d.templates ?? []); } })
+      .catch(() => { if (current) setTopTemplates([]); });
+    return () => { current = false; };
   }, [customerResolved, customerId]);
 
   const fetchPredictions = useCallback(async (values: Record<string, string>) => {
@@ -139,6 +165,7 @@ export default function FormFillPage() {
         body: JSON.stringify({...where, customer_id: customerId}),
         signal: controller.signal,
       });
+      if (customerRef.current !== customerId) return;   // answered for the previous customer
       setPredictions(data.fields);
       setLive(true);
     } catch (e) {
@@ -146,7 +173,7 @@ export default function FormFillPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [customerId]);
 
   const fetchTemplate = useCallback(async (vendor: string) => {
     if (!vendor) { setTemplate(null); return; }
@@ -154,9 +181,10 @@ export default function FormFillPage() {
       const tpl = await apiFetch<TemplateResponse>(
         `/api/formfill/template?customer_id=${customerId}&vendor=${encodeURIComponent(vendor)}`,
       );
+      if (customerRef.current !== customerId) return;   // answered for the previous customer
       setTemplate(tpl.error ? null : tpl);
     } catch {
-      setTemplate(null);
+      if (customerRef.current === customerId) setTemplate(null);
     }
   }, [customerId]);
 
@@ -271,6 +299,7 @@ export default function FormFillPage() {
   // a prediction to confirm. Once per tenant, and only onto an empty form.
   useEffect(() => {
     const example = topTemplates[0]?.vendor;
+    if (templatesFor.current !== customerId) return;   // the list is another tenant's
     if (!example || !formIsEmpty || preloadedFor.current === customerId) return;
     preloadedFor.current = customerId;
     handleVendorSelect(example);
