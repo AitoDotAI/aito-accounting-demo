@@ -56,19 +56,20 @@ const NAV_ITEMS: { section: string; developerOnly?: boolean; items: NavItem[] }[
 
 export default function Nav() {
   const pathname = usePathname();
-  const { customerId } = useCustomer();
+  const { customerId, customerResolved } = useCustomer();
   const { developerMode, setDeveloperMode } = useDeveloperMode();
   const [badges, setBadges] = useState<Badges | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
+    if (!customerResolved) return;
     let active = true;
     setBadges(null);
     apiFetch<Badges>(`/api/nav/badges?customer_id=${encodeURIComponent(customerId)}`)
       .then((d) => { if (active) setBadges(d); })
       .catch(() => {});
     return () => { active = false; };
-  }, [customerId]);
+  }, [customerResolved, customerId]);
 
   // Auto-close the mobile drawer when the user navigates to a new page.
   useEffect(() => { setDrawerOpen(false); }, [pathname]);

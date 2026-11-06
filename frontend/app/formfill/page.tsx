@@ -82,7 +82,7 @@ interface TemplateResponse {
 }
 
 export default function FormFillPage() {
-  const { customerId } = useCustomer();
+  const { customerId, customerResolved } = useCustomer();
   const [userValues, setUserValues] = useState<Record<string, string>>({});
   const [predictions, setPredictions] = useState<FieldPrediction[]>([]);
   const [loading, setLoading] = useState(false);
@@ -98,13 +98,14 @@ export default function FormFillPage() {
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    if (!customerResolved) return;
     apiFetch<{ vendors: string[] }>(`/api/formfill/vendors?customer_id=${customerId}`)
       .then((d) => setVendors(d.vendors))
       .catch(() => setVendors(["Kesko Oyj", "Telia Finland", "Fazer Bakeries", "SOK Corporation"]));
     apiFetch<{ templates: TemplateResponse[] }>(`/api/formfill/templates?customer_id=${customerId}`)
       .then((d) => setTopTemplates(d.templates ?? []))
       .catch(() => setTopTemplates([]));
-  }, [customerId]);
+  }, [customerResolved, customerId]);
 
   const fetchPredictions = useCallback(async (values: Record<string, string>) => {
     const where: Record<string, string | number> = {};

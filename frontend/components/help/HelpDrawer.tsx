@@ -45,7 +45,7 @@ const CATEGORY_COLOR: Record<string, string> = {
  */
 export default function HelpDrawer() {
   const pathname = usePathname();
-  const { customerId } = useCustomer();
+  const { customerId, customerResolved } = useCustomer();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   // Debounced copy used by the search effect — typed input fires one
@@ -76,7 +76,7 @@ export default function HelpDrawer() {
   // when the drawer opens we also log impressions, which the
   // prefetch pass skips so we don't double-log.
   useEffect(() => {
-    if (query) return;  // typed-query searches handled by the next effect
+    if (query || !customerResolved) return;  // typed-query searches handled by the next effect
     let cancelled = false;
     setLoading(open);
     const url = `/api/help/search?customer_id=${encodeURIComponent(customerId)}&page=${encodeURIComponent(pathname || "")}&q=&limit=5`;
@@ -108,7 +108,7 @@ export default function HelpDrawer() {
       .catch(() => { if (!cancelled) setArticles([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [pathname, customerId, open, query]);
+  }, [pathname, customerId, customerResolved, open, query]);
 
   // Per-tenant deflection numbers: total impressions, clicks, CTR.
   // Fetched lazily on first open so closed-drawer page loads stay

@@ -111,3 +111,18 @@ test("resolving the customer before the first render does not break hydration", 
 
   assert.deepEqual(errors, []);
 });
+
+// Every page that fetches data for the customer, not only matching.
+const PAGES = [
+  "/invoices/", "/matching/", "/anomalies/", "/formfill/", "/rulemining/", "/integrations/",
+  "/quality/overview/", "/quality/predictions/", "/quality/evaluations/",
+  "/quality/overrides/", "/quality/rules/",
+];
+
+for (const path of PAGES) {
+  test(`${path} with a customer in the URL never asks for the default tenant`, async () => {
+    const { asked } = await load(`${path}?customer_id=CUST-0127`);
+
+    assert.ok(!asked.includes("CUST-0001"), `requested: ${asked.join(", ")}`);
+  });
+}

@@ -20,7 +20,7 @@ interface Customer {
 const TIER_ORDER = ["enterprise", "large", "midmarket", "small"] as const;
 
 export default function CustomerSelector() {
-  const { customerId, setCustomerId, customers, currentCustomer } = useCustomer();
+  const { customerId, customerResolved, setCustomerId, customers, currentCustomer } = useCustomer();
   const [warm, setWarm] = useState(false);
   const [warmIds, setWarmIds] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState(false);
@@ -32,6 +32,7 @@ export default function CustomerSelector() {
   const [popupPos, setPopupPos] = useState<{ top: number; right: number } | null>(null);
 
   useEffect(() => {
+    if (!customerResolved) return;
     let cancelled = false;
     const check = () => {
       apiFetch<CacheStatus>(`/api/cache/status?customer_id=${customerId}`)
@@ -41,7 +42,7 @@ export default function CustomerSelector() {
     check();
     const interval = setInterval(check, 5000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [customerId]);
+  }, [customerResolved, customerId]);
 
   // One-shot fetch on mount: which customers have precomputed JSON?
   useEffect(() => {

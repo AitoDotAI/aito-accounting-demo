@@ -75,7 +75,7 @@ function badgeClass(gain: number): string {
 }
 
 export default function EvaluationsPage() {
-  const { customerId } = useCustomer();
+  const { customerId, customerResolved } = useCustomer();
   const [data, setData] = useState<EvaluationsResponse | null>(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -87,6 +87,7 @@ export default function EvaluationsPage() {
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    if (!customerResolved) return;
     setData(null);
     setLive(false);
     setError(null);
@@ -108,7 +109,7 @@ export default function EvaluationsPage() {
       .finally(() => { clearTimeout(timeoutId); });
 
     return () => { cancelled = true; clearTimeout(timeoutId); };
-  }, [customerId, reloadKey]);
+  }, [customerResolved, customerId, reloadKey]);
 
   return (
     <>

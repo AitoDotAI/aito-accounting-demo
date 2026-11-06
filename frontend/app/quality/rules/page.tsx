@@ -83,7 +83,7 @@ function Sparkline({ values, width = 80, height = 22 }: { values: number[]; widt
 }
 
 export default function RulePerformancePage() {
-  const { customerId, currentCustomer } = useCustomer();
+  const { customerId, customerResolved, currentCustomer } = useCustomer();
   const [data, setData] = useState<RulesData | null>(null);
   const [drift, setDrift] = useState<DriftData | null>(null);
   const [live, setLive] = useState(false);
@@ -119,6 +119,7 @@ export default function RulePerformancePage() {
   }
 
   useEffect(() => {
+    if (!customerResolved) return;
     setData(null); setDrift(null); setLive(false); setError(null);
     apiFetch<RulesData>(`/api/quality/rules?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
@@ -126,7 +127,7 @@ export default function RulePerformancePage() {
     apiFetch<DriftData>(`/api/quality/rules/drift?customer_id=${customerId}`)
       .then((d) => setDrift(d))
       .catch(() => {});
-  }, [customerId, reloadTick]);
+  }, [customerResolved, customerId, reloadTick]);
 
   const backfillDrift = async () => {
     await fetch(`/api/quality/rules/backfill?customer_id=${customerId}`, { method: "POST" });

@@ -14,6 +14,9 @@ interface Customer {
 
 interface CustomerContextType {
   customerId: string;
+  /** False until the URL / localStorage have been read: data hooks must not
+   *  request anything for `customerId` before then, it is only the default. */
+  customerResolved: boolean;
   setCustomerId: (id: string) => void;
   customers: Customer[];
   currentCustomer: Customer | null;
@@ -21,6 +24,7 @@ interface CustomerContextType {
 
 const CustomerContext = createContext<CustomerContextType>({
   customerId: "",
+  customerResolved: false,
   setCustomerId: () => {},
   customers: [],
   currentCustomer: null,
@@ -49,18 +53,18 @@ function readInitialCustomer(): string {
 
 export function CustomerProvider({ children }: { children: ReactNode }) {
   const [customerId, setCustomerIdState] = useState<string>(DEFAULT_CUSTOMER);
-  const [resolved, setResolved] = useState(false);
+  const [customerResolved, setCustomerResolved] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
 
   // Read URL/localStorage on mount (window is undefined during SSR/static
-  // export). The page content waits for this: a page's own effect runs on its
-  // first render, and with the default customer here it asked for CUST-0001's
-  // data (a live Aito query) before the URL's customer was read, then for the
-  // right one. Resolving in the useState initializer instead would render the
-  // wrong tenant against the prerendered HTML and break hydration.
+  // export). What renders does not change until this runs, so the prerendered
+  // HTML still matches; what changes is that data hooks wait for
+  // `customerResolved` before requesting anything: their effects run on the
+  // first render, and with only the default known they asked for CUST-0001's
+  // data (a live Aito query) before the URL's customer was read.
   useEffect(() => {
     setCustomerIdState(readInitialCustomer());
-    setResolved(true);
+    setCustomerResolved(true);
   }, []);
 
   // Persist on change + reflect in URL so the link the user copies is shareable.
@@ -99,8 +103,8 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
   const currentCustomer = customers.find((c) => c.customer_id === customerId) || null;
 
   return (
-    <CustomerContext.Provider value={{ customerId, setCustomerId, customers, currentCustomer }}>
-      {resolved ? children : null}
+    <CustomerContext.Provider value={{ customerId, customerResolved, setCustomerId, customers, currentCustomer }}>
+      {children}
     </CustomerContext.Provider>
   );
 }
