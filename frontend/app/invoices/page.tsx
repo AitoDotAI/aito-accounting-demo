@@ -99,19 +99,20 @@ function dueLabel(inv: InvoicePrediction): { text: string; tone: "red" | "amber"
 }
 
 export default function InvoicesPage() {
-  const { customerId } = useCustomer();
+  const { customerId, customerResolved } = useCustomer();
   const [data, setData] = useState<InvoicesResponse | null>(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
+    if (!customerResolved) return;
     setData(null); setLive(false); setError(null);
     let stillCurrent = true;
     apiFetch<InvoicesResponse>(`/api/invoices/pending?customer_id=${customerId}&per_page=${PENDING_PAGE_SIZE}`)
       .then((d) => { if (stillCurrent) { setData(d); setLive(true); } })
       .catch((e) => { if (stillCurrent) setError(e); });
     return () => { stillCurrent = false; };
-  }, [customerId]);
+  }, [customerResolved, customerId]);
 
   const metrics = data?.metrics;
   type Filter = "all" | "touchless" | "review" | "rule" | "aito";

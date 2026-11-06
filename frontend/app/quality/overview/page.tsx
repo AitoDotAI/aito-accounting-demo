@@ -63,13 +63,14 @@ interface AuditData {
 }
 
 export default function QualityOverviewPage() {
-  const { customerId } = useCustomer();
+  const { customerId, customerResolved } = useCustomer();
   const [data, setData] = useState<QualityData | null>(null);
   const [audit, setAudit] = useState<AuditData | null>(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
+    if (!customerResolved) return;
     setData(null); setAudit(null); setLive(false); setError(null);
     apiFetch<QualityData>(`/api/quality/overview?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
@@ -77,7 +78,7 @@ export default function QualityOverviewPage() {
     apiFetch<AuditData>(`/api/quality/audit?customer_id=${encodeURIComponent(customerId)}&limit=12`)
       .then((d) => setAudit(d))
       .catch(() => {});
-  }, [customerId]);
+  }, [customerResolved, customerId]);
 
   const a = data?.automation;
 

@@ -65,17 +65,18 @@ const SEVERITY_BADGE: Record<string, React.ReactNode> = {
 };
 
 export default function AnomaliesPage() {
-  const { customerId } = useCustomer();
+  const { customerId, customerResolved } = useCustomer();
   const [data, setData] = useState<AnomalyResponse | null>(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
+    if (!customerResolved) return;
     setData(null); setLive(false); setError(null);
     apiFetch<AnomalyResponse>(`/api/anomalies/scan?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
       .catch((e) => setError(e));
-  }, [customerId]);
+  }, [customerResolved, customerId]);
 
   const m = data?.metrics;
 

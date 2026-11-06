@@ -202,7 +202,7 @@ function conditionsOnCategory(c: RuleCandidate): boolean {
 }
 
 export default function RuleMiningPage() {
-  const { customerId } = useCustomer();
+  const { customerId, customerResolved } = useCustomer();
   const { developerMode } = useDeveloperMode();
   const [data, setData] = useState<RulesResponse | null>(null);
   const [live, setLive] = useState(false);
@@ -243,12 +243,13 @@ export default function RuleMiningPage() {
   }
 
   useEffect(() => {
+    if (!customerResolved) return;
     setData(null); setLive(false); setError(null); setDrilldown(null);
     loadActive();
     apiFetch<RulesResponse>(`/api/rules/candidates?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
       .catch((e) => setError(e));
-  }, [customerId]);
+  }, [customerResolved, customerId]);
 
   const openDrilldown = (rule: RuleCandidate) => {
     setDrillLoading(true);

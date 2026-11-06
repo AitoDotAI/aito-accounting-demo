@@ -14,6 +14,9 @@ interface Customer {
 
 interface CustomerContextType {
   customerId: string;
+  /** False until the URL / localStorage have been read: data hooks must not
+   *  request anything for `customerId` before then, it is only the default. */
+  customerResolved: boolean;
   setCustomerId: (id: string) => void;
   customers: Customer[];
   currentCustomer: Customer | null;
@@ -21,6 +24,7 @@ interface CustomerContextType {
 
 const CustomerContext = createContext<CustomerContextType>({
   customerId: "",
+  customerResolved: false,
   setCustomerId: () => {},
   customers: [],
   currentCustomer: null,
@@ -49,11 +53,18 @@ function readInitialCustomer(): string {
 
 export function CustomerProvider({ children }: { children: ReactNode }) {
   const [customerId, setCustomerIdState] = useState<string>(DEFAULT_CUSTOMER);
+  const [customerResolved, setCustomerResolved] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
 
-  // Read URL/localStorage on mount (window is undefined during SSR/static export)
+  // Read URL/localStorage on mount (window is undefined during SSR/static
+  // export). What renders does not change until this runs, so the prerendered
+  // HTML still matches; what changes is that data hooks wait for
+  // `customerResolved` before requesting anything: their effects run on the
+  // first render, and with only the default known they asked for CUST-0001's
+  // data (a live Aito query) before the URL's customer was read.
   useEffect(() => {
     setCustomerIdState(readInitialCustomer());
+    setCustomerResolved(true);
   }, []);
 
   // Persist on change + reflect in URL so the link the user copies is shareable.
@@ -92,7 +103,7 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
   const currentCustomer = customers.find((c) => c.customer_id === customerId) || null;
 
   return (
-    <CustomerContext.Provider value={{ customerId, setCustomerId, customers, currentCustomer }}>
+    <CustomerContext.Provider value={{ customerId, customerResolved, setCustomerId, customers, currentCustomer }}>
       {children}
     </CustomerContext.Provider>
   );

@@ -58,17 +58,18 @@ interface QualityData {
 }
 
 export default function OverridesPage() {
-  const { customerId } = useCustomer();
+  const { customerId, customerResolved } = useCustomer();
   const [data, setData] = useState<QualityData | null>(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
+    if (!customerResolved) return;
     setData(null); setLive(false); setError(null);
     apiFetch<QualityData>(`/api/quality/overview?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
       .catch((e) => setError(e));
-  }, [customerId]);
+  }, [customerResolved, customerId]);
 
   const o = data?.overrides;
   const patterns = data?.override_patterns ?? [];
