@@ -26,6 +26,7 @@ Commands:
     dev-v2            Same, but served against the Aito v2 API (env v2-demo)
     frontend-dev      Start Next.js dev server (port 3000)
     frontend-build    Build Next.js static export
+    frontend-test     Frontend unit tests, incl. the customer-fetch scan (part of check)
     demo              Open the demo in browser
 
   Testing:
@@ -71,6 +72,19 @@ cmd_frontend_dev() {
   echo "  API proxy → http://localhost:8200 (start ./do dev in another terminal)"
   cd "$SCRIPT_DIR/frontend"
   npx next dev -p 3000
+}
+
+# The scan in customer-fetch-gate.test.ts is what keeps a page from fetching
+# for the default customer before the URL's is known; it must run in the gate,
+# not only when someone remembers to. The browser tests (frontend/e2e/) need a
+# build and a Chrome, so they are run by hand: see their header.
+cmd_frontend_test() {
+  cd "$SCRIPT_DIR/frontend"
+  if [ ! -d node_modules/typescript ]; then
+    echo "frontend/node_modules is missing: run 'npm ci' in frontend/ first." >&2
+    return 1
+  fi
+  env -u PYTHONPATH node --test lib/__tests__/*.test.ts
 }
 
 cmd_frontend_build() {
@@ -464,6 +478,7 @@ cmd_verify_demo() {
 # an endpoint.
 cmd_check() {
   cmd_test
+  cmd_frontend_test
   cmd_fmt
   # Default the query checks at the environment the demo actually serves,
   # so a clean checkout does not have to know about the cutover.
@@ -475,6 +490,7 @@ case "${1:-help}" in
   dev)             cmd_dev ;;
   frontend-dev)    cmd_frontend_dev ;;
   frontend-build)  cmd_frontend_build ;;
+  frontend-test)   cmd_frontend_test ;;
   demo)            cmd_demo ;;
   load-data)       cmd_load_data ;;
   reset-data)      cmd_reset_data ;;

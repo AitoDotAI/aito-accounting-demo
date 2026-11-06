@@ -127,7 +127,7 @@ export default function HelpDrawer() {
   // Typed-query searches: only when the drawer is open AND the user
   // typed something. Triggered off the debounced copy so we fire
   // once per pause rather than once per keystroke.
-  useEffect(() => {
+  useCustomerEffect(() => {
     if (!open || !debouncedQuery) return;
     let cancelled = false;
     setLoading(true);

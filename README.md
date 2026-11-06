@@ -440,7 +440,7 @@ Testing:
   ./do aito-check          Assert every Aito query against live data (--v2)
   ./do verify-demo         Walk the demo path against a running server
   ./do book                Booktest snapshots (live Aito)
-  ./do check               Pre-merge gate: test + fmt + aito-check
+  ./do check               Pre-merge gate: test + frontend-test + fmt + aito-check
 
 Deployment:
   ./do docker-build        Build the deployable image
