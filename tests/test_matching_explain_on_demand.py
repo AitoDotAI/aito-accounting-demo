@@ -292,3 +292,15 @@ def test_a_recorded_substitute_that_aito_now_ranks_is_refused_not_explained():
     ])
     with pytest.raises(ValueError, match="ranking changed"):
         explain_match(client, TXN, LEDGER, "INV-1", ranked_invoice_id="INV-9", model_p=0.4)
+
+
+def test_a_pair_says_whether_it_is_a_substitute_without_an_explanation():
+    # The live list carries no explanation, so the page cannot read this off it.
+    direct = match_bank_txn_to_invoice(RecordingClient([
+        {"invoice_id": "INV-1", "vendor": "ACME Oy", "amount": 1000.0, "$p": 0.9}]), TXN, LEDGER)
+    substitute = match_bank_txn_to_invoice(RecordingClient([
+        {"invoice_id": "INV-9", "vendor": "ACME Oy", "amount": 250.0, "$p": 0.4}]), TXN, LEDGER)
+
+    assert direct.explanation == [] and substitute.explanation == []
+    assert direct.to_dict()["substituted"] is False
+    assert substitute.to_dict()["substituted"] is True

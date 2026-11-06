@@ -27,3 +27,33 @@ test("the average card averages what the badges show for Aito's matches", () => 
   ];
   assert.equal(averageExplainedScore(pairs), (0.405 + 0.9) / 2);
 });
+
+// ── The live page ships no explanation in the list ─────────────────────
+//
+// Since matching asks Aito for the explanation only for the expanded row, a
+// live pair has `explanation: []` until its row opens. The badge must not
+// depend on that: it showed the 0.83 blend beside a chain that adds up to
+// 71%, and the average card showed the blend's mean (0.82, not 0.65). Seen in
+// the browser on a local Aito (CUST-0127), 2026-11-06.
+
+test("a live pair with no explanation yet still shows Aito's probability", () => {
+  assert.equal(shownMatchScore({ ...base, explanation: [], substituted: false }), 0.405);
+});
+
+test("a substitute keeps its own score, explanation or not", () => {
+  assert.equal(shownMatchScore({ ...base, explanation: [], substituted: true }), 0.70);
+  assert.equal(shownMatchScore({ ...base, explanation: why, substituted: true }), 0.70);
+});
+
+test("a payload from before the substituted flag falls back to the old rule", () => {
+  assert.equal(shownMatchScore({ ...base, explanation: [] }), 0.70);
+  assert.equal(shownMatchScore({ ...base, explanation: why }), 0.405);
+});
+
+test("the average card does not wait for the explanations to arrive", () => {
+  const pairs = [
+    { ...base, explanation: [], substituted: false },
+    { ...base, model_p: 0.9, explanation: [], substituted: false },
+  ];
+  assert.equal(averageExplainedScore(pairs), (0.405 + 0.9) / 2);
+});
