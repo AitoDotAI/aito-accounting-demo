@@ -50,8 +50,8 @@ between 2.11.2 and 2.12.0 is said where it appears.
 So all 17 checks have now passed somewhere: 15 on shared master, 2 on the
 local slice. That is not one 17/17 run against one target.
 
-**Not done:** browser/Playwright steps (screenshots, devtools network).
-Rows that need them are left unticked.
+**Browser steps: done 2026-11-06**, see `docs/verification/browser-pass.md` (local v2.12.0, screenshots committed).
+Rows that needed them are updated below where the pass covered them.
 
 ## Design after the CPO review of #65 (2026-11-05)
 
@@ -79,7 +79,7 @@ row.
 | **re-run live on a local Aito v2.12.0 with the reworked code** (slice, CUST-0127: 8 pairs, 6 Aito-matched; 2026-11-05) | live page: the list ships `explanation: []` on every row (4.7 s cold); right invoice 200 in 0.8-1.3 s (contexts present), cached 5 ms; a bogus invoice 409 in 6-25 ms with nothing recomputed; the reference-matched row and an unknown payment 404 in 20-35 ms. **Precompute page** (`precompute_matching` run against the local Aito and stored): all 6 Aito rows carry 8 factors inline, the page loads in 87 ms, an explain is answered from the page in 19 ms, a bogus invoice 409 in 14 ms, an unknown payment 404. Not re-run: a live page whose contexts were lost (restart), which is unchanged code |
 | other tenant's `transaction_id` -> 404, never another tenant's explanation | yes: contexts and explanations are keyed by customer |
 | `./do test` | pass |
-| browser: skeleton, retry link, drift message, tenant switch | **not done** |
+| browser: skeleton, drift message, tenant switch, one explain per opened row, no explain on a precomputed page | **done**, browser-pass rows 1-5 (screenshots 01-04, 08). **Retry link: not done** (no failure forced). It also found a regression, fixed in #75 |
 
 ## What reaches the shared L2 table
 

@@ -50,8 +50,8 @@ between 2.11.2 and 2.12.0 is said where it appears.
 So all 17 checks have now passed somewhere: 15 on shared master, 2 on the
 local slice. That is not one 17/17 run against one target.
 
-**Not done:** browser/Playwright steps (screenshots, devtools network).
-Rows that need them are left unticked.
+**Browser steps: done 2026-11-06**, see `docs/verification/browser-pass.md` (local v2.12.0, screenshots committed).
+Rows that needed them are updated below where the pass covered them.
 
 ## Offline (done)
 
@@ -107,7 +107,7 @@ Rows that need them are left unticked.
       leak (another tenant's internal article id can print in
       `cases[].predicted`) is recorded as its own item. The unit test now pins
       "not scoped" with that reason.
-- [ ] tenant switch leaves no stale foreign candidate (browser)
+- [x] approver evaluation shows only the tenant's own staff in the browser (browser-pass row 7, screenshot 05); the evaluate page drops a stale `article_id` input instead of sending a 400 (row 8)
 
 ## Findings
 

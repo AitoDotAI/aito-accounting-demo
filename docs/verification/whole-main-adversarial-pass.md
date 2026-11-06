@@ -20,7 +20,7 @@ the branches *together*.
 | `aito-check`, the 15 checks that do not use `_evaluate`, read-only against shared master (v2.12.0), one at a time | 15/15 pass |
 | the 2 `_evaluate` checks | **not run on shared** (standing rule); passed on a local v2.11.2 and v2.12.0 slice earlier, the baseline one as a `CUST-0001` variant |
 | `./do check` as a whole | not run (it includes the `_evaluate` checks) |
-| browser steps for every branch | **not done** (frontend build failed once, not retried) |
+| browser steps | done 2026-11-06 for #62, #65, #66, #68 in `docs/verification/browser-pass.md` (9 rows, one regression found, fixed in #75); not for #64, #67 (docs), #69-#74 (no UI) |
 
 ## Cross-feature scenarios
 
