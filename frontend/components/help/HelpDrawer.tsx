@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useCustomer } from "@/lib/customer-context";
+import { useCustomerEffect } from "@/lib/use-customer-effect";
 import { apiFetch } from "@/lib/api";
 import Spinner from "@/components/ui/Spinner";
 import { withClickEvidence } from "@/lib/related-articles";
@@ -45,7 +46,7 @@ const CATEGORY_COLOR: Record<string, string> = {
  */
 export default function HelpDrawer() {
   const pathname = usePathname();
-  const { customerId, customerResolved } = useCustomer();
+  const { customerId } = useCustomer();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   // Debounced copy used by the search effect — typed input fires one
@@ -75,8 +76,8 @@ export default function HelpDrawer() {
   // This effect runs both on prefetch (drawer closed) and on open --
   // when the drawer opens we also log impressions, which the
   // prefetch pass skips so we don't double-log.
-  useEffect(() => {
-    if (query || !customerResolved) return;  // typed-query searches handled by the next effect
+  useCustomerEffect(() => {
+    if (query) return;  // typed-query searches handled by the next effect
     let cancelled = false;
     setLoading(open);
     const url = `/api/help/search?customer_id=${encodeURIComponent(customerId)}&page=${encodeURIComponent(pathname || "")}&q=&limit=5`;
@@ -108,12 +109,12 @@ export default function HelpDrawer() {
       .catch(() => { if (!cancelled) setArticles([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [pathname, customerId, customerResolved, open, query]);
+  }, [pathname, customerId, open, query]);
 
   // Per-tenant deflection numbers: total impressions, clicks, CTR.
   // Fetched lazily on first open so closed-drawer page loads stay
   // cheap; refreshed when the customer changes.
-  useEffect(() => {
+  useCustomerEffect(() => {
     if (!open) return;
     let cancelled = false;
     setStats(null);

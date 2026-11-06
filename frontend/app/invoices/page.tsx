@@ -12,6 +12,7 @@ import TourBadge from "@/components/shell/TourBadge";
 import DetailSplit from "@/components/shell/DetailSplit";
 import InvoiceDetail from "@/components/invoices/InvoiceDetail";
 import { useCustomer } from "@/lib/customer-context";
+import { useCustomerEffect } from "@/lib/use-customer-effect";
 import { demoToday } from "@/lib/demo-time";
 import { apiFetch, fmtAmount } from "@/lib/api";
 import { GL_LABELS, glDisplay } from "@/lib/gl-labels";
@@ -99,20 +100,19 @@ function dueLabel(inv: InvoicePrediction): { text: string; tone: "red" | "amber"
 }
 
 export default function InvoicesPage() {
-  const { customerId, customerResolved } = useCustomer();
+  const { customerId } = useCustomer();
   const [data, setData] = useState<InvoicesResponse | null>(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  useEffect(() => {
-    if (!customerResolved) return;
+  useCustomerEffect(() => {
     setData(null); setLive(false); setError(null);
     let stillCurrent = true;
     apiFetch<InvoicesResponse>(`/api/invoices/pending?customer_id=${customerId}&per_page=${PENDING_PAGE_SIZE}`)
       .then((d) => { if (stillCurrent) { setData(d); setLive(true); } })
       .catch((e) => { if (stillCurrent) setError(e); });
     return () => { stillCurrent = false; };
-  }, [customerResolved, customerId]);
+  }, [customerId]);
 
   const metrics = data?.metrics;
   type Filter = "all" | "touchless" | "review" | "rule" | "aito";

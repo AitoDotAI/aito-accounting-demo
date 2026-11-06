@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, Fragment } from "react";
 import Nav from "@/components/shell/Nav";
 import { useCustomer } from "@/lib/customer-context";
+import { useCustomerEffect } from "@/lib/use-customer-effect";
 import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
 import ErrorState from "@/components/shell/ErrorState";
@@ -85,7 +86,7 @@ function fmtCell(value: any, fmt?: string, truncate?: boolean): string {
 }
 
 export default function PredictionQualityPage() {
-  const { customerId, customerResolved } = useCustomer();
+  const { customerId } = useCustomer();
   const [catalog, setCatalog] = useState<Domain[]>([]);
   const [domainKey, setDomainKey] = useState<string>("invoices");
   const [predict, setPredict] = useState<string>("gl_code");
@@ -131,13 +132,13 @@ export default function PredictionQualityPage() {
   // for the default domain, so the page isn't blank on initial open.
   // Subsequent changes are user-triggered.
   const [didInitialRun, setDidInitialRun] = useState(false);
-  useEffect(() => {
-    if (didInitialRun || !customerResolved) return;
+  useCustomerEffect(() => {
+    if (didInitialRun) return;
     if (!domain || !predict || inputs.size === 0) return;
     setDidInitialRun(true);
     runEvaluation();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customerResolved, domain, predict, inputs.size]);
+  }, [domain, predict, inputs.size]);
 
   // Reset the initial-run flag when the customer changes so a freshly
   // selected customer also gets one auto-run.

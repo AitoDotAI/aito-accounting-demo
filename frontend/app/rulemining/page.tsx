@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Nav from "@/components/shell/Nav";
 import { useCustomer } from "@/lib/customer-context";
+import { useCustomerEffect } from "@/lib/use-customer-effect";
 import { useDeveloperMode } from "@/lib/developer-mode";
 import ErrorState from "@/components/shell/ErrorState";
 import TopBar from "@/components/shell/TopBar";
@@ -202,7 +203,7 @@ function conditionsOnCategory(c: RuleCandidate): boolean {
 }
 
 export default function RuleMiningPage() {
-  const { customerId, customerResolved } = useCustomer();
+  const { customerId } = useCustomer();
   const { developerMode } = useDeveloperMode();
   const [data, setData] = useState<RulesResponse | null>(null);
   const [live, setLive] = useState(false);
@@ -242,14 +243,13 @@ export default function RuleMiningPage() {
     }
   }
 
-  useEffect(() => {
-    if (!customerResolved) return;
+  useCustomerEffect(() => {
     setData(null); setLive(false); setError(null); setDrilldown(null);
     loadActive();
     apiFetch<RulesResponse>(`/api/rules/candidates?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
       .catch((e) => setError(e));
-  }, [customerResolved, customerId]);
+  }, [customerId]);
 
   const openDrilldown = (rule: RuleCandidate) => {
     setDrillLoading(true);

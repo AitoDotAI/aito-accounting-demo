@@ -6,6 +6,7 @@ import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
 import ErrorState from "@/components/shell/ErrorState";
 import { useCustomer } from "@/lib/customer-context";
+import { useCustomerEffect } from "@/lib/use-customer-effect";
 import { apiFetch } from "@/lib/api";
 import type { AitoPanelConfig } from "@/lib/types";
 
@@ -75,7 +76,7 @@ function badgeClass(gain: number): string {
 }
 
 export default function EvaluationsPage() {
-  const { customerId, customerResolved } = useCustomer();
+  const { customerId } = useCustomer();
   const [data, setData] = useState<EvaluationsResponse | null>(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -86,8 +87,7 @@ export default function EvaluationsPage() {
   // restart the request without changing customer.
   const [reloadKey, setReloadKey] = useState(0);
 
-  useEffect(() => {
-    if (!customerResolved) return;
+  useCustomerEffect(() => {
     setData(null);
     setLive(false);
     setError(null);
@@ -109,7 +109,7 @@ export default function EvaluationsPage() {
       .finally(() => { clearTimeout(timeoutId); });
 
     return () => { cancelled = true; clearTimeout(timeoutId); };
-  }, [customerResolved, customerId, reloadKey]);
+  }, [customerId, reloadKey]);
 
   return (
     <>

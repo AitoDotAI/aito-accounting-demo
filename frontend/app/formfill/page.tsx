@@ -6,6 +6,7 @@ import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
 import PredictedField from "@/components/prediction/PredictedField";
 import { useCustomer } from "@/lib/customer-context";
+import { useCustomerEffect } from "@/lib/use-customer-effect";
 import { demoToday } from "@/lib/demo-time";
 import { apiFetch } from "@/lib/api";
 import Spinner from "@/components/ui/Spinner";
@@ -82,7 +83,7 @@ interface TemplateResponse {
 }
 
 export default function FormFillPage() {
-  const { customerId, customerResolved } = useCustomer();
+  const { customerId } = useCustomer();
   const [userValues, setUserValues] = useState<Record<string, string>>({});
   const [predictions, setPredictions] = useState<FieldPrediction[]>([]);
   const [loading, setLoading] = useState(false);
@@ -103,8 +104,7 @@ export default function FormFillPage() {
   customerRef.current = customerId;
   const abortRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    if (!customerResolved) return;
+  useCustomerEffect(() => {
     // Everything on this page belongs to one tenant: the form, its predictions,
     // the vendor list and the example templates. Switching customer in place
     // used to leave the previous tenant's vendor in the form (and, with the
@@ -131,7 +131,7 @@ export default function FormFillPage() {
       .then((d) => { if (current) { templatesFor.current = customerId; setTopTemplates(d.templates ?? []); } })
       .catch(() => { if (current) setTopTemplates([]); });
     return () => { current = false; };
-  }, [customerResolved, customerId]);
+  }, [customerId]);
 
   const fetchPredictions = useCallback(async (values: Record<string, string>) => {
     const where: Record<string, string | number> = {};

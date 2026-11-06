@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useCustomer } from "@/lib/customer-context";
+import { useCustomerEffect } from "@/lib/use-customer-effect";
 import { apiFetch } from "@/lib/api";
 
 interface CacheStatus {
@@ -20,7 +21,7 @@ interface Customer {
 const TIER_ORDER = ["enterprise", "large", "midmarket", "small"] as const;
 
 export default function CustomerSelector() {
-  const { customerId, customerResolved, setCustomerId, customers, currentCustomer } = useCustomer();
+  const { customerId, setCustomerId, customers, currentCustomer } = useCustomer();
   const [warm, setWarm] = useState(false);
   const [warmIds, setWarmIds] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState(false);
@@ -31,8 +32,7 @@ export default function CustomerSelector() {
   // Computed when the popup opens, used for position: fixed coords.
   const [popupPos, setPopupPos] = useState<{ top: number; right: number } | null>(null);
 
-  useEffect(() => {
-    if (!customerResolved) return;
+  useCustomerEffect(() => {
     let cancelled = false;
     const check = () => {
       apiFetch<CacheStatus>(`/api/cache/status?customer_id=${customerId}`)
@@ -42,7 +42,7 @@ export default function CustomerSelector() {
     check();
     const interval = setInterval(check, 5000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [customerResolved, customerId]);
+  }, [customerId]);
 
   // One-shot fetch on mount: which customers have precomputed JSON?
   useEffect(() => {

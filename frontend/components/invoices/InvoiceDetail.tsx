@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useCustomer } from "@/lib/customer-context";
+import { useCustomerEffect } from "@/lib/use-customer-effect";
 import { useDeveloperMode } from "@/lib/developer-mode";
 import { apiFetch, fmtAmount } from "@/lib/api";
 import LiftHint from "@/components/prediction/LiftHint";
@@ -33,7 +34,7 @@ export default function InvoiceDetail({ inv }: { inv: InvoicePrediction }) {
   }, [inv.invoice_id]);
 
   // Load vendor history lazily when the History tab is opened
-  useEffect(() => {
+  useCustomerEffect(() => {
     if (tab !== "history" || history !== null) return;
     setHistoryLoading(true);
     apiFetch<{ invoices: VendorHistoryRow[] }>(
