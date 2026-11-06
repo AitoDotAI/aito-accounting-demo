@@ -54,6 +54,10 @@ class MatchPair:
             "status": self.status,
             "matched_by": self.matched_by,
             "explanation": self.explanation,
+            # Whether `model_p` belongs to this invoice or to the one Aito
+            # ranked: the page shows model_p only for the former, and cannot
+            # tell from `explanation`, which the live list leaves empty.
+            "substituted": self.ranked_invoice_id is not None,
         }
 
 
