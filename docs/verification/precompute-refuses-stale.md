@@ -50,8 +50,8 @@ between 2.11.2 and 2.12.0 is said where it appears.
 So all 17 checks have now passed somewhere: 15 on shared master, 2 on the
 local slice. That is not one 17/17 run against one target.
 
-**Not done:** browser/Playwright steps (screenshots, devtools network).
-Rows that need them are left unticked.
+**Browser steps: done 2026-11-06**, see `docs/verification/browser-pass.md` (local v2.12.0, screenshots committed).
+Rows that needed them are updated below where the pass covered them.
 
 ## Results
 
@@ -65,7 +65,7 @@ Rows that need them are left unticked.
 | the writer's own empty payload (`EMPTY_MATCHING`, written by `--lite-threshold`) is served | **was refused; fixed** (CPO review): it lacked `matched_by_aito`/`matched_by_reference`, so every lite tenant was refused on every request; test added |
 | a name with no check (`invoices_pending`) passes untouched | yes (tests) |
 | nav badge is `null` when its payload is refused/absent, never 0 | yes (tests) |
-| browser: page and badge agree before/after editing a precompute | **not done** |
+| browser: page and badge agree before/after editing a precompute | **done**, browser-pass row 6: the refused payload's numbers are not shown, the page is live, the badge API agrees (screenshot 06) |
 
 ## Not in this PR
 
