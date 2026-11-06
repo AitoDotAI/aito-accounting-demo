@@ -49,11 +49,18 @@ function readInitialCustomer(): string {
 
 export function CustomerProvider({ children }: { children: ReactNode }) {
   const [customerId, setCustomerIdState] = useState<string>(DEFAULT_CUSTOMER);
+  const [resolved, setResolved] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
 
-  // Read URL/localStorage on mount (window is undefined during SSR/static export)
+  // Read URL/localStorage on mount (window is undefined during SSR/static
+  // export). The page content waits for this: a page's own effect runs on its
+  // first render, and with the default customer here it asked for CUST-0001's
+  // data (a live Aito query) before the URL's customer was read, then for the
+  // right one. Resolving in the useState initializer instead would render the
+  // wrong tenant against the prerendered HTML and break hydration.
   useEffect(() => {
     setCustomerIdState(readInitialCustomer());
+    setResolved(true);
   }, []);
 
   // Persist on change + reflect in URL so the link the user copies is shareable.
@@ -93,7 +100,7 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
 
   return (
     <CustomerContext.Provider value={{ customerId, setCustomerId, customers, currentCustomer }}>
-      {children}
+      {resolved ? children : null}
     </CustomerContext.Provider>
   );
 }
