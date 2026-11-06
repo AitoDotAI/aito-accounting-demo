@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Nav from "@/components/shell/Nav";
 import { useCustomer } from "@/lib/customer-context";
+import { useCustomerEffect } from "@/lib/use-customer-effect";
 import ErrorState from "@/components/shell/ErrorState";
 import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
@@ -63,14 +64,13 @@ interface AuditData {
 }
 
 export default function QualityOverviewPage() {
-  const { customerId, customerResolved } = useCustomer();
+  const { customerId } = useCustomer();
   const [data, setData] = useState<QualityData | null>(null);
   const [audit, setAudit] = useState<AuditData | null>(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  useEffect(() => {
-    if (!customerResolved) return;
+  useCustomerEffect(() => {
     setData(null); setAudit(null); setLive(false); setError(null);
     apiFetch<QualityData>(`/api/quality/overview?customer_id=${customerId}`)
       .then((d) => { setData(d); setLive(true); })
@@ -78,7 +78,7 @@ export default function QualityOverviewPage() {
     apiFetch<AuditData>(`/api/quality/audit?customer_id=${encodeURIComponent(customerId)}&limit=12`)
       .then((d) => setAudit(d))
       .catch(() => {});
-  }, [customerResolved, customerId]);
+  }, [customerId]);
 
   const a = data?.automation;
 

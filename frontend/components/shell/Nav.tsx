@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useCustomer } from "@/lib/customer-context";
+import { useCustomerEffect } from "@/lib/use-customer-effect";
 import { useDeveloperMode } from "@/lib/developer-mode";
 import { apiFetch } from "@/lib/api";
 
@@ -56,20 +57,19 @@ const NAV_ITEMS: { section: string; developerOnly?: boolean; items: NavItem[] }[
 
 export default function Nav() {
   const pathname = usePathname();
-  const { customerId, customerResolved } = useCustomer();
+  const { customerId } = useCustomer();
   const { developerMode, setDeveloperMode } = useDeveloperMode();
   const [badges, setBadges] = useState<Badges | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  useEffect(() => {
-    if (!customerResolved) return;
+  useCustomerEffect(() => {
     let active = true;
     setBadges(null);
     apiFetch<Badges>(`/api/nav/badges?customer_id=${encodeURIComponent(customerId)}`)
       .then((d) => { if (active) setBadges(d); })
       .catch(() => {});
     return () => { active = false; };
-  }, [customerResolved, customerId]);
+  }, [customerId]);
 
   // Auto-close the mobile drawer when the user navigates to a new page.
   useEffect(() => { setDrawerOpen(false); }, [pathname]);

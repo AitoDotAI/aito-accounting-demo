@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Nav from "@/components/shell/Nav";
 import { useCustomer } from "@/lib/customer-context";
+import { useCustomerEffect } from "@/lib/use-customer-effect";
 import ErrorState from "@/components/shell/ErrorState";
 import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
@@ -113,7 +114,7 @@ function connectorBadge(pair: MatchPair) {
 const SIGNAL_COLOR: Record<string, string> = { strong: "var(--green)", partial: "var(--amber)", weak: "var(--red)" };
 
 export default function MatchingPage() {
-  const { customerId, customerResolved } = useCustomer();
+  const { customerId } = useCustomer();
   const [data, setData] = useState<MatchResponse | null>(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -160,8 +161,7 @@ export default function MatchingPage() {
       });
   }, [customerId]);
 
-  useEffect(() => {
-    if (!customerResolved) return;
+  useCustomerEffect(() => {
     setData(null); setLive(false); setError(null); setExpanded(null);
     setWhy({}); setWhyFailed({}); asked.current = new Set();
     apiFetch<MatchResponse>(`/api/matching/pairs?customer_id=${customerId}`)
@@ -181,7 +181,7 @@ export default function MatchingPage() {
         }
       })
       .catch((e) => setError(e));
-  }, [customerResolved, customerId, fetchWhy]);
+  }, [customerId, fetchWhy]);
 
   const m = data?.metrics;
 

@@ -198,7 +198,7 @@ Core commands:
   implemented — run the pass by hand for now)*
 - `./do verify-demo` — end-to-end demo path check, against a running app
 - `./do aito-check` — Aito query sanity checks
-- `./do check` — the pre-merge gate: `test` + `fmt` + `aito-check`.
+- `./do check` — the pre-merge gate: `test` + `frontend-test` + `fmt` + `aito-check`.
   `verify-demo` is deliberately outside it, since it needs a running
   server and so would make the gate unrunnable from a clean checkout.
 - `./do demo` — run the demo from a clean state
