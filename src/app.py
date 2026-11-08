@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.aito_client import AitoClient, AitoError
-from src import admin_ops, cache, precomputed
+from src import admin_ops, cache, precomputed, public_demo
 from src.badges import badge_metrics
 from src.cache_keys import derived_key, page_cache_key, scoped_key
 from src.config import load_config
@@ -1484,6 +1484,10 @@ def formfill_predict(body: dict):
         return {"error": "at least one field is required"}
     where["customer_id"] = customer_id
 
+    if public_demo.ENABLED:
+        # The cache key would be the visitor's typed input, and the cache's
+        # second layer is a table every visitor's requests share.
+        return predict_fields(v2_client, where)
     cache_key = scoped_key("formfill", json.dumps(where, sort_keys=True))
     cached = cache.get(cache_key)
     if cached:
@@ -1522,8 +1526,9 @@ def formfill_submit(body: dict):
             "log_id": f"LOG-{uuid.uuid4().hex[:12]}",
             "customer_id": customer_id,
             "field": sub.get("field", ""),
-            "predicted_value": sub.get("predicted_value"),
-            "user_value": sub.get("user_value"),
+            # In the public demo the outcome is logged, never what was typed.
+            "predicted_value": None if public_demo.ENABLED else sub.get("predicted_value"),
+            "user_value": None if public_demo.ENABLED else sub.get("user_value"),
             "source": sub.get("source", "user"),
             "confidence": float(sub.get("confidence", 0)),
             "accepted": bool(sub.get("accepted", False)),
@@ -1594,7 +1599,9 @@ def help_impression(body: dict):
         article_id=body.get("article_id", ""),
         customer_id=body.get("customer_id", ""),
         page=body.get("page", ""),
-        query=body.get("query", ""),
+        # The ranking matches a query against article text, never against
+        # stored impressions, so the public demo loses nothing by not storing it.
+        query="" if public_demo.ENABLED else body.get("query", ""),
         clicked=bool(body.get("clicked", False)),
         prev_article_id=body.get("prev_article_id") or None,
     )
