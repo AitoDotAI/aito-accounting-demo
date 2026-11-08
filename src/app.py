@@ -1097,6 +1097,7 @@ def quality_overview(customer_id: str = Query(...)):
 
 
 UNKNOWN_FIELD = "(not a form field)"
+FORM_SOURCES = ("predicted", "user")  # what frontend/app/formfill/page.tsx sends
 
 
 def _public_audit_row(row: dict) -> dict:
@@ -1114,7 +1115,7 @@ def _public_audit_row(row: dict) -> dict:
         "predicted_value": None,
         "user_value": None,
         "values_withheld": True,
-        "source": row.get("source") if row.get("source") in ("predicted", "user") else None,
+        "source": row.get("source") if row.get("source") in FORM_SOURCES else None,
         "confidence": row.get("confidence"),
         "accepted": row.get("accepted"),
         "timestamp": row.get("timestamp"),
@@ -1517,6 +1518,12 @@ def formfill_submit(body: dict):
     if unknown:
         raise HTTPException(
             400, f"not a Form Fill field: {unknown[0].get('field')!r} in {unknown[0]!r}"
+        )
+    # The audit shows the source to every visitor, so only what the form sends.
+    bad_source = [sub for sub in submissions if sub.get("source", "user") not in FORM_SOURCES]
+    if bad_source:
+        raise HTTPException(
+            400, f"not a Form Fill source: {bad_source[0].get('source')!r} in {bad_source[0]!r}"
         )
 
     now = int(time.time())

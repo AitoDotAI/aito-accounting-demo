@@ -160,3 +160,22 @@ def test_an_evaluation_cached_before_the_fix_is_not_served(real_cache, monkeypat
         "customer_id": "CUST-0000", "domain": "help", "predict": "clicked",
         "input_fields": "page", "limit": 10})
     assert SECRET_QUERY not in r.text
+
+
+def test_a_source_the_form_does_not_send_is_refused_at_submit(store):
+    r = submit(TestClient(app_module.app), store, [
+        {"field": "vendor", "predicted_value": None, "user_value": "x",
+         "source": "visit evil.example", "confidence": 0, "accepted": False},
+    ])
+    assert r.status_code == 400, r.text
+    assert "visit evil.example" in r.json()["detail"]
+    assert store.rows == []
+
+
+def test_a_stored_row_with_a_planted_source_is_listed_without_it(store):
+    store.rows.append({"log_id": "LOG-old", "customer_id": "CUST-0000", "field": "vendor",
+                       "predicted_value": None, "user_value": None, "source": "visit evil.example",
+                       "confidence": 0.0, "accepted": False, "timestamp": 1})
+    audit = TestClient(app_module.app).get("/api/quality/audit", params={"customer_id": "CUST-0000"}).json()
+    assert "evil.example" not in json.dumps(audit)
+    assert audit["rows"][0]["source"] is None
