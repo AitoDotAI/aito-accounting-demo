@@ -55,6 +55,8 @@ interface AuditRow {
   accepted: boolean;
   timestamp: number;
   synthesized?: boolean;
+  /** A visitor's logged submission: the audit shows the outcome, never what was typed. */
+  values_withheld?: boolean;
 }
 
 interface AuditData {
@@ -186,9 +188,9 @@ export default function QualityOverviewPage() {
                             {new Date(r.timestamp * 1000).toISOString().slice(0, 16).replace("T", " ")}
                           </td>
                           <td style={{ padding: "4px 8px", fontFamily: "'IBM Plex Mono', monospace" }}>{r.field}</td>
-                          <td style={{ padding: "4px 8px", color: "var(--text2)" }}>{r.predicted_value ?? "—"}</td>
+                          <td style={{ padding: "4px 8px", color: "var(--text2)" }}>{r.predicted_value ?? (r.values_withheld ? "not shown" : "—")}</td>
                           <td style={{ padding: "4px 8px", color: "var(--text)", fontWeight: r.accepted ? 400 : 600 }}>
-                            {r.user_value ?? "—"}
+                            {r.user_value ?? (r.values_withheld ? "not shown" : "—")}
                           </td>
                           <td className="mono" style={{ padding: "4px 8px", textAlign: "right", color: "var(--text3)" }}>
                             {(r.confidence * 100).toFixed(0)}%

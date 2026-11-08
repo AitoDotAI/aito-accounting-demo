@@ -24,7 +24,7 @@ from src.badges import badge_metrics
 from src.cache_keys import derived_key, page_cache_key, scoped_key
 from src.config import load_config
 from src.customer_roster import load_roster, roster_status
-from src.formfill_service import predict_fields
+from src.formfill_service import INPUT_FIELDS, predict_fields
 from src.invoice_service import predict_batch, compute_metrics
 from src.matching_service import MatchingUnavailable, empty_matching, explain_match, match_all
 from src.rulemining_service import mine_rules
@@ -1096,6 +1096,31 @@ def quality_overview(customer_id: str = Query(...)):
     return result
 
 
+UNKNOWN_FIELD = "(not a form field)"
+
+
+def _public_audit_row(row: dict) -> dict:
+    """A logged Form Fill row as the public audit may show it.
+
+    Every visitor of the demo shares the same tenants, and the values in a
+    logged row came from whoever submitted it, so the audit shows that a
+    field was accepted or overridden, at what confidence and when, but never
+    what was typed. A field name is kept only when the form has that field.
+    The source is kept only when it is one the form sends (predicted, user).
+    """
+    return {
+        "log_id": row.get("log_id"),
+        "field": row.get("field") if row.get("field") in INPUT_FIELDS else UNKNOWN_FIELD,
+        "predicted_value": None,
+        "user_value": None,
+        "values_withheld": True,
+        "source": row.get("source") if row.get("source") in ("predicted", "user") else None,
+        "confidence": row.get("confidence"),
+        "accepted": row.get("accepted"),
+        "timestamp": row.get("timestamp"),
+    }
+
+
 @app.get("/api/quality/audit")
 def quality_audit(customer_id: str = Query(...), limit: int = 25):
     """Audit log surfaced from the prediction_log table.
@@ -1111,7 +1136,9 @@ def quality_audit(customer_id: str = Query(...), limit: int = 25):
     "accepted" row. A real production deployment would populate
     prediction_log on every formfill/submit.
     """
-    cache_key = derived_key("audit", customer_id, limit)
+    # Renamed when the values were withheld: a payload cached under the old
+    # key still carries them, and the shared cache outlives a deploy.
+    cache_key = derived_key("audit:outcomes", customer_id, limit)
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -1126,7 +1153,7 @@ def quality_audit(customer_id: str = Query(...), limit: int = 25):
         return {"error": str(exc), "rows": [], "by_field": {}, "totals": {}}
 
     hits = sorted(
-        recent.get("hits", []),
+        (_public_audit_row(r) for r in recent.get("hits", [])),
         key=lambda r: r.get("timestamp", 0),
         reverse=True,
     )
@@ -1268,7 +1295,9 @@ def quality_evaluate(
     # `scoped` marks entries written after candidates were confined to the
     # tenant; entries from before the fix sit under the old key and are
     # never read, rather than lingering for their 10-minute TTL.
-    cache_key = derived_key("eval:scoped", customer_id, domain, predict, ",".join(fields), limit)
+    # Renamed when cases[].row was narrowed to the shown columns: a payload
+    # cached under the old key still carries whole rows.
+    cache_key = derived_key("eval:shown", customer_id, domain, predict, ",".join(fields), limit)
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -1479,6 +1508,12 @@ def formfill_submit(body: dict):
     submissions = body.get("fields", [])
     if not customer_id or not submissions:
         return {"error": "customer_id and fields[] required"}
+
+    unknown = [sub for sub in submissions if sub.get("field") not in INPUT_FIELDS]
+    if unknown:
+        raise HTTPException(
+            400, f"not a Form Fill field: {unknown[0].get('field')!r} in {unknown[0]!r}"
+        )
 
     now = int(time.time())
     rows = []
