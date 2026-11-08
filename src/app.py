@@ -1136,7 +1136,9 @@ def quality_audit(customer_id: str = Query(...), limit: int = 25):
     "accepted" row. A real production deployment would populate
     prediction_log on every formfill/submit.
     """
-    cache_key = derived_key("audit", customer_id, limit)
+    # Renamed when the values were withheld: a payload cached under the old
+    # key still carries them, and the shared cache outlives a deploy.
+    cache_key = derived_key("audit:outcomes", customer_id, limit)
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -1293,7 +1295,9 @@ def quality_evaluate(
     # `scoped` marks entries written after candidates were confined to the
     # tenant; entries from before the fix sit under the old key and are
     # never read, rather than lingering for their 10-minute TTL.
-    cache_key = derived_key("eval:scoped", customer_id, domain, predict, ",".join(fields), limit)
+    # Renamed when cases[].row was narrowed to the shown columns: a payload
+    # cached under the old key still carries whole rows.
+    cache_key = derived_key("eval:shown", customer_id, domain, predict, ",".join(fields), limit)
     cached = cache.get(cache_key)
     if cached:
         return cached

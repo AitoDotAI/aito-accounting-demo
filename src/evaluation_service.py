@@ -260,9 +260,15 @@ def run_evaluation(
     #   top:      { feature, $p, field } — Aito's top prediction
     #   correct:  { feature, $p, field } — the actual answer + its
     #             predicted probability under the model
+    # A case's testCase is the whole stored row, and in a public demo some
+    # rows hold what a visitor typed (help_impressions.query). The response
+    # carries only what the table shows: its display columns, the row id and
+    # the target.
+    shown = {c["field"] for c in cfg["display_columns"]} | {cfg["id_field"], predict}
     cases: list[dict] = []
     for case in cases_raw:
-        row = case.get("testCase", {}) or {}
+        full = case.get("testCase", {}) or {}
+        row = {k: v for k, v in full.items() if k in shown}
         actual = row.get(predict)
         top = case.get("top") or {}
         predicted = top.get("feature")

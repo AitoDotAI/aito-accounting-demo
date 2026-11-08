@@ -99,3 +99,64 @@ def test_a_stored_row_with_an_unknown_field_is_listed_without_its_name(store):
     audit = TestClient(app_module.app).get("/api/quality/audit", params={"customer_id": "CUST-0000"}).json()
     assert SECRET_FIELD not in json.dumps(audit)
     assert audit["rows"][0]["field"] == "(not a form field)"
+
+
+SECRET_QUERY = "visitor A's private help search"
+
+
+class EvaluatingStore(LogStore):
+    """_evaluate answers with a case whose test row carries a typed help query."""
+
+    def evaluate(self, body, timeout=None):
+        return {"accuracy": 1.0, "baseAccuracy": 0.5, "testSamples": 1, "cases": [{
+            "testCase": {"impression_id": "IMP-1", "customer_id": "CUST-0000", "page": "/invoices",
+                         "article_id": "ART-1", "query": SECRET_QUERY, "clicked": True},
+            "accurate": True, "top": {"feature": True, "$p": 0.9},
+        }]}
+
+
+def test_the_help_evaluation_does_not_return_what_visitors_searched(store, monkeypatch):
+    monkeypatch.setattr(app_module, "v2_client", EvaluatingStore())
+    r = TestClient(app_module.app).get("/api/quality/evaluate", params={
+        "customer_id": "CUST-0000", "domain": "help", "predict": "clicked",
+        "input_fields": "page", "limit": 10})
+    assert r.status_code == 200, r.text
+    assert SECRET_QUERY not in r.text
+    [case] = r.json()["cases"]
+    # what the table shows (its display columns), the id, and the target
+    assert set(case["row"]) == {"impression_id", "page", "article_id", "clicked"}, case["row"]
+
+
+@pytest.fixture
+def real_cache(monkeypatch):
+    """The process cache as it runs, minus its shared Aito layer."""
+    monkeypatch.setattr(cache, "_aito", None)
+    cache._l1.clear()
+    yield cache
+    cache._l1.clear()
+
+
+def test_an_audit_cached_before_the_fix_is_not_served(real_cache, monkeypatch):
+    from src.cache_keys import derived_key
+    log = LogStore()
+    log.rows.append({"log_id": "LOG-1", "customer_id": "CUST-0000", "field": "vendor",
+                     "predicted_value": None, "user_value": None, "source": "user",
+                     "confidence": 0.5, "accepted": False, "timestamp": 1})
+    monkeypatch.setattr(app_module, "v2_client", log)
+    old = {"rows": [{"user_value": SECRET_VENDOR}], "by_field": {}, "totals": {}}
+    real_cache.set(derived_key("audit", "CUST-0000", 25), old, ttl=3600)
+
+    r = TestClient(app_module.app).get("/api/quality/audit", params={"customer_id": "CUST-0000"})
+    assert SECRET_VENDOR not in r.text
+
+
+def test_an_evaluation_cached_before_the_fix_is_not_served(real_cache, monkeypatch):
+    from src.cache_keys import derived_key
+    monkeypatch.setattr(app_module, "v2_client", EvaluatingStore())
+    old = {"kpis": {}, "cases": [{"row": {"query": SECRET_QUERY}}], "meta": {}}
+    real_cache.set(derived_key("eval:scoped", "CUST-0000", "help", "clicked", "page", 10), old, ttl=3600)
+
+    r = TestClient(app_module.app).get("/api/quality/evaluate", params={
+        "customer_id": "CUST-0000", "domain": "help", "predict": "clicked",
+        "input_fields": "page", "limit": 10})
+    assert SECRET_QUERY not in r.text
