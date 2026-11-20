@@ -74,3 +74,26 @@ def test_the_approver_candidates_are_limited_to_the_tenants_staff():
 def test_a_tenant_with_no_confident_prediction_gets_none():
     # Below Aito's noise floor the answer is "not enough history", not a guess.
     assert predict_vendor_routing(PredictClient(top_p=0.05), CUSTOMER, "Kardex Finland Oy") is None
+
+
+def test_each_answer_shows_the_why_of_the_hit_it_came_from():
+    # The approver is asked with the tenant filter inside the same query, so
+    # the top hit and its $why are Aito's for that scoped question; nothing is
+    # promoted from a runner-up and paired with another hit's evidence.
+    def why_with_lift(lift):
+        return {"type": "product", "factors": [
+            {"type": "relatedPropositionLift", "value": lift, "proposition": {"vendor": {"$has": "X"}}}]}
+
+    class Client(PredictClient):
+        def predict(self, table, where, field, **_):
+            self.predicted.append((dict(where), field))
+            if field == "approver":
+                assert where["approver.customer_id"] == CUSTOMER
+                return {"hits": [{"feature": f"{CUSTOMER}-EMP-0009", "$p": 0.6, "$why": why_with_lift(7.0)},
+                                 {"feature": f"{CUSTOMER}-EMP-0010", "$p": 0.2, "$why": why_with_lift(2.0)}]}
+            return super().predict(table, where, field)
+
+    routing = predict_vendor_routing(Client(), CUSTOMER, "Kardex Finland Oy")
+
+    assert routing["approver"]["value"] == f"{CUSTOMER}-EMP-0009"
+    assert [f["lift"] for f in routing["approver"]["why"] if f["type"] == "pattern"] == [7.0]
