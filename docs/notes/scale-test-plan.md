@@ -98,7 +98,6 @@ endpoint perf table at the bottom of `aito-perf-findings.md`.
 | `/api/anomalies/scan` | Precomputed. Same. |
 | `/api/quality/predictions` | Precomputed (`_evaluate` runs at precompute time). `_evaluate` is the slowest known operation; expect minutes per run on the largest customer. |
 | `/api/formfill/predict` | **Live** — fan out 5–7 `_predict` calls in parallel. The only hot live path. Each `_predict` cold against 128 k-row history is the key flag. |
-| `/api/formfill/templates` | Already cached, but watch `predict_template`'s `_search limit:50` cold time. |
 
 ### 5. Deploy
 

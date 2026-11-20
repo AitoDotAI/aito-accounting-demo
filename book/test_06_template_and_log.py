@@ -1,5 +1,5 @@
 """Booktest coverage for the endpoints added in P1 / P2:
-template prediction, formfill submit logging, mined rules, and rule
+formfill submit logging, mined rules, and rule
 drill-down. Each captures a snapshot of live Aito behavior so future
 regressions in these flows are caught.
 """
@@ -11,47 +11,7 @@ import booktest as bt
 
 from book.aito_env import get_client
 
-from src.formfill_service import predict_template
 from src.quality_service import mine_rules_for_customer
-
-
-@bt.snapshot_httpx()
-def test_predict_template_for_recurring_vendor(t: bt.TestCaseRun):
-    """Template prediction returns a stable joint mode for a frequent vendor."""
-    c = get_client()
-
-    t.h1("Template prediction (CUST-0000, top vendor)")
-    t.tln("")
-
-    # Pick the most-frequent vendor for CUST-0000
-    sample = c.search("invoices", {"customer_id": "CUST-0000"}, limit=300)
-    from collections import Counter
-    counts = Counter(h["vendor"] for h in sample.get("hits", []) if h.get("vendor"))
-    if not counts:
-        t.tln("(no invoices for CUST-0000)")
-        return
-
-    top_vendor, top_count = counts.most_common(1)[0]
-    t.iln(f"Top vendor: {top_vendor} ({top_count} invoices)")
-    t.tln("")
-
-    template = predict_template(c, "CUST-0000", top_vendor)
-    if template is None:
-        t.iln("(no confident template; vendor's pattern is too noisy)")
-        # Not an assertion: None is a documented outcome here, and
-        # `assertln(True, ...)` would only look like a check.
-        t.tln("  no template is allowed: no pattern dominates this vendor")
-        return
-
-    t.iln(f"  match_count:    {template['match_count']}/{template['total_history']}")
-    t.iln(f"  confidence:     {template['confidence']}")
-    t.iln(f"  gl_code:        {template['fields']['gl_code']} ({template['fields']['gl_label']})")
-    t.iln(f"  approver:       {template['fields']['approver']}")
-    t.iln(f"  cost_centre:    {template['fields']['cost_centre']}")
-    t.iln(f"  vat_pct:        {template['fields']['vat_pct']}")
-    t.iln(f"  payment_method: {template['fields']['payment_method']}")
-    t.tln("")
-    t.assertln(template["confidence"] >= 0.20, "confidence >= 0.20")
 
 
 @bt.snapshot_httpx()

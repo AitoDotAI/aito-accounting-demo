@@ -38,11 +38,10 @@ const PANEL_CONFIG: AitoPanelConfig = {
     { label: "Smart form fill docs", url: "https://aito.ai/docs" },
   ],
   flow_steps: [
-    { n: 1, produces: "Quick-start templates", call: "_search top vendors then predict_template per vendor" },
-    { n: 2, produces: "Vendor dropdown", call: "_search distinct vendor WHERE customer_id" },
-    { n: 3, produces: "Each predicted field", call: "_predict <field> WHERE customer_id + filled fields" },
-    { n: 4, produces: "$why factors per field", call: "_predict … select [$p, feature, $why]" },
-    { n: 5, produces: "Submission log", call: "POST /data/prediction_log/batch (predicted vs accepted)" },
+    { n: 1, produces: "Vendor dropdown", call: "_search distinct vendor WHERE customer_id" },
+    { n: 2, produces: "Each predicted field", call: "_predict <field> WHERE customer_id + filled fields" },
+    { n: 3, produces: "$why factors per field", call: "_predict … select [$p, feature, $why]" },
+    { n: 4, produces: "Submission log", call: "POST /data/prediction_log/batch (predicted vs accepted)" },
   ],
 };
 
@@ -63,25 +62,6 @@ interface PredictResponse {
   avg_confidence: number;
 }
 
-interface TemplateResponse {
-  vendor?: string;
-  match_count?: number;
-  total_history?: number;
-  confidence?: number;
-  fields?: {
-    gl_code: string | null;
-    gl_label: string | null;
-    approver: string | null;
-    approver_name?: string | null;
-    cost_centre: string | null;
-    vat_pct: string | null;
-    payment_method: string | null;
-    due_days: number | null;
-    category: string | null;
-  };
-  error?: string;
-}
-
 export default function FormFillPage() {
   const { customerId } = useCustomer();
   const [userValues, setUserValues] = useState<Record<string, string>>({});
@@ -90,25 +70,21 @@ export default function FormFillPage() {
   const [live, setLive] = useState(false);
   const [lastQuery, setLastQuery] = useState<object | null>(null);
   const [vendors, setVendors] = useState<string[]>([]);
-  const [template, setTemplate] = useState<TemplateResponse | null>(null);
-  const [topTemplates, setTopTemplates] = useState<TemplateResponse[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // True while the form holds only the example this page opened with.
-  const [preloaded, setPreloaded] = useState(false);
   const preloadedFor = useRef<string | null>(null);
-  // Which customer `topTemplates` was fetched for. A render right after a
+  // Which customer `vendors` was fetched for. A render right after a
   // switch still holds the previous tenant's list; this says so.
-  const templatesFor = useRef<string | null>(null);
+  const vendorsFor = useRef<string | null>(null);
   // The customer as of the latest render, for answers that arrive after a switch.
   const customerRef = useRef(customerId);
   customerRef.current = customerId;
   const abortRef = useRef<AbortController | null>(null);
 
   useCustomerEffect(() => {
-    // Everything on this page belongs to one tenant: the form, its predictions,
-    // the vendor list and the example templates. Switching customer in place
+    // Everything on this page belongs to one tenant: the form, its predictions
+    // and the vendor list. Switching customer in place
     // used to leave the previous tenant's vendor in the form (and, with the
-    // form emptied, preload its example template for the new tenant), so all of
+    // form emptied, preload its example vendor for the new tenant), so all of
     // it is dropped here and anything still in flight for the old customer is
     // ignored.
     let current = true;
@@ -117,19 +93,13 @@ export default function FormFillPage() {
     setUserValues({});
     setPredictions([]);
     setLastQuery(null);
-    setTemplate(null);
-    setTopTemplates([]);
     setVendors([]);
-    setPreloaded(false);
     setSubmitMsg(null);
     preloadedFor.current = null;
-    templatesFor.current = null;
+    vendorsFor.current = null;
     apiFetch<{ vendors: string[] }>(`/api/formfill/vendors?customer_id=${customerId}`)
-      .then((d) => { if (current) setVendors(d.vendors); })
+      .then((d) => { if (current) { vendorsFor.current = customerId; setVendors(d.vendors); } })
       .catch(() => { if (current) setVendors(["Kesko Oyj", "Telia Finland", "Fazer Bakeries", "SOK Corporation"]); });
-    apiFetch<{ templates: TemplateResponse[] }>(`/api/formfill/templates?customer_id=${customerId}`)
-      .then((d) => { if (current) { templatesFor.current = customerId; setTopTemplates(d.templates ?? []); } })
-      .catch(() => { if (current) setTopTemplates([]); });
     return () => { current = false; };
   }, [customerId]);
 
@@ -175,76 +145,26 @@ export default function FormFillPage() {
     }
   }, [customerId]);
 
-  const fetchTemplate = useCallback(async (vendor: string) => {
-    if (!vendor) { setTemplate(null); return; }
-    try {
-      const tpl = await apiFetch<TemplateResponse>(
-        `/api/formfill/template?customer_id=${customerId}&vendor=${encodeURIComponent(vendor)}`,
-      );
-      if (customerRef.current !== customerId) return;   // answered for the previous customer
-      setTemplate(tpl.error ? null : tpl);
-    } catch {
-      if (customerRef.current === customerId) setTemplate(null);
-    }
-  }, [customerId]);
-
   const handleChange = useCallback((field: string, value: string) => {
-    setPreloaded(false);
     setUserValues((prev) => {
       const next = { ...prev, [field]: value };
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => fetchPredictions(next), 300);
       return next;
     });
-    if (field === "vendor") fetchTemplate(value);
-  }, [fetchPredictions, fetchTemplate]);
+  }, [fetchPredictions]);
 
   const handleVendorSelect = useCallback((vendor: string) => {
     const next = { ...userValues, vendor };
     setUserValues(next);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     fetchPredictions(next);
-    fetchTemplate(vendor);
-  }, [userValues, fetchPredictions, fetchTemplate]);
-
-  const applyTemplate = useCallback(() => {
-    if (!template?.fields) return;
-    const f = template.fields;
-    const next = { ...userValues };
-    if (f.gl_code) next.gl_code = f.gl_code;
-    if (f.approver) next.approver = f.approver;
-    if (f.cost_centre) next.cost_centre = f.cost_centre;
-    if (f.vat_pct != null) next.vat_pct = String(f.vat_pct);
-    if (f.payment_method) next.payment_method = f.payment_method;
-    if (f.due_days != null) next.due_days = String(f.due_days);
-    if (f.category) next.category = f.category;
-    setUserValues(next);
-    fetchPredictions(next);
-  }, [template, userValues, fetchPredictions]);
-
-  const applyTopTemplate = useCallback((t: TemplateResponse) => {
-    if (!t.vendor || !t.fields) return;
-    const f = t.fields;
-    setPreloaded(false);
-    const next: Record<string, string> = { vendor: t.vendor };
-    if (f.gl_code) next.gl_code = f.gl_code;
-    if (f.approver) next.approver = f.approver;
-    if (f.cost_centre) next.cost_centre = f.cost_centre;
-    if (f.vat_pct != null) next.vat_pct = String(f.vat_pct);
-    if (f.payment_method) next.payment_method = f.payment_method;
-    if (f.due_days != null) next.due_days = String(f.due_days);
-    if (f.category) next.category = f.category;
-    setUserValues(next);
-    setTemplate(t);
-    fetchPredictions(next);
-  }, [fetchPredictions]);
+  }, [userValues, fetchPredictions]);
 
   const handleClear = useCallback(() => {
-    setPreloaded(false);
     setUserValues({});
     setPredictions([]);
     setLastQuery(null);
-    setTemplate(null);
   }, []);
 
   const [submitMsg, setSubmitMsg] = useState<string | null>(null);
@@ -294,17 +214,16 @@ export default function FormFillPage() {
     : 0;
   const formIsEmpty = Object.values(userValues).every((v) => !v);
 
-  // Open on a worked example rather than an empty form: the tenant's most
-  // frequent recurring vendor is entered, and every other field arrives as
-  // a prediction to confirm. Once per tenant, and only onto an empty form.
+  // Open on a worked example rather than an empty form: a vendor from this
+  // tenant's ledger is entered, and every other field arrives as a
+  // prediction to confirm. Once per tenant, and only onto an empty form.
   useEffect(() => {
-    const example = topTemplates[0]?.vendor;
-    if (templatesFor.current !== customerId) return;   // the list is another tenant's
+    const example = vendors[0];
+    if (vendorsFor.current !== customerId) return;   // the list is another tenant's
     if (!example || !formIsEmpty || preloadedFor.current === customerId) return;
     preloadedFor.current = customerId;
     handleVendorSelect(example);
-    setPreloaded(true);
-  }, [topTemplates, customerId, formIsEmpty, handleVendorSelect]);
+  }, [vendors, customerId, formIsEmpty, handleVendorSelect]);
 
   return (
     <>
@@ -334,57 +253,6 @@ export default function FormFillPage() {
           {submitMsg && (
             <div style={{ background: "var(--green-bg)", border: "1px solid #a8d8b0", borderRadius: 8, padding: "8px 14px", fontSize: "12.5px", color: "#2a8a3a", marginBottom: 8 }}>
               {submitMsg}
-            </div>
-          )}
-          {(formIsEmpty || preloaded) && topTemplates.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".6px", marginBottom: 8 }}>
-                Quick start &middot; recurring vendors for this customer
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 8 }}>
-                {topTemplates.map((t, i) => (
-                  <button
-                    key={i}
-                    onClick={() => applyTopTemplate(t)}
-                    style={{
-                      textAlign: "left",
-                      padding: 12,
-                      background: "var(--surface)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 6,
-                      cursor: "pointer",
-                      transition: "border-color .15s, box-shadow .15s",
-                      fontFamily: "inherit",
-                    }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--gold-mid)"; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; }}
-                  >
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {t.vendor}
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--text3)", lineHeight: 1.5 }}>
-                      GL {t.fields?.gl_code} ({t.fields?.gl_label})<br />
-                      Hyväksyjä: {t.fields?.approver_name ?? t.fields?.approver}<br />
-                      <span style={{ color: "var(--gold-dark)" }}>
-                        {t.match_count} of {t.total_history} prior invoices &middot; {Math.round((t.confidence ?? 0) * 100)}%
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          {template && template.confidence != null && template.confidence >= 0.40 && (
-            <div style={{ background: "var(--surface2)", border: "1px solid var(--border2)", borderRadius: 8, padding: "12px 16px", marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ flex: 1, fontSize: "12.5px", color: "var(--text2)", lineHeight: 1.5 }}>
-                <strong style={{ color: "var(--gold-dark)" }}>Template match:</strong>{" "}
-                {template.match_count} of {template.total_history} prior invoices for{" "}
-                <strong>{template.vendor}</strong> use the same routing
-                {template.fields?.gl_label && <> (GL {template.fields.gl_code} {template.fields.gl_label}, hyväksyjä {template.fields.approver_name ?? template.fields.approver})</>}.
-              </div>
-              <button className="btn btn-primary" onClick={applyTemplate} style={{ whiteSpace: "nowrap" }}>
-                Apply template
-              </button>
             </div>
           )}
           {predictedCount > 0 && !bannerDismissed && (

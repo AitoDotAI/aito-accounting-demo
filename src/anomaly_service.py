@@ -54,8 +54,7 @@ def vendor_gl_history(client: AitoClient, customer_id: str, vendor: str,
                       limit: int = 1000) -> dict[str, int] | None:
     """How this customer booked its own invoices from this vendor: gl_code -> count.
 
-    `_search` and not `_predict`, for the same reason
-    `predict_template` uses it: we need a frequency the UI can state as a
+    `_search` and not `_predict`: we need a frequency the UI can state as a
     frequency. A `$p` cannot be turned into one — it is smoothed, it
     combines several evidence fields, and its candidate domain spans the
     whole instance while `customer_id` only supplies evidence

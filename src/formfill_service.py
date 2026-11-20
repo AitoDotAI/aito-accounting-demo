@@ -57,75 +57,6 @@ def _label_map_for_field(field_name: str) -> dict | None:
     return None
 
 
-def predict_template(client: AitoClient, customer_id: str, vendor: str) -> dict | None:
-    """Find the most common historical invoice 'template' for this vendor.
-
-    A template is the joint mode of (gl_code, approver, cost_centre, vat_pct,
-    payment_method, due_days, category). When confidence is high, the user
-    can apply all fields with one click instead of confirming each.
-
-    `_search` here is the right primitive — not a Counter reinvention of
-    `_predict`. We need the joint frequency P(gl ∧ approver ∧ cc | vendor)
-    so the UI can claim "X of Y prior invoices use this exact routing".
-    `_predict` returns calibrated marginal probabilities per field and
-    has no single-call joint-mode form; expressing the same thing as
-    chained _predicts would mean 7 round-trips per vendor, multiplied
-    by the top-N when this is called from formfill_templates.
-    """
-    try:
-        result = client.search("invoices", {"customer_id": customer_id, "vendor": vendor}, limit=50)
-    except AitoError:
-        return None
-
-    hits = result.get("hits", [])
-    if len(hits) < 3:
-        return None
-
-    from collections import Counter
-
-    # Use the high-signal classification fields as the template key.
-    # Other fields (vat, payment, due, category) have lower variation
-    # so we resolve them as the most-common value within the matched set.
-    def core_key(inv: dict) -> tuple:
-        return (inv.get("gl_code"), inv.get("approver"), inv.get("cost_centre"))
-
-    counts = Counter(core_key(inv) for inv in hits)
-    if not counts:
-        return None
-
-    (gl, approver, cc), n = counts.most_common(1)[0]
-    confidence = n / len(hits)
-
-    if confidence < 0.20:  # too noisy to call it a template
-        return None
-
-    # Resolve secondary fields by most-common value within the matched template
-    matched = [inv for inv in hits if core_key(inv) == (gl, approver, cc)]
-    def mode_of(field: str):
-        c = Counter(inv.get(field) for inv in matched if inv.get(field) is not None)
-        return c.most_common(1)[0][0] if c else None
-
-    return {
-        "vendor": vendor,
-        "match_count": n,
-        "total_history": len(hits),
-        "confidence": round(confidence, 2),
-        "fields": {
-            "gl_code": gl,
-            "gl_label": GL_LABELS.get(gl, gl) if gl else None,
-            # `approver` stays the employee id, which is what applying the
-            # template submits; the name is for the card a person reads.
-            "approver": approver,
-            "approver_name": resolve(tenant_employee_names(client, customer_id), approver),
-            "cost_centre": cc,
-            "vat_pct": mode_of("vat_pct"),
-            "payment_method": mode_of("payment_method"),
-            "due_days": mode_of("due_days"),
-            "category": mode_of("category"),
-        },
-    }
-
-
 def format_value(value: str, fmt: str) -> str:
     """Format a predicted value for display."""
     if fmt == "gl":
@@ -142,8 +73,11 @@ def format_value(value: str, fmt: str) -> str:
     return value
 
 
-def predict_fields(client: AitoClient, where: dict) -> dict:
+def predict_fields(client: AitoClient, where: dict, only: tuple[str, ...] | None = None) -> dict:
     """Predict form fields not already provided in `where`.
+
+    `only` limits the prediction to those fields, for a caller that shows
+    just some of them and should not pay a round trip for the rest.
 
     Accepts any combination of known fields as input context.
     Returns predictions for the remaining fields, each with top-3
@@ -160,7 +94,7 @@ def predict_fields(client: AitoClient, where: dict) -> dict:
     provided = set(where.keys())
     fields_to_predict = [
         fd for fd in PREDICT_FIELDS
-        if fd["field"] not in provided
+        if fd["field"] not in provided and (only is None or fd["field"] in only)
     ]
     customer_id = where.get("customer_id")
     if not customer_id and any(fd["field"] == "approver" for fd in fields_to_predict):

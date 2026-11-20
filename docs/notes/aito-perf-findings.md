@@ -369,7 +369,6 @@ call.
 | `/api/matching/pairs`                     |  16 ms |    16 ms | precomputed JSON |
 | `/api/anomalies/scan`                     |  14 ms |    14 ms | precomputed JSON |
 | `/api/quality/*`                          |  14 ms |    25 ms | precomputed JSON |
-| `/api/formfill/templates`                 |  14 ms |    22 ms | in-process cache, live fan-out |
 | `/api/formfill/vendors`                   |  18 ms |    19 ms | precomputed JSON |
 
 The pattern: anything that touches Aito live the *first time* eats the

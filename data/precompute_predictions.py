@@ -342,39 +342,38 @@ def precompute_help_related(
 def precompute_landing(client: AitoClient, vendor_limit: int = 8, tenants_per_vendor: int = 4) -> int:
     """Precompute the home page payload.
 
-    Without this, the home screen does shared_vendors + 4 parallel
-    formfill/template calls per vendor on first paint — visibly slow
-    on cold deploys. Producing landing.json reduces that to one
-    static-file read.
+    Without this, the home screen does shared_vendors + a prediction per
+    tenant and vendor on first paint, visibly slow on cold deploys.
+    Producing landing.json reduces that to one static-file read.
     """
     from src.multitenancy_service import compute_shared_vendors
-    from src.formfill_service import predict_template
+    from src.vendor_routing import predict_vendor_routing
 
     vendors = compute_shared_vendors()[:vendor_limit]
-    templates: dict[str, dict] = {}
+    routing: dict[str, dict] = {}
 
     def fetch(vendor: str, customer_id: str) -> tuple[str, dict | None]:
         try:
-            tpl = predict_template(client, customer_id, vendor)
+            answer = predict_vendor_routing(client, customer_id, vendor)
         except AitoError as e:
-            print(f"  landing template skipped {customer_id}/{vendor}: {e}")
-            tpl = None
-        return f"{vendor}|{customer_id}", tpl
+            print(f"  landing prediction skipped {customer_id}/{vendor}: {e}")
+            answer = None
+        return f"{vendor}|{customer_id}", answer
 
     jobs: list[tuple[str, str]] = []
     for v in vendors:
         for t in v["tenants"][:tenants_per_vendor]:
             jobs.append((v["vendor"], t["customer_id"]))
 
-    print(f"  landing: {len(vendors)} vendors × up to {tenants_per_vendor} tenants = {len(jobs)} templates")
+    print(f"  landing: {len(vendors)} vendors × up to {tenants_per_vendor} tenants = {len(jobs)} predictions")
     with ThreadPoolExecutor(max_workers=8) as pool:
-        for key, tpl in pool.map(lambda j: fetch(*j), jobs):
-            if tpl is not None:
-                templates[key] = tpl
+        for key, answer in pool.map(lambda j: fetch(*j), jobs):
+            if answer is not None:
+                routing[key] = answer
 
     from src import precompute_store
 
-    payload = {"vendors": vendors, "templates": templates}
+    payload = {"vendors": vendors, "routing": routing}
     out_path = precompute_store.bootstrap_path("landing")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as f:

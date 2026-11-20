@@ -51,22 +51,6 @@ Each field renders in one of three states:
 
 The state machine lives in `frontend/components/prediction/PredictedField.tsx`.
 
-### Templates
-
-For repeat-vendor entry, the page also surfaces "quick-start
-templates" — vendor-shaped prefill packs derived from each
-customer's most-frequent invoice patterns:
-
-```python
-# src/formfill_service.py — predict_template()
-result = client.predict("invoices",
-    {"customer_id": customer_id, "vendor": vendor},
-    "gl_code", select=["$p", "feature"])
-```
-
-Click "Telia" → form prefills with vendor=Telia, gl_code=6200,
-cost_centre=CC-IT, approver=Mikko Laine, etc.
-
 ## Demo flow
 
 1. Page loads with empty fields.

@@ -388,7 +388,7 @@ adds ~63 ms.
 │   ├── app.py                   # FastAPI endpoints (all customer-scoped)
 │   ├── aito_client.py           # Aito REST client
 │   ├── invoice_service.py       # Predict GL + approver; rules optional
-│   ├── formfill_service.py      # Multi-field predict + predict_template
+│   ├── formfill_service.py      # Multi-field predict with $why
 │   ├── rulemining_service.py    # Pattern discovery via _relate
 │   ├── matching_service.py      # _predict invoice_id via schema link
 │   ├── reference_lookup.py      # Quoted reference → invoice, no Aito
