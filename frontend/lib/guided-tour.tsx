@@ -31,9 +31,9 @@ export const TOUR_STOPS: GuidedTourStop[] = [
     href: "/formfill",
     title: "Smart Form Fill — multi-field _predict",
     pitch:
-      "Type any vendor; GL, approver, cost centre and VAT all predict in one server round-trip. The whole template is the joint mode of historical invoices for that vendor — not a chain of predict calls.",
-    action: "Pick a vendor from the recent list (or type a new one). Each predicted field carries $why.",
-    call: "_search joint mode + per-field _predict",
+      "Type any vendor; GL, approver, cost centre and VAT all predict in one server round-trip, each field with its own probability and $why.",
+    action: "Pick a vendor from the dropdown (or type a new one). Each predicted field carries $why.",
+    call: "per-field _predict",
   },
   {
     n: 3,

@@ -2,7 +2,7 @@
 //
 // The page held every tenant-scoped piece of state across a customer switch,
 // sent every /api/formfill/predict as the DEFAULT customer (a useCallback with
-// no dependencies kept the first render's customerId), and let a template or
+// no dependencies kept the first render's customerId), and let an
 // example list that was still in flight for the previous customer land on the
 // new one. The built frontend is loaded in a real Chrome with every /api call
 // stubbed (no backend, no Aito). The stubs echo the customer they were asked
@@ -23,21 +23,10 @@ const VENDOR_INPUT = "input[placeholder='Type or select vendor']";
 
 interface Call { path: string; customer: string | null; vendor: string | null }
 
-const fields = (customer: string) => ({
-  gl_code: "4400", gl_label: `GL-LABEL-OF-${customer}`, approver: `APPROVER-OF-${customer}`,
-  approver_name: `APPROVER-OF-${customer}`, cost_centre: "CC-1", vat_pct: "25.5",
-  payment_method: "SEPA", due_days: 30, category: "supplies",
-});
-
 function answer(path: string, customer: string | null, vendor: string | null): unknown {
   switch (path) {
-    case "/api/formfill/templates":
-      return { templates: customer === A
-        ? [{ vendor: A_VENDOR, match_count: 9, total_history: 10, confidence: 0.9, fields: fields(A) }] : [] };
     case "/api/formfill/vendors":
       return { vendors: [customer === A ? A_VENDOR : "VENDOR-OF-B"] };
-    case "/api/formfill/template":
-      return { vendor, match_count: 9, total_history: 10, confidence: 0.9, fields: fields(customer ?? "NONE") };
     case "/api/formfill/predict":
       return { fields: [{ field: "gl_code", label: "GL code", value: `PREDICTED-FOR-${customer}`,
         raw_value: "4400", confidence: 0.9, predicted: true, alternatives: [] }] };
@@ -134,7 +123,8 @@ test("the previous tenant's vendor is not left in the form after a customer swit
     await settle(h.page);
     await h.switchTo(B);
     await settle(h.page);
-    assert.equal(await h.page.inputValue(VENDOR_INPUT), "", `${A}'s vendor is still shown for ${B}`);
+    // B's own example vendor is preloaded; A's must be gone.
+    assert.notEqual(await h.page.inputValue(VENDOR_INPUT), A_VENDOR, `${A}'s vendor is still shown for ${B}`);
   } finally { await h.close(); }
 });
 
@@ -143,7 +133,7 @@ test("the previous tenant's vendor is never sent to the new tenant's endpoints",
   try {
     await preloaded(h.page);
     await settle(h.page);
-    // With the form emptied first, the old example template is what the page
+    // With the form emptied first, the old example vendor is what the page
     // would preload for the new customer.
     await h.page.click("button:has-text('Clear')");
     await h.page.waitForTimeout(300);
@@ -154,25 +144,9 @@ test("the previous tenant's vendor is never sent to the new tenant's endpoints",
   } finally { await h.close(); }
 });
 
-test("a template still in flight for the previous customer does not land on the new one", async () => {
-  const h = await open({ hold: [["/api/formfill/template", A]] });
-  const release = () => h.release("/api/formfill/template", A);
-  try {
-    await preloaded(h.page);            // the preload asked for A's template; the answer is held
-    await h.switchTo(B);
-    await h.page.waitForTimeout(1000);   // not networkidle: the held request never idles
-    release();
-    await h.page.waitForTimeout(1000);
-    const text = await h.page.innerText("body");
-    assert.ok(!text.includes(`APPROVER-OF-${A}`), `${A}'s template is on ${B}'s page`);
-    assert.equal(await h.page.locator("button:has-text('Apply template')").count(), 0,
-      "an Apply template button offers the previous customer's routing");
-  } finally { release(); await h.close(); }
-});
-
-test("the example templates in flight for the previous customer are not preloaded for the new one", async () => {
-  const h = await open({ hold: [["/api/formfill/templates", A]] });
-  const release = () => h.release("/api/formfill/templates", A);
+test("the vendor list in flight for the previous customer is not preloaded for the new one", async () => {
+  const h = await open({ hold: [["/api/formfill/vendors", A]] });
+  const release = () => h.release("/api/formfill/vendors", A);
   try {
     await h.page.waitForLoadState("domcontentloaded");
     await h.page.waitForTimeout(500);   // A's list is requested and held
@@ -180,12 +154,11 @@ test("the example templates in flight for the previous customer are not preloade
     await h.page.waitForTimeout(1000);
     release();
     await h.page.waitForTimeout(1000);
-    assert.equal(await h.page.inputValue(VENDOR_INPUT), "", `${A}'s example was preloaded for ${B}`);
+    // B's own example may be preloaded; A's must not be.
+    assert.notEqual(await h.page.inputValue(VENDOR_INPUT), A_VENDOR, `${A}'s example was preloaded for ${B}`);
     assert.deepEqual(h.calls.filter((c) => c.customer === B && c.vendor === A_VENDOR), []);
-    // The late list must not be shown either: the quick-start cards print the
-    // example's routing, and the vendor dropdown lists the vendors fetched for A.
-    const text = await h.page.innerText("body");
-    assert.ok(!text.includes(`APPROVER-OF-${A}`), `${A}'s example templates are on ${B}'s page`);
+    // The late list must not be shown either: the vendor dropdown lists the
+    // vendors fetched for A.
     assert.ok(!(await h.page.content()).includes(A_VENDOR), `${A}'s vendor is in ${B}'s page`);
   } finally { release(); await h.close(); }
 });

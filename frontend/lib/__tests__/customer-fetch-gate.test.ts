@@ -12,7 +12,7 @@
 //
 // Limits, so nobody reads this as stronger than it is:
 //   - a fetch made by a HELPER that the effect calls is not seen (the formfill
-//     page's effect-triggered fetchTemplate is one);
+//     page's effect-triggered fetchPredictions is one);
 //   - a wrapper around apiFetch/fetch under another name is not seen;
 //   - only app/ and components/ are scanned, not lib/;
 //   - a customer id built any way that never spells `customer_id` is not seen.

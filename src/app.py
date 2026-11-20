@@ -1421,56 +1421,6 @@ def formfill_vendors(customer_id: str = Query(...)):
         return {"vendors": [], "error": str(exc)}
 
 
-@app.get("/api/formfill/template")
-def formfill_template(customer_id: str = Query(...), vendor: str = Query(...)):
-    """Predict the most common historical template for a vendor.
-
-    Returns the joint mode of all classification fields when there is enough
-    historical data. The UI shows this as 'Looks like your monthly Telia
-    invoice. [Apply]' — one click fills all fields.
-    """
-    from src.formfill_service import predict_template
-    template = predict_template(v2_client, customer_id, vendor)
-    return template or {"error": "not enough history"}
-
-
-@app.get("/api/formfill/templates")
-def formfill_templates(customer_id: str = Query(...), limit: int = 6):
-    """Return the customer's top vendor templates as quick-start cards.
-
-    Mines templates for each of the top-N most-frequent vendors, dropping
-    any that don't have a confident template. Used as the landing-page
-    'recently used' list in Form Fill so users start from a template
-    instead of a blank form.
-    """
-    from src.formfill_service import predict_template
-    from collections import Counter
-    cache_key = derived_key("formfill_templates", customer_id, limit)
-    cached = cache.get(cache_key)
-    if cached:
-        return cached
-
-    try:
-        sample = v2_client.search("invoices", {"customer_id": customer_id}, limit=200)
-    except AitoError:
-        return {"templates": []}
-
-    vendors = Counter(h["vendor"] for h in sample.get("hits", []) if h.get("vendor"))
-    top = [v for v, _ in vendors.most_common(limit * 2)]
-
-    templates = []
-    for vendor in top:
-        t = predict_template(v2_client, customer_id, vendor)
-        if t:
-            templates.append(t)
-        if len(templates) >= limit:
-            break
-
-    result = {"templates": templates}
-    cache.set(cache_key, result, ttl=_ttl(600))
-    return result
-
-
 @app.post("/api/formfill/predict")
 def formfill_predict(body: dict):
     """Predict form fields — live Aito call with customer_id."""
@@ -1698,46 +1648,45 @@ from concurrent.futures import ThreadPoolExecutor as _LandingThreadPoolExecutor 
 
 @app.get("/api/multitenancy/landing")
 def multitenancy_landing(vendor_limit: int = 8, tenants_per_vendor: int = 4):
-    """One-shot home-page payload: vendors + every tenant template.
+    """One-shot home-page payload: vendors + each tenant's prediction.
 
-    The home page used to fan out (1 shared_vendors call + 4 parallel
-    formfill/template calls per vendor) which made first paint visibly
-    slow on cold deployments. Precompute writes the same shape to
-    data/precomputed/landing.json so production reads it as a static
-    file.
+    `routing` maps "vendor|customer_id" to what Aito predicts for that
+    tenant and vendor (GL account, approver, cost centre, each with its
+    probability and $why). Precompute writes the same shape to
+    data/precomputed/landing.json so production reads it as a static file.
 
     When the JSON is missing (typical for `./do dev` without the
-    precompute step), we fall back to computing live so the page
-    still works — just slowly.
+    precompute step), or is in the older shape that held the most common
+    routing under "templates", we compute live so the page still works,
+    just slowly.
     """
     pre = precompute_store.get("landing")
-    if pre is not None:
+    if pre is not None and "routing" in pre:
         return _slice_landing(pre, vendor_limit, tenants_per_vendor)
 
-    # Live fallback: compute shared vendors + fan out templates.
     # Same shape as the precomputed JSON. Result is *not* written to
-    # the precompute store — that's the build pipeline's job.
+    # the precompute store: that's the build pipeline's job.
     from src.multitenancy_service import compute_shared_vendors
-    from src.formfill_service import predict_template
+    from src.vendor_routing import predict_vendor_routing
 
     vendors = compute_shared_vendors()[:vendor_limit]
-    templates: dict[str, dict] = {}
+    routing: dict[str, dict] = {}
     with _LandingThreadPoolExecutor(max_workers=8) as pool:
         futures = []
         for v in vendors:
             for t in v["tenants"][:tenants_per_vendor]:
                 key = f"{v['vendor']}|{t['customer_id']}"
                 futures.append((key, pool.submit(
-                    predict_template, v2_client, t["customer_id"], v["vendor"]
+                    predict_vendor_routing, v2_client, t["customer_id"], v["vendor"]
                 )))
         for key, fut in futures:
             try:
-                tpl = fut.result()
-                if tpl:
-                    templates[key] = tpl
-            except Exception:
-                pass
-    payload = {"vendors": vendors, "templates": templates}
+                answer = fut.result()
+            except AitoError:
+                continue
+            if answer:
+                routing[key] = answer
+    payload = {"vendors": vendors, "routing": routing}
     return _slice_landing(payload, vendor_limit, tenants_per_vendor)
 
 
@@ -1751,8 +1700,8 @@ def _slice_landing(payload: dict, vendor_limit: int, tenants_per_vendor: int) ->
         for t in kept["tenants"]:
             keep_keys.add(f"{v['vendor']}|{t['customer_id']}")
         vendors.append(kept)
-    templates = {k: v for k, v in (payload.get("templates") or {}).items() if k in keep_keys}
-    return {"vendors": vendors, "templates": templates}
+    routing = {k: v for k, v in (payload.get("routing") or {}).items() if k in keep_keys}
+    return {"vendors": vendors, "routing": routing}
 
 
 @app.get("/api/help/stats")

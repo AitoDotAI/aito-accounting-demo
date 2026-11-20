@@ -149,39 +149,20 @@ def predict_invoice(client, invoice, rules):
 
 This hybrid covers SOX/audit ("show me the deterministic rules") and ML accuracy ("predict everything else") in the same code path.
 
-### Template prediction (one-click form fill)
+### The same vendor in different tenants
 
-`predict_template` finds the joint mode of (gl_code, approver, cost_centre) for a vendor's history. When a vendor has 15+ invoices that all routed the same way, the form fills with one click:
+The home page puts one vendor in front of several tenants. Each tenant's
+answer is a `_predict` for that tenant and vendor, so it comes with a
+probability and the `$why` that explains it:
 
 ```python
-def predict_template(client, customer_id, vendor):
-    hits = client.search("invoices",
-        {"customer_id": customer_id, "vendor": vendor}, limit=50).hits
-
-    # Joint mode of the high-signal classification fields
-    counts = Counter(
-        (inv["gl_code"], inv["approver"], inv["cost_centre"])
-        for inv in hits
-    )
-    (gl, approver, cc), n = counts.most_common(1)[0]
-    confidence = n / len(hits)
-
-    if confidence < 0.20:
-        return None  # too noisy to call it a template
-
-    # Resolve secondary fields by mode within the matched template
-    matched = [i for i in hits if (i["gl_code"], i["approver"], i["cost_centre"]) == (gl, approver, cc)]
-    return {
-        "vendor": vendor,
-        "match_count": n, "total_history": len(hits), "confidence": confidence,
-        "fields": {
-            "gl_code": gl, "approver": approver, "cost_centre": cc,
-            "vat_pct": mode("vat_pct", matched),
-            "payment_method": mode("payment_method", matched),
-            ...
-        },
-    }
+# src/vendor_routing.py
+predict_fields(client, {"customer_id": customer_id, "vendor": vendor},
+               only=("gl_code", "approver", "cost_centre"))
 ```
+
+The query is identical for every tenant except `customer_id`. A tenant
+with too little history for the vendor gets no answer rather than a guess.
 
 ### Two-layer cache (Aito as cache store)
 

@@ -79,9 +79,8 @@ Switch back to **CUST-0001**.
 
 Click **Smart Form Fill** in nav.
 
-- **Quick-start cards** at the top — recurring vendor templates with
-  GL, approver, support count. Click one (e.g. *Investra Management
-  Oy → 5300 Insurance*).
+- The form opens on a worked example: a vendor from this tenant's
+  ledger is entered, and the other fields arrive as predictions.
 - All 7 fields fill in italic gold = "predicted, awaiting confirm".
 - Click into one field, type something — instantly **confirmed
   green**, with a check icon. Tab through the rest to confirm them.
@@ -302,7 +301,6 @@ three exceptions worth knowing before you present:
    | `quality/predictions` | 123 s | 0.0 s |
    | `rules/candidates` | 112 s | 0.0 s |
    | `anomalies/scan` | 37–56 s | 0.0 s |
-   | `formfill/templates` | 21 s | 0.0 s |
    | `quality/overview` | 16–53 s | 0.0 s |
 
 It costs ~5–8 min per tenant (measured: 5 tenants in 22 min at

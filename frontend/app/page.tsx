@@ -6,8 +6,8 @@ import TopBar from "@/components/shell/TopBar";
 import AitoPanel from "@/components/shell/AitoPanel";
 import { apiFetch } from "@/lib/api";
 import { glLabel } from "@/lib/gl-labels";
-import { useDeveloperMode } from "@/lib/developer-mode";
-import type { AitoPanelConfig } from "@/lib/types";
+import WhyTooltip from "@/components/prediction/WhyTooltip";
+import type { AitoPanelConfig, WhyFactor } from "@/lib/types";
 
 interface SharedTenant {
   customer_id: string;
@@ -29,20 +29,19 @@ interface CustomerLite {
   invoice_count: number;
 }
 
-interface Template {
-  vendor: string;
-  match_count: number;
-  total_history: number;
-  confidence: number;
-  fields: {
-    gl_code: string;
-    gl_label?: string;
-    approver?: string;
-    approver_name?: string | null;
-    cost_centre?: string;
-    category?: string;
-  };
-  error?: string;
+/** One field of Aito's answer for a tenant: the top value, its probability, and the $why behind it. */
+interface RoutedField {
+  value: string;
+  display: string;
+  p: number;
+  why: WhyFactor[];
+}
+
+/** What Aito predicts for one vendor in one tenant (src/vendor_routing.py). */
+interface Routing {
+  gl_code: RoutedField;
+  approver: RoutedField | null;
+  cost_centre: RoutedField | null;
 }
 
 const PANEL_CONFIG: AitoPanelConfig = {
@@ -106,15 +105,14 @@ function tenantSize(c: CustomerLite | undefined) {
 
 interface LandingPayload {
   vendors: SharedVendor[];
-  templates: Record<string, Template>;
+  routing: Record<string, Routing>;
 }
 
 export default function Home() {
-  const { developerMode } = useDeveloperMode();
   const [vendors, setVendors] = useState<SharedVendor[]>([]);
   const [customers, setCustomers] = useState<CustomerLite[]>([]);
   const [vendorIdx, setVendorIdx] = useState(0);
-  const [templates, setTemplates] = useState<Record<string, Template>>({});
+  const [routing, setRouting] = useState<Record<string, Routing>>({});
 
   // One round trip: serves precomputed JSON in production, falls back
   // to a server-side fan-out in dev. The home page never makes
@@ -124,9 +122,9 @@ export default function Home() {
     apiFetch<LandingPayload>(`/api/multitenancy/landing?vendor_limit=8&tenants_per_vendor=${MAX_TENANTS_VISIBLE}`)
       .then((d) => {
         setVendors(d.vendors ?? []);
-        setTemplates(d.templates ?? {});
+        setRouting(d.routing ?? {});
       })
-      .catch(() => { setVendors([]); setTemplates({}); });
+      .catch(() => { setVendors([]); setRouting({}); });
     apiFetch<{ customers: CustomerLite[] }>("/api/customers")
       .then((d) => setCustomers(d.customers ?? []))
       .catch(() => setCustomers([]));
@@ -146,22 +144,22 @@ export default function Home() {
 
   // Predictions for the current vendor — pulled out of the
   // landing payload by composite key. No round trips per vendor switch.
-  const predictions: Record<string, Template | null> = useMemo(() => {
+  const predictions: Record<string, Routing | null> = useMemo(() => {
     if (!selectedVendor) return {};
-    const out: Record<string, Template | null> = {};
+    const out: Record<string, Routing | null> = {};
     for (const t of visibleTenants) {
       const key = `${selectedVendor.vendor}|${t.customer_id}`;
-      out[t.customer_id] = templates[key] ?? null;
+      out[t.customer_id] = routing[key] ?? null;
     }
     return out;
-  }, [selectedVendor, visibleTenants, templates]);
+  }, [selectedVendor, visibleTenants, routing]);
   const loading = vendors.length === 0;
 
   const distinctGlsAcrossVisible = useMemo(() => {
     const set = new Set<string>();
     for (const t of visibleTenants) {
       const tpl = predictions[t.customer_id];
-      if (tpl?.fields?.gl_code) set.add(tpl.fields.gl_code);
+      if (tpl?.gl_code) set.add(tpl.gl_code.value);
     }
     return set.size;
   }, [predictions, visibleTenants]);
@@ -228,7 +226,7 @@ export default function Home() {
               const tpl = predictions[t.customer_id];
               const c = customerById[t.customer_id];
               const ready = tpl !== undefined && !loading;
-              const error = ready && (tpl === null || tpl?.error);
+              const error = ready && tpl === null;
               return (
                 <div
                   key={t.customer_id}
@@ -263,41 +261,39 @@ export default function Home() {
                       <>
                         <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
                           <span style={{ fontSize: 22, fontWeight: 600, fontFamily: "'IBM Plex Mono', monospace", color: "var(--gold-dark)" }}>
-                            {tpl.fields.gl_code}
+                            {tpl.gl_code.value}
                           </span>
                           <span style={{ fontSize: 12, color: "var(--text2)" }}>
-                            {tpl.fields.gl_label || glLabel(tpl.fields.gl_code)}
+                            {glLabel(tpl.gl_code.value)}
                           </span>
                         </div>
-                        <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 6, lineHeight: 1.5 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--text3)", marginTop: 6 }}>
+                          <span>Aito&apos;s probability</span>
                           <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: "var(--green)" }}>
-                            {tpl.match_count}
+                            {Math.round(tpl.gl_code.p * 100)}%
                           </span>
-                          {" of "}
-                          <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
-                            {tpl.total_history}
-                          </span>
-                          {" prior invoices in this ledger routed identically"}
+                          <WhyTooltip
+                            label={`GL ${tpl.gl_code.value} for ${t.customer_id}`}
+                            factors={tpl.gl_code.why}
+                            confidence={tpl.gl_code.p}
+                          />
                         </div>
 
                         <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px dashed var(--border2)", display: "grid", gridTemplateColumns: "auto 1fr", gap: "5px 10px", fontSize: 11.5 }}>
-                          {tpl.fields.approver && (
+                          {tpl.approver && (
                             <>
                               <span style={{ color: "var(--text3)" }}>Hyväksyjä</span>
-                              <span style={{ color: "var(--text2)" }}>{tpl.fields.approver_name ?? tpl.fields.approver}</span>
+                              <span style={{ color: "var(--text2)" }}>
+                                {tpl.approver.display} <span style={{ color: "var(--text3)", fontFamily: "'IBM Plex Mono', monospace" }}>{Math.round(tpl.approver.p * 100)}%</span>
+                              </span>
                             </>
                           )}
-                          {tpl.fields.cost_centre && (
+                          {tpl.cost_centre && (
                             <>
                               <span style={{ color: "var(--text3)" }}>Cost centre</span>
-                              <span style={{ color: "var(--text2)", fontFamily: "'IBM Plex Mono', monospace" }}>{tpl.fields.cost_centre}</span>
-                            </>
-                          )}
-                          {/* Category restates the account; developer view only. */}
-                          {developerMode && tpl.fields.category && (
-                            <>
-                              <span style={{ color: "var(--text3)" }}>Category</span>
-                              <span style={{ color: "var(--text2)" }}>{tpl.fields.category}</span>
+                              <span style={{ color: "var(--text2)", fontFamily: "'IBM Plex Mono', monospace" }}>
+                                {tpl.cost_centre.value} <span style={{ color: "var(--text3)" }}>{Math.round(tpl.cost_centre.p * 100)}%</span>
+                              </span>
                             </>
                           )}
                         </div>

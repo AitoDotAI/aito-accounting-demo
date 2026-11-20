@@ -5,12 +5,13 @@ predictions" — needs two things at render time:
 
 1. A ranked list of vendors that appear across many tenants with
    *different* dominant GLs (high cross-tenant contrast).
-2. The predicted template (gl, approver, cost-centre, …) that each
-   of those tenants would assign to that vendor.
+2. What Aito predicts (GL account, approver, cost centre, each with
+   its probability and $why) for that vendor in each of those tenants
+   (src/vendor_routing.py).
 
 Step 1 is a deterministic scan of the invoices fixture (no Aito).
-Step 2 needs Aito and is the slow part — 4 templates × 8 vendors =
-32 _search round-trips that we don't want on the user's first
+Step 2 needs Aito and is the slow part — 4 tenants × 8 vendors ×
+3 _predict round-trips that we don't want on the user's first
 paint. So we compute (1) and (2) at deploy time and serve a static
 JSON.
 """

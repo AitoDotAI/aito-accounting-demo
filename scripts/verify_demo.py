@@ -92,13 +92,6 @@ def check_invoices_pending(body: dict) -> str:
     return f"{len(invoices)} pending, {len(predicted)} predicted"
 
 
-def check_formfill_templates(body: dict) -> str:
-    """Step 2 — smart form fill. Vendor quick-start templates."""
-    templates = _hits(body, "templates", "vendors")
-    assert templates, "no form-fill templates — the quick-start row would be empty"
-    return f"{len(templates)} templates"
-
-
 def check_rule_candidates(body: dict) -> str:
     """Step 6 — rule mining. Mined conjunctions with real support."""
     candidates = _hits(body, "candidates", "rules")
@@ -207,16 +200,19 @@ def check_help_search(body: dict) -> str:
 
 def check_multitenancy_landing(body: dict) -> str:
     """The landing view that makes the multi-tenant point."""
-    assert body, "multitenancy landing is empty"
-    return f"{len(body)} sections"
+    routing = body.get("routing")
+    assert routing, "multitenancy landing has no per-tenant predictions"
+    for key, answer in routing.items():
+        gl = answer["gl_code"]
+        assert 0.0 <= gl["p"] <= 1.0, f"{key}: GL probability out of [0,1]: {gl['p']}"
+        assert gl["why"], f"{key}: the GL prediction carries no $why"
+    return f"{len(routing)} tenant predictions"
 
 
 STEPS: list[Step] = [
     Step("health", "/api/health", check_health),
     Step("customers", "/api/customers", check_customers),
     Step("invoices/pending", "/api/invoices/pending", check_invoices_pending,
-         {"customer_id": DEFAULT_CUSTOMER}),
-    Step("formfill/templates", "/api/formfill/templates", check_formfill_templates,
          {"customer_id": DEFAULT_CUSTOMER}),
     Step("rules/candidates", "/api/rules/candidates", check_rule_candidates,
          {"customer_id": DEFAULT_CUSTOMER}),
